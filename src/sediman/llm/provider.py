@@ -45,6 +45,7 @@ class LLMProvider(ABC):
         system: str | None = None,
     ) -> LLMResponse: ...
 
+    @abstractmethod
     def get_browser_use_llm(self) -> Any:
         """Return a LangChain-compatible LLM for BrowserUse's Agent."""
         raise NotImplementedError

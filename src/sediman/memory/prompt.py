@@ -7,8 +7,7 @@ from typing import Any
 
 import structlog
 
-from sediman.memory.store import MEMORY_DIR, MEMORY_FILE as STORE_MEMORY_FILE
-from sediman.memory.store import MEMORY_LIMIT, USER_FILE as STORE_USER_FILE
+from sediman.memory.store import MEMORY_LIMIT
 from sediman.memory.store import MemoryStore
 
 logger = structlog.get_logger()
