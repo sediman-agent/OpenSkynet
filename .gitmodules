@@ -1,0 +1,3 @@
+[submodule "Openbrowser"]
+	path = Openbrowser
+	url = https://github.com/JasonHonKL/Openbrowser.git
