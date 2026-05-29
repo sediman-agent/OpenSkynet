@@ -56,6 +56,7 @@ class PlanStep:
     max_retries: int = 2
     original_strategy: Strategy | None = None
     fallback_attempted: bool = False
+    subagent_type: str | None = None
 
 
 @dataclass

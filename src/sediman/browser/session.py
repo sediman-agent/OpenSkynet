@@ -15,16 +15,27 @@ DATA_DIR = Path.home() / ".sediman"
 
 
 class BrowserSession:
-    """Persistent browser session — stays open across tasks, never closes tabs."""
+    """Persistent browser session — stays open across tasks, never closes tabs.
+
+    When stealth=True (default), uses CloakBrowser's stealth Chromium binary
+    with source-level fingerprint patches. Falls back to vanilla Playwright
+    Chromium when stealth=False or CloakBrowser is unavailable.
+    """
 
     def __init__(
         self,
         headless: bool = False,
         user_data_dir: str | None = None,
         on_screenshot: Callable[[str], None] | None = None,
+        stealth: bool = True,
+        proxy: str | None = None,
+        fingerprint_seed: int | None = None,
     ):
         self.headless = headless
         self.user_data_dir = user_data_dir or str(DATA_DIR / "browser-profile")
+        self.stealth = stealth
+        self.proxy = proxy
+        self.fingerprint_seed = fingerprint_seed
         self._browser: Any = None
         self._started = False
         self._start_lock = asyncio.Lock()
@@ -34,12 +45,51 @@ class BrowserSession:
     def is_started(self) -> bool:
         return self._started and self._browser is not None
 
+    @property
+    def is_stealth(self) -> bool:
+        return self.stealth
+
+    async def prewarm(self) -> None:
+        """Start the browser early without waiting for a task. Safe to call multiple times."""
+        await self.start()
+
     async def start(self) -> None:
         async with self._start_lock:
             if self._started and self._browser:
                 return
 
             from browser_use import Browser
+
+            if self.stealth:
+                try:
+                    from sediman.browser.stealth import (
+                        build_browseruse_stealth_config,
+                        is_stealth_available,
+                    )
+
+                    if is_stealth_available():
+                        kwargs = build_browseruse_stealth_config(
+                            headless=self.headless,
+                            user_data_dir=self.user_data_dir,
+                            proxy=self.proxy,
+                            fingerprint_seed=self.fingerprint_seed,
+                        )
+                        self._browser = Browser(**kwargs)
+                        self._started = True
+                        logger.info(
+                            "browser_session_started",
+                            headless=self.headless,
+                            stealth=True,
+                            vision=True,
+                        )
+                        return
+                    else:
+                        logger.warning("stealth_unavailable_package_missing")
+                except Exception as e:
+                    logger.warning(
+                        "stealth_fallback_to_vanilla",
+                        error=str(e),
+                    )
 
             kwargs: dict[str, Any] = {
                 "headless": self.headless,
@@ -48,9 +98,17 @@ class BrowserSession:
                 "keep_alive": True,
             }
 
+            if self.proxy:
+                kwargs["proxy"] = {"server": self.proxy}
+
             self._browser = Browser(**kwargs)
             self._started = True
-            logger.info("browser_session_started", headless=self.headless, vision=True)
+            logger.info(
+                "browser_session_started",
+                headless=self.headless,
+                stealth=False,
+                vision=True,
+            )
 
     async def stop(self) -> None:
         if self._browser:
@@ -195,7 +253,11 @@ async def run_browser_task(
                     if hasattr(action_obj, "text"):
                         t = action_obj.text or ""
                         if t:
-                            action_detail = f"{action_detail}: {t[:80]}" if action_detail else t[:80]
+                            action_detail = (
+                                f"{action_detail}: {t[:80]}"
+                                if action_detail
+                                else t[:80]
+                            )
                     if hasattr(action_obj, "url"):
                         u = action_obj.url or ""
                         if u:
@@ -214,7 +276,11 @@ async def run_browser_task(
                             action_detail = f"type '{t[:50]}'"
                         sel = args.get("selector", "")
                         if sel:
-                            action_detail = f"{action_detail} in {sel[:50]}" if action_detail else f"click {sel[:50]}"
+                            action_detail = (
+                                f"{action_detail} in {sel[:50]}"
+                                if action_detail
+                                else f"click {sel[:50]}"
+                            )
             except Exception:
                 action_name = f"step {step_num}"
             detail = action_detail if action_detail else url
@@ -254,7 +320,10 @@ async def run_browser_task(
 
 def _extract_actions(raw_result: Any) -> list[dict[str, Any]]:
     actions = []
-    if hasattr(raw_result, "all_model_outputs") and raw_result.all_model_outputs is not None:
+    if (
+        hasattr(raw_result, "all_model_outputs")
+        and raw_result.all_model_outputs is not None
+    ):
         for output in raw_result.all_model_outputs:
             if isinstance(output, dict):
                 actions.append(output)

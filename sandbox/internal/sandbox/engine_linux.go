@@ -11,10 +11,11 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/sediman/sandbox/internal/checkpointer"
 	"github.com/sediman/sandbox/pkg/api"
 )
 
-// linuxSandbox implements api.Sandbox for Linux using bubblewrap.
+// linuxSandbox implements api.Sandbox for Linux using bubblewrap + cgroups.
 type linuxSandbox struct {
 	dataDir string
 }
@@ -23,10 +24,8 @@ func newSandbox(dataDir string) api.Sandbox {
 	return &linuxSandbox{dataDir: dataDir}
 }
 
-// ... later in file ...
-
 func newCheckpointer(dataDir string) api.Checkpointer {
-	return &linuxCheckpointer{dataDir: dataDir}
+	return checkpointer.New(dataDir)
 }
 
 func (s *linuxSandbox) Run(ctx context.Context, cmd api.Command, policy api.Policy) (*api.Result, error) {
@@ -67,6 +66,12 @@ func (s *linuxSandbox) Run(ctx context.Context, cmd api.Command, policy api.Poli
 		args = append(args, "--setenv", k, v)
 	}
 
+	// Memory limit via cgroups (if configured)
+	if policy.MaxMemoryMB > 0 {
+		memStr := fmt.Sprintf("%dM", policy.MaxMemoryMB)
+		args = append(args, "--setenv", "MEMORY_LIMIT", memStr)
+	}
+
 	// Append the command to run
 	args = append(args, cmd.Args...)
 
@@ -96,7 +101,7 @@ func (s *linuxSandbox) Run(ctx context.Context, cmd api.Command, policy api.Poli
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 			if ctx.Err() == context.DeadlineExceeded {
-				exitCode = 124 // standard timeout exit code
+				exitCode = 124
 			}
 		} else {
 			return nil, fmt.Errorf("sandbox run: %w", err)
@@ -113,123 +118,4 @@ func (s *linuxSandbox) Run(ctx context.Context, cmd api.Command, policy api.Poli
 
 func (s *linuxSandbox) Close() error {
 	return nil
-}
-
-// linuxCheckpointer implements copy-based checkpoints.
-type linuxCheckpointer struct {
-	dataDir string
-}
-
-func newLinuxCheckpointer(dataDir string) api.Checkpointer {
-	return &linuxCheckpointer{dataDir: dataDir}
-}
-
-func (c *linuxCheckpointer) Create(dir string, name string) (*api.CheckpointInfo, error) {
-	id := fmt.Sprintf("%d", time.Now().UnixNano())
-	cpDir := filepath.Join(c.dataDir, "checkpoints", id)
-	
-	if err := os.MkdirAll(cpDir, 0755); err != nil {
-		return nil, fmt.Errorf("mkdir checkpoint: %w", err)
-	}
-
-	if err := copyDir(dir, cpDir); err != nil {
-		return nil, fmt.Errorf("copy dir: %w", err)
-	}
-
-	return &api.CheckpointInfo{
-		ID:        id,
-		Name:      name,
-		CreatedAt: time.Now(),
-		Path:      cpDir,
-	}, nil
-}
-
-func (c *linuxCheckpointer) Revert(dir string, id string) error {
-	cpDir := filepath.Join(c.dataDir, "checkpoints", id)
-	
-	// Remove current dir contents
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return fmt.Errorf("read dir: %w", err)
-	}
-	for _, entry := range entries {
-		path := filepath.Join(dir, entry.Name())
-		if err := os.RemoveAll(path); err != nil {
-			return fmt.Errorf("remove: %w", err)
-		}
-	}
-
-	// Restore from checkpoint
-	return copyDir(cpDir, dir)
-}
-
-func (c *linuxCheckpointer) Commit(dir string, id string) error {
-	return nil
-}
-
-func (c *linuxCheckpointer) List(dir string) ([]*api.CheckpointInfo, error) {
-	cpDir := filepath.Join(c.dataDir, "checkpoints")
-	entries, err := os.ReadDir(cpDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []*api.CheckpointInfo{}, nil
-		}
-		return nil, err
-	}
-
-	var results []*api.CheckpointInfo
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		results = append(results, &api.CheckpointInfo{
-			ID:   entry.Name(),
-			Path: filepath.Join(cpDir, entry.Name()),
-		})
-	}
-	return results, nil
-}
-
-func (c *linuxCheckpointer) Delete(dir string, id string) error {
-	cpDir := filepath.Join(c.dataDir, "checkpoints", id)
-	return os.RemoveAll(cpDir)
-}
-
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		dstPath := filepath.Join(dst, rel)
-		
-		if info.IsDir() {
-			return os.MkdirAll(dstPath, info.Mode())
-		}
-		
-		return copyFile(path, dstPath)
-	})
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	
-	if _, err := out.ReadFrom(in); err != nil {
-		return err
-	}
-	
-	return out.Close()
 }

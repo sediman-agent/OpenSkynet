@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -34,16 +36,21 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         self.model = model
         self._api_key = api_key or os.environ.get("OPENAI_API_KEY")
         self._client: Any | None = None
+        self._sync_client: Any | None = None
         self._dim = 1536 if model == "text-embedding-3-small" else 3072
 
     def _lazy_client(self) -> Any:
         if self._client is None:
             from openai import AsyncOpenAI
             self._client = AsyncOpenAI(api_key=self._api_key)
-            self._sync_client = type(self._client)(
-                api_key=self._api_key
-            ) if self._api_key != "not-needed" else None
+            self._sync_client = None
         return self._client
+
+    def _lazy_sync_client(self) -> Any:
+        if self._sync_client is None:
+            from openai import OpenAI
+            self._sync_client = OpenAI(api_key=self._api_key)
+        return self._sync_client
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -59,9 +66,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
     def embed_sync(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        from openai import OpenAI
-
-        client = OpenAI(api_key=self._api_key)
+        client = self._lazy_sync_client()
         try:
             resp = client.embeddings.create(model=self.model, input=texts)
             return [d.embedding for d in resp.data]
@@ -118,6 +123,8 @@ class FastEmbedProvider(EmbeddingProvider):
 
 
 class TfidfEmbeddingProvider(EmbeddingProvider):
+    _VOCAB_FILE = Path.home() / ".sediman" / "tfidf_vocab.json"
+
     def __init__(self):
         from sklearn.feature_extraction.text import TfidfVectorizer
 
@@ -130,6 +137,42 @@ class TfidfEmbeddingProvider(EmbeddingProvider):
         self._fitted = False
         self._dim = 512
         self._vocab: set[str] = set()
+        self._try_load_persisted_vocab()
+
+    def _try_load_persisted_vocab(self) -> None:
+        if not self._VOCAB_FILE.exists():
+            return
+        try:
+            data = json.loads(self._VOCAB_FILE.read_text())
+            vocab_list = data.get("vocabulary", [])
+            idf = data.get("idf")
+            if vocab_list:
+                vocab_dict = {word: i for i, word in enumerate(vocab_list)}
+                self._vectorizer.vocabulary_ = vocab_dict
+                if idf and len(idf) == len(vocab_list):
+                    import numpy as np
+                    self._vectorizer.idf_ = np.array(idf)
+                self._vectorizer.stop_words_ = set()
+                self._fitted = True
+                self._vocab = set(vocab_list)
+                self._dim = len(vocab_list)
+                logger.debug("tfidf_vocab_loaded", words=len(vocab_list))
+        except Exception as e:
+            logger.debug("tfidf_vocab_load_failed", error=str(e))
+
+    def _persist_vocab(self) -> None:
+        try:
+            if not self._fitted:
+                return
+            vocab_list = list(self._vectorizer.get_feature_names_out())
+            idf = self._vectorizer.idf_.tolist() if hasattr(self._vectorizer, 'idf_') else None
+            self._VOCAB_FILE.parent.mkdir(parents=True, exist_ok=True)
+            self._VOCAB_FILE.write_text(json.dumps({
+                "vocabulary": vocab_list,
+                "idf": idf,
+            }))
+        except Exception as e:
+            logger.debug("tfidf_vocab_persist_failed", error=str(e))
 
     def _fit_if_needed(self, texts: list[str]) -> None:
         if not self._fitted and texts:
@@ -137,6 +180,7 @@ class TfidfEmbeddingProvider(EmbeddingProvider):
             self._fitted = True
             self._vocab = set(self._vectorizer.get_feature_names_out())
             self._dim = len(self._vocab)
+            self._persist_vocab()
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         return self.embed_sync(texts)
@@ -144,10 +188,17 @@ class TfidfEmbeddingProvider(EmbeddingProvider):
     def embed_sync(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        self._fit_if_needed(texts)
+        if not self._fitted:
+            self._fit_if_needed(texts)
         if not self._fitted:
             return [[0.0] * self._dim for _ in texts]
-        matrix = self._vectorizer.transform(texts)
+        try:
+            matrix = self._vectorizer.transform(texts)
+        except ValueError:
+            self._fit_if_needed(texts)
+            if not self._fitted:
+                return [[0.0] * self._dim for _ in texts]
+            matrix = self._vectorizer.transform(texts)
         rows: list[list[float]] = []
         for i in range(matrix.shape[0]):
             row = matrix[i].toarray()[0].tolist()

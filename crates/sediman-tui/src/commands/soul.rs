@@ -5,14 +5,14 @@ use crate::app::App;
 pub async fn handle_soul(app: &mut App, args: &str) {
     let args = args.trim();
     if args.is_empty() {
-        app.step_log.push(" You are Sediman, a self-improving browser automation agent.".into());
-        app.step_log.push(" Usage: /soul <text> or /soul reset".into());
+        app.add_system_message("You are Sediman, a self-improving browser automation agent.".into());
+        app.add_system_message("Usage: /soul <text> or /soul reset".into());
         return;
     }
     if args == "reset" {
-        app.step_log.push("✓ Personality reset to default.".into());
+        app.add_system_message("Personality reset to default.".into());
     } else {
-        app.step_log.push("✓ Personality set.".into());
+        app.add_system_message("Personality set.".into());
     }
 }
 

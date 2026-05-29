@@ -42,7 +42,7 @@ async def delegate_parallel(
     llm_provider: Any,
     max_concurrent: int = 3,
 ) -> list[str]:
-    """Run multiple tasks in parallel using subagents.
+    """Run multiple tasks in parallel, each in its own browser context/tab.
 
     Max 3 concurrent to avoid overwhelming the browser/LLM.
     Returns results in the same order as input tasks.
@@ -52,8 +52,20 @@ async def delegate_parallel(
 
     async def _run_with_semaphore(index: int, task: str) -> None:
         async with semaphore:
-            llm = llm_provider.get_browser_use_llm()
-            results[index] = await delegate_task(task, browser_session, llm)
+            try:
+                context = await browser_session.browser.create_session()
+            except Exception:
+                context = None
+
+            try:
+                llm = llm_provider.get_browser_use_llm()
+                results[index] = await delegate_task(task, browser_session, llm)
+            finally:
+                if context:
+                    try:
+                        await context.close()
+                    except Exception:
+                        pass
 
     coros = [_run_with_semaphore(i, t) for i, t in enumerate(tasks)]
     await asyncio.gather(*coros)

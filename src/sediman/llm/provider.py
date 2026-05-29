@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import json
+import re
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -45,13 +47,33 @@ class LLMProvider(ABC):
         system: str | None = None,
     ) -> LLMResponse: ...
 
+    async def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[ToolDefinition],
+        system: str | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream tokens from the LLM. Default implementation calls chat() and yields the full response."""
+        response = await self.chat(messages=messages, tools=tools, system=system)
+        if response.text:
+            yield response.text
+
     @abstractmethod
     def get_browser_use_llm(self) -> Any:
         """Return a LangChain-compatible LLM for BrowserUse's Agent."""
         raise NotImplementedError
 
     def get_planning_provider(self) -> LLMProvider:
-        return self
+        if not _USE_PLANNING_MODEL_MAP:
+            return self
+        planning_model = PLANNING_MODEL_MAP.get(self.model, self.model)
+        if planning_model == self.model:
+            return self
+        return OpenAICompatibleProvider(
+            model=planning_model,
+            api_key=self.api_key,
+            base_url=self.base_url,
+        )
 
 
 class OpenAICompatibleProvider(LLMProvider):
@@ -96,20 +118,20 @@ class OpenAICompatibleProvider(LLMProvider):
             base_url=self.base_url,
         )
 
+        # Caches to avoid redundant work in the hot loop
+        _schema_cache: dict[int, str] = {}
+        _strip_thinking_re = re.compile(r'<think\b[^>]*>.*?</think\s*>', re.DOTALL)
+
         # Monkey-patch: replace the strict json_schema path with prompt-based JSON.
         # This is needed because non-OpenAI providers don't support
         # response_format: { type: "json_schema", strict: true }.
         original_ainvoke = llm.ainvoke
 
         async def patched_ainvoke(messages, output_format=None, **kwargs):
-            import re
             from browser_use.llm.base import ChatInvokeCompletion
 
             def _strip_thinking(text: str) -> str:
-                # Remove <think...</think< blocks (reasoning models)
-                text = re.sub(r'<think\b[^>]*>.*?</think\s*>', '', text, flags=re.DOTALL)
-                text = text.strip()
-                # Extract JSON if model prefixed it with thinking text
+                text = _strip_thinking_re.sub('', text).strip()
                 if text and text[0] not in ('{', '['):
                     for i, ch in enumerate(text):
                         if ch in ('{', '['):
@@ -134,12 +156,17 @@ class OpenAICompatibleProvider(LLMProvider):
             import json as _json
             from browser_use.llm.schema import SchemaOptimizer
 
-            schema = SchemaOptimizer.create_optimized_json_schema(output_format)
-            json_instruction = (
-                '\n\nIMPORTANT: You must respond with ONLY a valid JSON object '
-                '(no markdown, no code blocks, no explanations) that exactly matches this schema:\n'
-                + _json.dumps(schema, indent=2)
-            )
+            # Cache schema instruction by output_format class identity
+            schema_key = id(output_format) if not isinstance(output_format, type) else id(output_format)
+            json_instruction = _schema_cache.get(schema_key)
+            if json_instruction is None:
+                schema = SchemaOptimizer.create_optimized_json_schema(output_format)
+                json_instruction = (
+                    '\n\nIMPORTANT: You must respond with ONLY a valid JSON object '
+                    '(no markdown, no code blocks, no explanations) that exactly matches this schema:\n'
+                    + _json.dumps(schema, indent=2)
+                )
+                _schema_cache[schema_key] = json_instruction
 
             modified_messages = []
             for m in messages:
@@ -162,11 +189,10 @@ class OpenAICompatibleProvider(LLMProvider):
 
             # Parse the JSON from the raw text response
             content = result.completion if isinstance(result.completion, str) else str(result.completion)
-            content = _strip_thinking(content)
-            content = content.strip()
+            content = _strip_thinking(content).strip()
             if content.startswith('```json'):
                 content = content[7:]
-            if content.startswith('```'):
+            elif content.startswith('```'):
                 content = content[3:]
             if content.endswith('```'):
                 content = content[:-3]
@@ -183,15 +209,41 @@ class OpenAICompatibleProvider(LLMProvider):
         self._cached_browser_llm = llm
         return llm
 
-    def get_planning_provider(self) -> OpenAICompatibleProvider:
-        planning_model = PLANNING_MODEL_MAP.get(self.model, self.model)
-        if planning_model == self.model:
-            return self
-        return OpenAICompatibleProvider(
-            model=planning_model,
-            api_key=self.api_key,
-            base_url=self.base_url,
-        )
+    async def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[ToolDefinition],
+        system: str | None = None,
+    ) -> AsyncIterator[str]:
+        all_messages: list[dict[str, Any]] = []
+        if system:
+            all_messages.append({"role": "system", "content": system})
+        all_messages.extend(messages)
+
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": all_messages,
+            "stream": True,
+        }
+
+        if tools:
+            kwargs["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                    },
+                }
+                for t in tools
+            ]
+
+        stream = await self.client.chat.completions.create(**kwargs)
+        async for chunk in stream:
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if delta and delta.content:
+                yield delta.content
 
     async def chat(
         self,
@@ -279,6 +331,8 @@ PLANNING_MODEL_MAP: dict[str, str] = {
     "claude-3.5-sonnet": "claude-3-haiku",
     "claude-3-sonnet": "claude-3-haiku",
 }
+
+_USE_PLANNING_MODEL_MAP = os.environ.get("SEDIMAN_USE_PLANNING_MODEL_MAP", "true").lower() in ("true", "1", "yes")
 
 
 def create_provider(

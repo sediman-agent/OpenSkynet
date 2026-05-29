@@ -1,11 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{
-    layout::Rect,
-    style::{Color, Style},
-    text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph},
-    Frame,
-};
+
+use crate::renderer::{CellBuffer, Color, Rect, Style};
 
 pub struct TextEditor {
     buffer: String,
@@ -80,23 +75,20 @@ impl TextEditor {
                 true
             }
             KeyCode::Tab | KeyCode::BackTab => {
-                // insert 2 spaces for tab
                 for _ in 0..2 {
                     self.buffer.insert(self.cursor, ' ');
                     self.cursor += 1;
                 }
                 true
             }
-            KeyCode::Esc => true,   // handled by event loop
-            KeyCode::F(_) => true,  // function keys: ignore silently
-            KeyCode::Up | KeyCode::Down => true, // handled by event loop
+            KeyCode::Esc => true,
+            KeyCode::F(_) => true,
+            KeyCode::Up | KeyCode::Down => true,
             KeyCode::Insert | KeyCode::PageUp | KeyCode::PageDown => true,
             KeyCode::Null => true,
             KeyCode::CapsLock | KeyCode::ScrollLock | KeyCode::NumLock => true,
             KeyCode::PrintScreen | KeyCode::Pause | KeyCode::Menu => true,
-            _ => {
-                true
-            }
+            _ => true,
         }
     }
 
@@ -150,41 +142,97 @@ impl TextEditor {
         self.cursor += s.len();
     }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
-        let prompt_span = Span::styled(
-            self.prompt.as_str(),
-            Style::new().fg(Color::Cyan),
-        );
-        let text_spans: Vec<Span> = self
-            .buffer
-            .chars()
-            .enumerate()
-            .map(|(i, c)| {
-                if i == self.cursor {
-                    Span::styled(
-                        c.to_string(),
-                        Style::new().fg(Color::White).bg(Color::DarkGray),
-                    )
-                } else {
-                    Span::raw(c.to_string())
+    /// Render the editor content into the provided buffer area.
+    pub fn render(&self, buf: &mut CellBuffer, area: Rect) {
+        let width = area.width as usize;
+        let prompt_style = Style::new().fg(Color::CYAN);
+        let cursor_style = Style::new().fg(Color::BLACK).bg(Color::WHITE);
+        let text_style = Style::new().fg(Color::WHITE);
+        let border_style = Style::new().fg(Color::DARK_GRAY);
+
+        let prompt_len = self.prompt.len();
+        let usable = width.saturating_sub(prompt_len).saturating_sub(1);
+        let buf_chars: Vec<char> = self.buffer.chars().collect();
+
+        let mut char_idx = 0;
+        let mut first_line = true;
+        let mut y = area.y;
+
+        while char_idx <= buf_chars.len() {
+            if y >= area.y + area.height {
+                break;
+            }
+
+            let capacity = if first_line { usable } else { width.saturating_sub(1) };
+            first_line = false;
+
+            let mut cx = area.x;
+            let mut line_len = 0;
+
+            if char_idx == 0 {
+                buf.draw_str(cx, y, &self.prompt, prompt_style);
+                cx += prompt_len as u16;
+                line_len += prompt_len;
+            }
+
+            let mut hit_newline = false;
+            while line_len < capacity && char_idx <= buf_chars.len() && cx < area.x + area.width {
+                if char_idx == buf_chars.len() {
+                    if char_idx == self.cursor {
+                        buf.put_char(cx, y, ' ', cursor_style);
+                    }
+                    char_idx += 1;
+                    break;
                 }
-            })
-            .collect();
 
-        let mut line = vec![prompt_span];
-        line.extend(text_spans);
+                let c = buf_chars[char_idx];
+                if c == '\n' {
+                    if char_idx == self.cursor {
+                        buf.put_char(cx, y, '\u{21B5}', cursor_style);
+                    } else {
+                        buf.put_char(cx, y, '\u{21B5}', text_style);
+                    }
+                    char_idx += 1;
+                    hit_newline = true;
+                    break;
+                }
 
-        if self.cursor >= self.buffer.len() {
-            line.push(Span::styled(" ", Style::new().bg(Color::DarkGray)));
+                if char_idx == self.cursor {
+                    buf.put_char(cx, y, c, cursor_style);
+                } else {
+                    buf.put_char(cx, y, c, text_style);
+                }
+                line_len += 1;
+                cx += 1;
+                char_idx += 1;
+            }
+
+            if hit_newline {
+                y += 1;
+                continue;
+            }
+            if char_idx >= buf_chars.len() {
+                break;
+            }
+            y += 1;
         }
 
-        let paragraph = Paragraph::new(Text::from(Line::from(line)))
-            .block(
-                Block::default()
-                    .borders(Borders::TOP)
-                    .border_style(Style::new().fg(Color::DarkGray)),
-            );
-        frame.render_widget(paragraph, area);
+        // If empty buffer, render prompt + cursor.
+        if self.buffer.is_empty() && y < area.y + area.height {
+            buf.draw_str(area.x, y, &self.prompt, prompt_style);
+            buf.put_char(area.x + prompt_len as u16, y, ' ', cursor_style);
+        }
+
+        // Draw top border line across the area.
+        for bx in area.x..area.x + area.width {
+            if let Some(cell) = buf.get_mut(bx, area.y.saturating_sub(1)) {
+                // Only override if empty, otherwise keep existing content.
+                if cell.is_empty() {
+                    cell.ch = '─';
+                    cell.style = border_style;
+                }
+            }
+        }
     }
 }
 
@@ -416,12 +464,9 @@ mod tests {
     #[test]
     fn test_unknown_key_handled_silently() {
         let mut ed = TextEditor::new();
-        // All keys should be absorbed without error
         assert!(ed.input(key(KeyCode::F(1))));
         assert!(ed.input(key(KeyCode::F(24))));
     }
-
-    // ── Edge case tests ──
 
     #[test]
     fn test_empty_submit_does_not_add_to_history() {

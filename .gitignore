@@ -13,7 +13,7 @@ build/
 .eggs/
 
 .pytest_cache/
-.coverage
+.coverag
 htmlcov/
 .mypy_cache/
 .ruff_cache/
@@ -28,6 +28,7 @@ htmlcov/
 
 .DS_Store
 
+# IDE / editor
 .claude/
 .opencode/
 .aider*
@@ -35,10 +36,23 @@ htmlcov/
 .vscode/
 .idea/
 
+# Node.js
+node_modules/
+bun.lock
+
+# Build artifacts
+*.js.map
+*.d.ts.map
+*.tsbuildinfo
+
+# Python
 uv.lock
 
+# Rust
 target/
-
 Cargo.lock
 
+# Misc
 a.md
+
+app/

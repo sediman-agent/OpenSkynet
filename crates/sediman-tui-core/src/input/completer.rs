@@ -13,6 +13,10 @@ impl Completer {
         }
     }
 
+    pub fn filtered(&self) -> &[String] {
+        &self.filtered
+    }
+
     pub fn set_candidates(&mut self, candidates: Vec<String>) {
         self.candidates = candidates;
     }

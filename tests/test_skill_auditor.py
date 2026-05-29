@@ -78,7 +78,7 @@ class TestSkillAuditorAudit:
             engine_mod.SKILLS_DIR = original
 
     @pytest.mark.asyncio
-    async def test_calls_llm_with_skill_details(self, mock_llm, tmp_path):
+    async def test_fast_path_when_no_stale_skills(self, mock_llm, tmp_path):
         import sediman.skills.engine as engine_mod
         original = engine_mod.SKILLS_DIR
         engine_mod.SKILLS_DIR = tmp_path
@@ -87,18 +87,12 @@ class TestSkillAuditorAudit:
             engine = SkillEngine()
             engine.create(name="audit-test", description="test", steps=["a"])
 
-            mock_llm.chat.return_value = _make_response(
-                '{"actions": [], "summary": "all skills are healthy"}'
-            )
-
             auditor = SkillAuditor(mock_llm)
             result = await auditor.audit()
-            assert result["summary"] == "all skills are healthy"
-
-            call_args = mock_llm.chat.call_args
-            messages = call_args.kwargs.get("messages") or call_args[0][0]
-            user_msg = messages[1]["content"]
-            assert "audit" in user_msg.lower()
+            # Fast path: no stale skills, so no LLM call needed
+            assert result["actions"] == []
+            assert "active" in result["summary"].lower()
+            mock_llm.chat.assert_not_called()
         finally:
             engine_mod.SKILLS_DIR = original
 

@@ -161,6 +161,8 @@ async def lifespan(application: FastAPI):
     except Exception as e:
         logger.warning("scheduler_setup_failed", error=str(e))
     await _start_queue_worker()
+    from sediman.integrations import setup_integrations
+    setup_integrations()
     yield
     if _browser:
         try:
@@ -204,7 +206,11 @@ def _get_llm() -> LLMProvider:
 async def _get_browser() -> BrowserSession:
     global _browser
     if _browser is None:
-        _browser = BrowserSession(headless=False)
+        from sediman.config import STEALTH_ENABLED, STEALTH_PROXY
+
+        _browser = BrowserSession(
+            headless=False, stealth=STEALTH_ENABLED, proxy=STEALTH_PROXY or None
+        )
         await _browser.start()
     return _browser
 
@@ -855,3 +861,49 @@ async def ws_viewport(websocket: WebSocket):
 
     except WebSocketDisconnect:
         logger.info("ws_viewport_disconnected")
+
+
+# ── Integration Endpoints ──────────────────────────────────────────
+
+
+@app.get("/api/integrations")
+async def list_integrations():
+    from sediman.integrations import list_integrations
+    return {"integrations": list_integrations()}
+
+
+@app.post("/api/integrations/{name}/configure")
+async def configure_integration(name: str, req: dict):
+    from sediman.integrations import update_config
+    try:
+        result = update_config(name, req)
+        return {"integration": name, "config": result}
+    except ValueError as e:
+        raise _make_error("INVALID_CONFIG", str(e), status=400)
+
+
+@app.post("/api/integrations/{name}/send")
+async def send_integration_message(name: str, req: dict):
+    target = req.get("target", "")
+    content = req.get("content", "")
+    if not target or not content:
+        raise _make_error("VALIDATION", "target and content are required", status=400)
+    from sediman.integrations import send_message
+    try:
+        result = await send_message(name, target, content)
+        return {"result": result}
+    except ValueError as e:
+        raise _make_error("INTEGRATION_ERROR", str(e), status=400)
+
+
+@app.get("/api/integrations/{name}/status")
+async def integration_status(name: str):
+    from sediman.integrations import get_integration, get_config
+    config = get_config().get(name, {})
+    inst = get_integration(name)
+    return {
+        "name": name,
+        "enabled": config.get("enabled", False),
+        "configured": bool(config.get("token")),
+        "connected": inst is not None and inst.enabled,
+    }

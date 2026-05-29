@@ -1,10 +1,4 @@
-use ratatui::{
-    layout::Rect,
-    style::{Color, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
-    Frame,
-};
+use crate::renderer::{CellBuffer, Color, Rect, Style};
 
 pub struct ResultPanel<'a> {
     pub text: &'a str,
@@ -15,41 +9,65 @@ pub struct ResultPanel<'a> {
 }
 
 impl<'a> ResultPanel<'a> {
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
-        let (symbol, border_color) = if self.success {
-            ("✓", Color::Green)
-        } else {
-            ("✗", Color::Red)
-        };
-
+    pub fn render(&self, buf: &mut CellBuffer, area: Rect) {
+        let border_color = if self.success { Color::GREEN } else { Color::RED };
+        let symbol = if self.success { "✓" } else { "✗" };
         let title = format!("{} Sediman ({}s)", symbol, self.elapsed_secs);
 
-        let mut lines = vec![Line::from(Span::raw(self.text))];
+        // Draw border box.
+        draw_border_box(buf, area, border_color, &title);
+
+        let inner = area.inner(1, 1, 1, 1);
+        let mut y = inner.y;
+
+        // Draw text (wrapping).
+        for line in self.text.lines() {
+            if y >= inner.bottom() {
+                break;
+            }
+            buf.draw_wrapped_str(Rect::new(inner.x, y, inner.width, 1), line, Style::new());
+            y += 1;
+        }
 
         if self.skill_created {
-            lines.push(Line::from(Span::styled(
-                "  ◆ Skill created from this task",
-                Style::new().fg(Color::Magenta),
-            )));
+            if y < inner.bottom() {
+                buf.draw_str(inner.x, y, "  ◆ Skill created from this task", Style::new().fg(Color::MAGENTA));
+                y += 1;
+            }
         }
         if let Some(job_id) = self.scheduled_job {
-            lines.push(Line::from(Span::styled(
-                format!("  ◇ Scheduled job: {}", job_id),
-                Style::new().fg(Color::Cyan),
-            )));
+            if y < inner.bottom() {
+                let text = format!("  ◇ Scheduled job: {}", job_id);
+                buf.draw_str(inner.x, y, &text, Style::new().fg(Color::CYAN));
+            }
         }
-
-        let paragraph = Paragraph::new(lines)
-            .block(
-                Block::default()
-                    .title(title)
-                    .borders(Borders::ALL)
-                    .border_style(Style::new().fg(border_color)),
-            )
-            .wrap(Wrap { trim: false });
-
-        frame.render_widget(paragraph, area);
     }
+}
+
+/// Draw a single-line border box with the given color and title in the top border.
+fn draw_border_box(buf: &mut CellBuffer, area: Rect, color: Color, title: &str) {
+    let style = Style::new().fg(color);
+    // Top border.
+    for x in area.x..area.right() {
+        buf.put_char(x, area.y, '─', style);
+    }
+    // Title at top-left.
+    let title_len = title.len().min(area.width as usize - 2);
+    buf.draw_str(area.x + 1, area.y, &title[..title_len], style);
+    // Bottom border.
+    for x in area.x..area.right() {
+        buf.put_char(x, area.y + area.height - 1, '─', style);
+    }
+    // Left and right borders.
+    for y in area.y + 1..area.y + area.height - 1 {
+        buf.put_char(area.x, y, '│', style);
+        buf.put_char(area.x + area.width - 1, y, '│', style);
+    }
+    // Corners.
+    buf.put_char(area.x, area.y, '┌', style);
+    buf.put_char(area.x + area.width - 1, area.y, '┐', style);
+    buf.put_char(area.x, area.y + area.height - 1, '└', style);
+    buf.put_char(area.x + area.width - 1, area.y + area.height - 1, '┘', style);
 }
 
 #[cfg(test)]

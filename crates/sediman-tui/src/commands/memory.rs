@@ -5,31 +5,31 @@ use crate::app::App;
 pub async fn handle_memory(app: &mut App, _args: &str) {
     match app.bridge.get_memory().await {
         Ok(mem) => {
-            app.step_log.push(" Memory".into());
+            app.add_system_message("Memory".into());
             if mem.memory.is_empty() {
-                app.step_log.push("  (empty)".into());
+                app.add_system_message("  (empty)".into());
             } else {
-                app.step_log.push(format!("  {} ({} entries)", mem.memory, mem.memory_entries));
+                app.add_system_message(format!("  {} ({} entries)", mem.memory, mem.memory_entries));
             }
-            app.step_log.push(" User".into());
+            app.add_system_message("User".into());
             if mem.user.is_empty() {
-                app.step_log.push("  (empty)".into());
+                app.add_system_message("  (empty)".into());
             } else {
-                app.step_log.push(format!("  {} ({} entries)", mem.user, mem.user_entries));
+                app.add_system_message(format!("  {} ({} entries)", mem.user, mem.user_entries));
             }
         }
-        Err(e) => app.step_log.push(format!("✗ Failed to load memory: {}", e)),
+        Err(e) => app.add_error_message(format!("Failed to load memory: {}", e)),
     }
 }
 
 pub async fn handle_remember(app: &mut App, args: &str) {
     if args.is_empty() {
-        app.step_log.push("Usage: /remember <text>".into());
+        app.add_system_message("Usage: /remember <text>".into());
         return;
     }
     match app.bridge.remember(args).await {
-        Ok(_) => app.step_log.push(format!("✓ Remembered: {}", &args[..args.len().min(60)])),
-        Err(e) => app.step_log.push(format!("✗ Failed to save: {}", e)),
+        Ok(_) => app.add_system_message(format!("Remembered: {}", &args[..args.len().min(60)])),
+        Err(e) => app.add_error_message(format!("Failed to save: {}", e)),
     }
 }
 

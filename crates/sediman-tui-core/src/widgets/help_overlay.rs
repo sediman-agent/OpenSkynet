@@ -1,46 +1,31 @@
-use ratatui::{
-    layout::Rect,
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Paragraph, Wrap},
-    Frame,
-};
+use crate::renderer::{CellBuffer, Color, Rect, Style, TextAttributes};
 
 pub struct HelpOverlay<'a> {
     pub categories: &'a [(&'a str, &'a [&'a str])],
 }
 
 impl<'a> HelpOverlay<'a> {
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
-        let mut lines = Vec::new();
-        lines.push(Line::from(Span::styled(
-            "Commands",
-            Style::new()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )));
-        lines.push(Line::from(Span::raw("")));
+    pub fn render(&self, buf: &mut CellBuffer, area: Rect) {
+        let mut y = area.y;
+        let bold_cyan = Style::new().fg(Color::CYAN).add_modifier(TextAttributes::bold());
+        let yellow_dim = Style::new().fg(Color::YELLOW).add_modifier(TextAttributes::dim());
+        let white = Style::new().fg(Color::WHITE);
+        let dark = Style::new().fg(Color::DARK_GRAY);
+
+        buf.draw_str(area.x, y, "Commands", bold_cyan); y += 1;
+        y += 1;
 
         for (category, cmds) in self.categories {
-            lines.push(Line::from(Span::styled(
-                format!("[{}]", category),
-                Style::new().fg(Color::Yellow).add_modifier(Modifier::DIM),
-            )));
+            if y >= area.bottom() { break; }
+            buf.draw_str(area.x, y, &format!("[{}]", category), yellow_dim); y += 1;
             for cmd in *cmds {
-                lines.push(Line::from(Span::styled(
-                    format!("  {}", cmd),
-                    Style::new().fg(Color::White),
-                )));
+                if y >= area.bottom() { break; }
+                buf.draw_str(area.x, y, &format!("  {}", cmd), white); y += 1;
             }
-            lines.push(Line::from(Span::raw("")));
+            y += 1;
         }
-
-        lines.push(Line::from(Span::styled(
-            "Or just type a task and press Enter to run it.",
-            Style::new().fg(Color::DarkGray),
-        )));
-
-        let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
-        frame.render_widget(paragraph, area);
+        if y < area.bottom() {
+            buf.draw_str(area.x, y, "Or just type a task and press Enter to run it.", dark);
+        }
     }
 }

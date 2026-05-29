@@ -13,21 +13,23 @@ path = "src/main.rs"
 [dependencies]
 sediman-tui-core = { path = "../sediman-tui-core" }
 sediman-tui-bridge = { path = "../sediman-tui-bridge" }
-ratatui.workspace = true
 crossterm.workspace = true
 tokio.workspace = true
 futures.workspace = true
-futures-util.workspace = true
 
-reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-comrak.workspace = true
-syntect.workspace = true
 clap.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 chrono.workspace = true
 arboard.workspace = true
-url.workspace = true
+wgpu = { workspace = true, optional = true }
+winit = { workspace = true, optional = true }
+fontdue = { workspace = true, optional = true }
+pollster = { workspace = true, optional = true }
+
+[features]
+default = []
+gpu = ["sediman-tui-core/gpu", "wgpu", "winit", "fontdue", "pollster"]

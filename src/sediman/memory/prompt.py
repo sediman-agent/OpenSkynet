@@ -1,4 +1,5 @@
-"""Backward-compat shim — redirects old imports to new MemoryStore."""
+"""Backward-compat shim — redirects old imports to MemoryManager."""
+
 from __future__ import annotations
 
 from enum import Enum
@@ -60,20 +61,50 @@ def save_structured_memory(
 ) -> None:
     result = _store.add("memory", content)
     if result.success:
+        try:
+            from sediman.memory.entry import ensure_meta_for_entry
+            type_map = {
+                MemoryType.EPISODIC: "episodic",
+                MemoryType.SEMANTIC: "fact",
+                MemoryType.PROCEDURAL: "procedure",
+            }
+            ensure_meta_for_entry(
+                content, "memory",
+                type=type_map.get(memory_type, "fact"),
+                source=source,
+            )
+        except Exception:
+            pass
         logger.info("structured_memory_saved", type=memory_type.value, content_length=len(content))
 
 
 def save_episodic(task: str, result: str, success: bool) -> None:
     entry = f"Task '{task[:60]}': {'Success' if success else 'Failed'} — {result[:100]}"
     _store.add("memory", entry)
+    try:
+        from sediman.memory.entry import ensure_meta_for_entry
+        ensure_meta_for_entry(entry, "memory", type="episodic", source="agent")
+    except Exception:
+        pass
 
 
 def save_procedural(skill_name: str, steps: list[str]) -> None:
     entry = f"Procedure '{skill_name}': {'; '.join(s[:60] for s in steps[:5])}"
     _store.add("memory", entry)
+    try:
+        from sediman.memory.entry import ensure_meta_for_entry
+        ensure_meta_for_entry(entry, "memory", type="procedure", source="agent")
+    except Exception:
+        pass
 
 
 def get_relevant_context(query: str, limit: int = 5) -> list[str]:
+    from sediman.memory.manager import MemoryManager
+    try:
+        mgr = MemoryManager()
+        return mgr.get_relevant_context(query, limit=limit)
+    except Exception:
+        pass
     all_entries = _store.get_all_entries()
     entries = all_entries.get("memory", [])
     query_lower = query.lower()

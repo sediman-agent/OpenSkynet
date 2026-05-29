@@ -5,19 +5,28 @@ use crate::app::App;
 pub async fn handle_terminal(app: &mut App, args: &str) {
     let args = args.trim().to_lowercase();
     if args.is_empty() {
-        app.step_log.push(format!(" Terminal access: {}", app.permission.current_label()));
-        app.step_log.push(" Usage: /terminal on|off".into());
+        app.add_system_message(format!("Terminal access: {}", app.permission.current_label()));
+        app.add_system_message("Usage: /terminal on|off".into());
         return;
     }
     match args.as_str() {
         "on" => {
-            app.step_log.push("✓ Terminal commands auto-approved.".into());
+            while !app.permission.is_allowed("") {
+                app.permission.cycle();
+            }
+            app.add_system_message("Terminal commands auto-approved.".into());
         }
         "off" => {
-            app.permission.cycle();
-            app.step_log.push("✓ Terminal approval required.".into());
+            app.permission.set_plan_mode(false);
+            for _ in 0..4 {
+                app.permission.cycle();
+                if app.permission.current_label() == "ask" {
+                    break;
+                }
+            }
+            app.add_system_message("Terminal approval required.".into());
         }
-        _ => app.step_log.push("Usage: /terminal on|off".into()),
+        _ => app.add_system_message("Usage: /terminal on|off".into()),
     }
 }
 

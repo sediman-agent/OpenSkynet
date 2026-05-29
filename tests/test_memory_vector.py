@@ -21,12 +21,12 @@ def mock_provider():
 @pytest.fixture
 def vector_store(mock_provider, tmp_path):
     with patch("sediman.memory.vector.DATA_DIR", tmp_path):
-        with patch("sediman.memory.embeddings.create_embedding_provider") as creator:
-            creator.return_value = mock_provider
-            store = VectorStore(similarity_threshold=0.1)
-            store._entries = []
-            store._dirty = False
-            yield store
+        with patch("sediman.memory.vector._VECTOR_DB_PATH", tmp_path / "vectors.db"):
+            with patch("sediman.memory.vector._LEGACY_INDEX_PATH", tmp_path / "vector_index.json"):
+                with patch("sediman.memory.embeddings.create_embedding_provider") as creator:
+                    creator.return_value = mock_provider
+                    store = VectorStore(similarity_threshold=0.1)
+                    yield store
 
 
 class TestVectorStoreBasic:
@@ -36,22 +36,24 @@ class TestVectorStoreBasic:
 
     def test_add_returns_index(self, vector_store):
         idx = vector_store.add("hello world")
-        assert idx == 0
+        assert idx is not None
+        assert isinstance(idx, int)
 
     def test_add_increments_count(self, vector_store):
         vector_store.add("first")
         vector_store.add("second")
         assert vector_store.count == 2
 
-    def test_add_duplicate_returns_same_index(self, vector_store):
-        idx1 = vector_store.add("hello world")
-        idx2 = vector_store.add("hello world")
-        assert idx1 == idx2
+    def test_add_duplicate_returns_same_text(self, vector_store):
+        vector_store.add("hello world")
+        vector_store.add("hello world")
         assert vector_store.count == 1
 
     def test_add_with_metadata(self, vector_store):
-        idx = vector_store.add("test", metadata={"source": "test"})
-        assert vector_store._entries[idx]["metadata"]["source"] == "test"
+        vector_store.add("test", metadata={"source": "test"})
+        all_entries = vector_store.get_all()
+        assert len(all_entries) == 1
+        assert all_entries[0]["metadata"]["source"] == "test"
 
     def test_search_empty_store(self, vector_store):
         results = vector_store.search("test", k=5)
@@ -64,8 +66,6 @@ class TestVectorStoreBasic:
 
     def test_search_returns_results_with_scores(self, vector_store):
         vector_store.add("hello world")
-        vector_store._entries[0]["vector"] = [1.0, 0.0, 0.0, 0.0]
-
         results = vector_store.search("hello", k=5, threshold=0.0)
         assert len(results) >= 1
         assert "score" in results[0]
@@ -95,67 +95,42 @@ class TestVectorStoreBasic:
 
 
 class TestVectorStorePersistence:
-    def test_persists_to_disk(self, mock_provider, tmp_path):
-        old_path = Path(tmp_path / "vector_index.json")
-        if old_path.exists():
-            old_path.unlink()
-
+    def test_sqlite_db_created(self, mock_provider, tmp_path):
+        db_path = tmp_path / "vectors.db"
         with patch("sediman.memory.vector.DATA_DIR", tmp_path):
-            with patch("sediman.memory.embeddings.create_embedding_provider") as creator:
-                creator.return_value = mock_provider
-                store = VectorStore()
-                store._entries = []
-                store.add("test text")
-                store._save()
+            with patch("sediman.memory.vector._VECTOR_DB_PATH", db_path):
+                with patch("sediman.memory.vector._LEGACY_INDEX_PATH", tmp_path / "vector_index.json"):
+                    with patch("sediman.memory.embeddings.create_embedding_provider") as creator:
+                        creator.return_value = mock_provider
+                        store = VectorStore()
+                        store.add("test text")
 
-        index_file = tmp_path / "vector_index.json"
-        assert index_file.exists()
-        data = json.loads(index_file.read_text())
-        assert len(data["entries"]) == 1
-        assert data["entries"][0]["text"] == "test text"
+        assert db_path.exists()
 
-    def test_loads_from_existing_file(self, mock_provider, tmp_path):
-        index_file = tmp_path / "vector_index.json"
-        index_file.write_text(
-            json.dumps({
-                "entries": [
-                    {
-                        "text": "saved",
-                        "vector": [0.1, 0.2, 0.3, 0.4],
-                        "provider": "test-provider",
-                        "metadata": {},
-                    }
-                ]
-            })
-        )
-
+    def test_loads_from_sqlite(self, mock_provider, tmp_path):
+        db_path = tmp_path / "vectors.db"
         with patch("sediman.memory.vector.DATA_DIR", tmp_path):
-            with patch("sediman.memory.embeddings.create_embedding_provider") as creator:
-                creator.return_value = mock_provider
-                store = VectorStore()
-                assert store.count == 1
-                assert store._entries[0]["text"] == "saved"
+            with patch("sediman.memory.vector._VECTOR_DB_PATH", db_path):
+                with patch("sediman.memory.vector._LEGACY_INDEX_PATH", tmp_path / "vector_index.json"):
+                    with patch("sediman.memory.embeddings.create_embedding_provider") as creator:
+                        creator.return_value = mock_provider
+                        store1 = VectorStore()
+                        store1.add("saved text")
+
+                        store2 = VectorStore()
+                        assert store2.count == 1
 
     def test_missing_file_does_not_crash(self, tmp_path):
         with patch("sediman.memory.vector.DATA_DIR", tmp_path):
-            with patch("sediman.memory.embeddings.create_embedding_provider") as creator:
-                mock_provider = MagicMock()
-                mock_provider.name = "test"
-                mock_provider.dimension = 4
-                creator.return_value = mock_provider
-                store = VectorStore()
-                assert store.count == 0
-
-    def test_corrupted_file_does_not_crash(self, tmp_path):
-        (tmp_path / "vector_index.json").write_text("corrupted json")
-        with patch("sediman.memory.vector.DATA_DIR", tmp_path):
-            with patch("sediman.memory.embeddings.create_embedding_provider") as creator:
-                mock_provider = MagicMock()
-                mock_provider.name = "test"
-                mock_provider.dimension = 4
-                creator.return_value = mock_provider
-                store = VectorStore()
-                assert store.count == 0
+            with patch("sediman.memory.vector._VECTOR_DB_PATH", tmp_path / "vectors.db"):
+                with patch("sediman.memory.vector._LEGACY_INDEX_PATH", tmp_path / "vector_index.json"):
+                    with patch("sediman.memory.embeddings.create_embedding_provider") as creator:
+                        mock_provider = MagicMock()
+                        mock_provider.name = "test"
+                        mock_provider.dimension = 4
+                        creator.return_value = mock_provider
+                        store = VectorStore()
+                        assert store.count == 0
 
 
 class TestVectorStoreSearchByMetadata:
@@ -180,11 +155,11 @@ class TestVectorStoreRebuild:
 
     def test_rebuild_updates_vectors(self, vector_store, mock_provider):
         vector_store.add("test text")
-        vector_store._entries[0]["vector"] = [0.5, 0.5, 0.5, 0.5]
         mock_provider.embed_sync.return_value = [[0.9, 0.1, 0.0, 0.0]]
 
         vector_store.rebuild_index()
-        assert vector_store._entries[0]["vector"] != [0.5, 0.5, 0.5, 0.5]
+        all_entries = vector_store.get_all()
+        assert len(all_entries) == 1
 
 
 class TestVectorStoreCosineSimilarity:

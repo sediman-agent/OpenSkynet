@@ -102,6 +102,27 @@ class ContextCompressor:
     async def _generate_summary(self, messages: list[dict[str, str]]) -> str | None:
         from sediman.utils import format_conversation_context
 
+        # Rule-based fast-path: if messages are mostly tool results with no errors,
+        # create a mechanical summary without calling the LLM.
+        user_messages = [m for m in messages if m.get("role") == "user"]
+        assistant_messages = [m for m in messages if m.get("role") == "assistant"]
+        tool_messages = [m for m in messages if m.get("role") == "tool"]
+
+        # If the only substantial content is tool results and assistant confirmations,
+        # create a summary from the user queries and tool result previews.
+        if len(tool_messages) > 3 and len(user_messages) <= 2:
+            parts = []
+            for um in user_messages:
+                parts.append(f"Task: {um.get('content', '')[:120]}")
+            # Include a preview of the last few tool results
+            recent_tools = tool_messages[-3:]
+            parts.append("Results:")
+            for tm in recent_tools:
+                content = tm.get("content", "")
+                preview = content[:100].replace("\n", " ")
+                parts.append(f"  - {preview}...")
+            return "\n".join(parts)
+
         conversation_text = format_conversation_context(
             messages, limit=len(messages), max_chars=500
         )

@@ -10,6 +10,7 @@ from typing import Any
 import structlog
 
 from sediman.config import TRAJECTORIES_DIR
+from sediman.memory.vector import VectorStore
 from sediman.store.db import get_db_path
 
 try:
@@ -48,6 +49,12 @@ class Trajectory:
 class TrajectoryDB:
     def __init__(self, db_path: Path | None = None):
         self._db_path = db_path or get_db_path()
+        self._vector_store: VectorStore | None = None
+
+    def _get_vector_store(self) -> VectorStore:
+        if self._vector_store is None:
+            self._vector_store = VectorStore()
+        return self._vector_store
 
     async def save(self, traj: Trajectory) -> str:
         TRAJECTORIES_DIR.mkdir(parents=True, exist_ok=True)
@@ -72,8 +79,41 @@ class TrajectoryDB:
                 ),
             )
             await db.commit()
+        await self._async_index_trajectory(traj)
         logger.debug("trajectory_saved", id=traj.id, task=traj.task[:60])
         return traj.id
+
+    def _index_trajectory(self, traj: Trajectory) -> None:
+        try:
+            vs = self._get_vector_store()
+            summary = traj.result or traj.task
+            if len(summary) > 300:
+                summary = summary[:300]
+            text = f"{traj.task}\n{summary}"
+            vs.add(text, metadata={
+                "trajectory_id": traj.id,
+                "task": traj.task[:120],
+                "success": traj.success,
+                "skill_name": traj.skill_name,
+            })
+        except Exception as e:
+            logger.debug("trajectory_index_failed", id=traj.id, error=str(e))
+
+    async def _async_index_trajectory(self, traj: Trajectory) -> None:
+        try:
+            vs = self._get_vector_store()
+            summary = traj.result or traj.task
+            if len(summary) > 300:
+                summary = summary[:300]
+            text = f"{traj.task}\n{summary}"
+            await vs.async_add(text, metadata={
+                "trajectory_id": traj.id,
+                "task": traj.task[:120],
+                "success": traj.success,
+                "skill_name": traj.skill_name,
+            })
+        except Exception as e:
+            logger.debug("trajectory_index_failed", id=traj.id, error=str(e))
 
     async def get(self, traj_id: str) -> Trajectory | None:
         async with aiosqlite.connect(self._db_path) as db:
@@ -91,6 +131,55 @@ class TrajectoryDB:
         task_query: str,
         limit: int = 10,
         min_success_rate: float = 0.0,
+    ) -> list[Trajectory]:
+        trajectory_ids = await self._semantic_search_tasks(task_query, limit * 2)
+        if trajectory_ids:
+            return await self._fetch_trajectories_by_ids(
+                trajectory_ids, limit, min_success_rate,
+            )
+        return await self._sql_search_tasks(task_query, limit, min_success_rate)
+
+    async def _semantic_search_tasks(
+        self, query: str, max_results: int,
+    ) -> list[str]:
+        try:
+            vs = self._get_vector_store()
+            results = await vs.async_search(query, k=max_results, threshold=0.25)
+            return [
+                r["metadata"]["trajectory_id"]
+                for r in results
+                if r.get("metadata", {}).get("trajectory_id")
+            ]
+        except Exception as e:
+            logger.debug("semantic_trajectory_search_failed", error=str(e))
+            return []
+
+    async def _fetch_trajectories_by_ids(
+        self,
+        ids: list[str],
+        limit: int,
+        min_success_rate: float,
+    ) -> list[Trajectory]:
+        if not ids:
+            return []
+        placeholders = ",".join("?" for _ in ids)
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            rows = await db.execute_fetchall(
+                f"""SELECT * FROM trajectories
+                WHERE id IN ({placeholders})
+                AND (success = 1 OR success = ?)
+                ORDER BY created_at DESC
+                LIMIT ?""",
+                (*ids, 1 if min_success_rate > 0 else 0, limit),
+            )
+            return [self._row_to_traj(r) for r in rows]
+
+    async def _sql_search_tasks(
+        self,
+        task_query: str,
+        limit: int,
+        min_success_rate: float,
     ) -> list[Trajectory]:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row

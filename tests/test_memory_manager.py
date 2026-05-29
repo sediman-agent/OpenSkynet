@@ -189,16 +189,10 @@ class TestMemoryManagerBackgroundReview:
         await manager.run_background_review([])
 
     @pytest.mark.asyncio
-    async def test_run_background_review_triggers_tool_call(self, mem_manager):
+    async def test_run_background_review_triggers_add(self, mem_manager):
         mem_manager._llm.chat = AsyncMock(return_value=LLMResponse(
-            text="review done",
-            tool_calls=[
-                ToolCall(id="1", name="memory", arguments={
-                    "action": "add",
-                    "target": "memory",
-                    "content": "learned fact",
-                }),
-            ],
+            text='{"changes": [{"action": "add", "target": "memory", "content": "learned fact"}]}',
+            tool_calls=[],
         ))
         await mem_manager.run_background_review([
             {"role": "user", "content": "hello"},
@@ -216,7 +210,7 @@ class TestMemoryManagerBackgroundReview:
 
     @pytest.mark.asyncio
     async def test_run_background_review_recent_conversation(self, mem_manager):
-        mem_manager._llm.chat = AsyncMock(return_value=LLMResponse(text="reviewed"))
+        mem_manager._llm.chat = AsyncMock(return_value=LLMResponse(text='{"changes": []}'))
         conversation = [{"role": "user" if i % 2 == 0 else "assistant", "content": f"msg {i}"} for i in range(25)]
         await mem_manager.run_background_review(conversation)
         call_args = mem_manager._llm.chat.call_args

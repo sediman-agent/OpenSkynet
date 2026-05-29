@@ -1,0 +1,16 @@
+{
+  "name": "sediman-browse",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "bun run --filter '*' build",
+    "test": "bun run --filter '*' test",
+    "typecheck": "bun run --filter '*' typecheck",
+    "start": "bash scripts/sediman.sh",
+    "rpc": "cd packages/server && bun run rpc",
+    "tui": "cd packages/sediman-tui && bun run start",
+    "python": "uv run python -m sediman.rpc_server"
+  }
+}

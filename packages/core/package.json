@@ -1,0 +1,37 @@
+{
+  "name": "@sediman/core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "openai": "^5.1.0",
+    "pino": "^9.6.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "bun": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "bun": {
+      "optional": true
+    }
+  },
+  "license": "BSL-1.1"
+}

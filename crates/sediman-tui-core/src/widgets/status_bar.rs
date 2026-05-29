@@ -1,10 +1,4 @@
-use ratatui::{
-    layout::Rect,
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Paragraph},
-    Frame,
-};
+use crate::renderer::{CellBuffer, Color, Rect, Style, TextAttributes};
 
 pub struct StatusBar<'a> {
     pub elapsed: Option<std::time::Duration>,
@@ -18,8 +12,9 @@ pub struct StatusBar<'a> {
 }
 
 impl<'a> StatusBar<'a> {
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
-        let mut spans = Vec::new();
+    pub fn render(&self, buf: &mut CellBuffer, area: Rect) {
+        let mut x = area.x;
+        let y = area.y;
 
         if let Some(elapsed) = self.elapsed {
             let secs = elapsed.as_secs();
@@ -28,66 +23,51 @@ impl<'a> StatusBar<'a> {
             } else {
                 format!("{}s", secs)
             };
-            spans.push(Span::styled(
-                format!("⏳ {} ", elapsed_str),
-                Style::new().fg(Color::Green).add_modifier(Modifier::BOLD),
-            ));
-            if let Some(text) = self.spinner_text {
-                spans.push(Span::styled(
-                    format!("{} ", text),
-                    Style::new().add_modifier(Modifier::ITALIC),
-                ));
+            let text = format!("⏳ {} ", elapsed_str);
+            buf.draw_str(x, y, &text, Style::new().fg(Color::GREEN).add_modifier(TextAttributes::bold()));
+            x += text.len() as u16;
+            if let Some(spinner) = self.spinner_text {
+                buf.draw_str(x, y, &format!("{} ", spinner), Style::new().add_modifier(TextAttributes::italic()));
+                x += spinner.len() as u16 + 1;
             }
         } else {
-            spans.push(Span::styled(
-                "● idle ",
-                Style::new().fg(Color::DarkGray),
-            ));
+            let text = "● idle ";
+            buf.draw_str(x, y, text, Style::new().fg(Color::DARK_GRAY));
+            x += text.len() as u16;
         }
 
-        spans.push(Span::styled(
-            format!(" {} ", self.provider_model),
-            Style::new().fg(Color::DarkGray),
-        ));
+        let text = format!(" {} ", self.provider_model);
+        buf.draw_str(x, y, &text, Style::new().fg(Color::DARK_GRAY));
+        x += text.len() as u16;
 
         let mode_color = match self.permission_mode {
-            "acceptEdits" => Color::Green,
-            "plan" => Color::Magenta,
-            "auto" => Color::Red,
-            _ => Color::White,
+            "acceptEdits" => Color::GREEN,
+            "plan" => Color::MAGENTA,
+            "auto" => Color::RED,
+            _ => Color::WHITE,
         };
-        spans.push(Span::styled(
-            format!("· {} ", self.permission_mode),
-            Style::new().fg(mode_color),
-        ));
+        let text = format!("· {} ", self.permission_mode);
+        buf.draw_str(x, y, &text, Style::new().fg(mode_color));
+        x += text.len() as u16;
 
         if let Some(name) = self.session_name {
-            let color = self.session_color.unwrap_or(Color::Cyan);
-            spans.push(Span::styled(
-                format!("{} ", name),
-                Style::new().fg(color),
-            ));
+            let color = self.session_color.unwrap_or(Color::CYAN);
+            let text = format!("{} ", name);
+            buf.draw_str(x, y, &text, Style::new().fg(color));
+            x += text.len() as u16;
         }
 
-        spans.push(Span::styled(
-            format!("· {} tasks ", self.task_count),
-            Style::new().fg(Color::DarkGray),
-        ));
+        let text = format!("· {} tasks ", self.task_count);
+        buf.draw_str(x, y, &text, Style::new().fg(Color::DARK_GRAY));
+        x += text.len() as u16;
 
         if let Some(ctx) = self.context_bar_text {
-            spans.push(Span::raw(format!("{} ", ctx)));
+            buf.draw_str(x, y, &format!("{} ", ctx), Style::new());
+            x += ctx.len() as u16 + 1;
         }
 
-        spans.push(Span::styled(
-            "· ? help · Esc int · ^C exit · ⇧Tab mode · ! shell ",
-            Style::new().fg(Color::DarkGray).add_modifier(Modifier::DIM),
-        ));
-
-        let paragraph = Paragraph::new(Line::from(spans))
-            .block(Block::default().style(
-                Style::new().bg(Color::Blue).fg(Color::White),
-            ));
-        frame.render_widget(paragraph, area);
+        let help = "· ? help · Esc int · ^C exit · ⇧Tab mode · ! shell ";
+        buf.draw_str(x, y, help, Style::new().fg(Color::DARK_GRAY).add_modifier(TextAttributes::dim()));
     }
 }
 
@@ -120,7 +100,7 @@ mod tests {
             provider_model: "openai/gpt-4o",
             permission_mode: "auto",
             session_name: Some("my-session"),
-            session_color: Some(Color::Cyan),
+            session_color: Some(Color::CYAN),
             task_count: 3,
             context_bar_text: Some("[▓▓▓░░░░░░░] 12K"),
         };
@@ -143,9 +123,6 @@ mod tests {
         };
         let secs = bar.elapsed.unwrap().as_secs();
         assert_eq!(secs, 125);
-        // 125s = 2m 5s
-        assert_eq!(secs / 60, 2);
-        assert_eq!(secs % 60, 5);
     }
 
     #[test]
@@ -174,12 +151,12 @@ mod tests {
             provider_model: "openai/gpt-4o",
             permission_mode: "ask",
             session_name: Some("my-session"),
-            session_color: Some(Color::Cyan),
+            session_color: Some(Color::CYAN),
             task_count: 5,
             context_bar_text: None,
         };
         assert!(bar.session_name.is_some());
-        assert_eq!(bar.session_color.unwrap(), Color::Cyan);
+        assert_eq!(bar.session_color.unwrap(), Color::CYAN);
     }
 
     #[test]

@@ -23,38 +23,46 @@ class BrowserSubagent:
         self,
         browser_session: BrowserSession,
         llm_provider: LLMProvider,
-        max_steps: int = 50,
+        max_steps: int = 25,
         flash_mode: bool = True,
+        turbo_mode: bool = False,
         on_browser_step: Callable[[str, str], None] | None = None,
         conversation: list[dict[str, str]] | None = None,
         recording_name: str | None = None,
         memory_context: str | None = None,
+        browser_use_llm: Any | None = None,
     ):
         self.browser = browser_session
         self.llm = llm_provider
         self.max_steps = max_steps
         self.flash_mode = flash_mode
-        self._prompt_builder = PromptBuilder(flash_mode=flash_mode)
+        self.turbo_mode = turbo_mode
+        self._prompt_builder = PromptBuilder(flash_mode=flash_mode, turbo_mode=turbo_mode)
         self._on_browser_step = on_browser_step
         self._conversation = conversation or []
         self._recording_name = recording_name
         self._memory_context = memory_context
+        self._browser_use_llm = browser_use_llm
 
     async def run(
         self,
         task: str,
         skill_summaries: str | None = None,
     ) -> BrowserResult:
-        from sediman.memory.store import MemoryStore
-
+        # Use cached memory context if available; only fall back to disk on first call
         memory_ctx = self._memory_context
         if memory_ctx is None:
+            from sediman.memory.store import MemoryStore
             memory_store = MemoryStore()
-            memory_ctx = memory_store.format_for_system_prompt()
+            memory_ctx = memory_store.format_for_system_prompt_filtered(
+                task, max_chars=800
+            )
+            self._memory_context = memory_ctx
 
         system_prompt = self._prompt_builder.build_system_prompt(
             skill_summaries=skill_summaries,
             memory_context=memory_ctx,
+            task=task,
         )
 
         if self._conversation:
@@ -82,10 +90,16 @@ class BrowserSubagent:
 
         logger.info("browser_subagent_start", task=task[:80])
 
+        # Re-use cached browser-use LLM if available, otherwise build once and cache
+        llm = self._browser_use_llm
+        if llm is None:
+            llm = self.llm.get_browser_use_llm()
+            self._browser_use_llm = llm
+
         result_text, actions = await run_browser_task(
             task=task,
             browser_session=self.browser,
-            llm=self.llm.get_browser_use_llm(),
+            llm=llm,
             max_steps=self.max_steps,
             system_prompt=system_prompt,
             flash_mode=self.flash_mode,

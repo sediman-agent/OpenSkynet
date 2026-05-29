@@ -7,78 +7,78 @@ pub async fn handle_hub_browse(app: &mut App, args: &str) {
     match app.bridge.hub_browse(category).await {
         Ok(skills) => {
             if skills.is_empty() {
-                app.step_log.push("  No skills found in hub.".into());
+                app.add_system_message("No skills found in hub.".into());
                 return;
             }
-            app.step_log.push(format!(" Hub Skills ({})", skills.len()));
+            app.add_system_message(format!("Hub Skills ({})", skills.len()));
             for s in &skills {
-                app.step_log.push(format!(
-                    "  {} v{} by {} — {} [{}]",
+                app.add_system_message(format!(
+                    "  {} v{} by {} - {} [{}]",
                     s.name, s.version, s.author, s.description, s.trust
                 ));
             }
         }
-        Err(e) => app.step_log.push(format!("✗ Hub browse failed: {}", e)),
+        Err(e) => app.add_error_message(format!("Hub browse failed: {}", e)),
     }
 }
 
 pub async fn handle_hub_search(app: &mut App, args: &str) {
     if args.is_empty() {
-        app.step_log.push("Usage: /hub search <query>".into());
+        app.add_system_message("Usage: /hub search <query>".into());
         return;
     }
     match app.bridge.hub_search(args).await {
         Ok(skills) => {
             if skills.is_empty() {
-                app.step_log.push("  No matches found.".into());
+                app.add_system_message("No matches found.".into());
                 return;
             }
-            app.step_log.push(format!(" Search results for '{}'", args));
+            app.add_system_message(format!("Search results for '{}'", args));
             for s in &skills {
-                app.step_log.push(format!("  {} — {}", s.name, s.description));
+                app.add_system_message(format!("  {} - {}", s.name, s.description));
             }
         }
-        Err(e) => app.step_log.push(format!("✗ Search failed: {}", e)),
+        Err(e) => app.add_error_message(format!("Search failed: {}", e)),
     }
 }
 
 pub async fn handle_hub_install(app: &mut App, args: &str) {
     if args.is_empty() {
-        app.step_log.push("Usage: /hub install <name> [--force]".into());
+        app.add_system_message("Usage: /hub install <name> [--force]".into());
         return;
     }
     let force = args.contains("--force");
     let name = args.trim().trim_end_matches(" --force");
-    app.step_log.push(format!("Installing {} from hub...", name));
+    app.add_system_message(format!("Installing {} from hub...", name));
     match app.bridge.hub_install(name, force).await {
-        Ok(_) => app.step_log.push(format!("✓ Installed {}", name)),
-        Err(e) => app.step_log.push(format!("✗ Install failed: {}", e)),
+        Ok(_) => app.add_system_message(format!("Installed {}", name)),
+        Err(e) => app.add_error_message(format!("Install failed: {}", e)),
     }
 }
 
 pub async fn handle_hub_info(app: &mut App, args: &str) {
     if args.is_empty() {
-        app.step_log.push("Usage: /hub info <name>".into());
+        app.add_system_message("Usage: /hub info <name>".into());
         return;
     }
     match app.bridge.hub_info(args).await {
         Ok(skill) => {
-            app.step_log.push(format!(" {} v{} by {}", skill.name, skill.version, skill.author));
-            app.step_log.push(format!("  {}", skill.description));
-            app.step_log.push(format!("  Category: {}", skill.category));
-            app.step_log.push(format!("  Trust: {}", skill.trust));
+            app.add_system_message(format!("{} v{} by {}", skill.name, skill.version, skill.author));
+            app.add_system_message(format!("  {}", skill.description));
+            app.add_system_message(format!("  Category: {}", skill.category));
+            app.add_system_message(format!("  Trust: {}", skill.trust));
         }
-        Err(e) => app.step_log.push(format!("✗ Info failed: {}", e)),
+        Err(e) => app.add_error_message(format!("Info failed: {}", e)),
     }
 }
 
 pub async fn handle_hub_publish(app: &mut App, args: &str) {
     if args.is_empty() {
-        app.step_log.push("Usage: /hub publish <name>".into());
+        app.add_system_message("Usage: /hub publish <name>".into());
         return;
     }
-    app.step_log.push(format!("Publishing {}...", args));
-    app.step_log.push("⚠ Publish requires a GitHub token. Use the Python CLI for now.".into());
+    app.add_system_message(format!("Publishing {}...", args));
+    app.add_system_message("Publish requires a GitHub token. Use the Python CLI for now.".into());
 }
 
 pub static CMD_HUB_BROWSE: Command = Command {

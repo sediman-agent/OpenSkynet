@@ -6,21 +6,21 @@ pub async fn handle_browser(app: &mut App, args: &str) {
     let args = args.trim().to_lowercase();
     if args.is_empty() {
         let mode = if app.headless { "headless" } else { "headed" };
-        app.step_log.push(format!(" Browser mode: {}", mode));
-        app.step_log.push(" Usage: /browser headless|headed".into());
+        app.add_system_message(format!("Browser mode: {}", mode));
+        app.add_system_message("Usage: /browser headless|headed".into());
         return;
     }
     match args.as_str() {
         "headless" => {
             app.headless = true;
-            app.step_log.push("✓ Switched to headless mode (next task)".into());
+            app.add_system_message("Switched to headless mode (next task)".into());
         }
         "headed" => {
             app.headless = false;
-            app.step_log.push("✓ Switched to headed mode (next task)".into());
+            app.add_system_message("Switched to headed mode (next task)".into());
         }
         _ => {
-            app.step_log.push("Usage: /browser headless|headed".into());
+            app.add_system_message("Usage: /browser headless|headed".into());
         }
     }
 }
@@ -28,10 +28,18 @@ pub async fn handle_browser(app: &mut App, args: &str) {
 pub async fn handle_screenshot(app: &mut App, _args: &str) {
     match app.bridge.get_screenshot().await {
         Ok(bytes) => {
-            app.step_log.push(format!("✓ Screenshot captured: {} bytes", bytes.len()));
-            // In a real impl, save to ~/.sediman/last_screenshot.png
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+            let path = format!("{}/.sediman/last_screenshot.png", home);
+            if let Err(e) = std::fs::create_dir_all(format!("{}/.sediman", home)) {
+                app.add_error_message(format!("Failed to create dir: {}", e));
+                return;
+            }
+            match std::fs::write(&path, &bytes) {
+                Ok(_) => app.add_system_message(format!("Screenshot saved: {} ({} bytes)", path, bytes.len())),
+                Err(e) => app.add_error_message(format!("Failed to save: {}", e)),
+            }
         }
-        Err(e) => app.step_log.push(format!("✗ Screenshot failed: {}", e)),
+        Err(e) => app.add_error_message(format!("Screenshot failed: {}", e)),
     }
 }
 

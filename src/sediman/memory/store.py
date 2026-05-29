@@ -2,6 +2,7 @@
 
 Hermes-style architecture: MEMORY.md (agent notes) + USER.md (user profile).
 Entries separated by §. Snapshot frozen at session start to protect prefix cache.
+Metadata sidecar tracks timestamps, access counts, and entry types.
 """
 
 from __future__ import annotations
@@ -123,6 +124,131 @@ class MemoryStore:
             return ""
         return f"<memory-context>\n{self._snapshot}\n</memory-context>"
 
+    def format_for_system_prompt_filtered(self, query: str, max_chars: int = 1500) -> str:
+        if not self._snapshot_loaded:
+            self.load_snapshot()
+
+        all_entries = self.get_all_entries()
+        scored_entries = self._rank_entries_for_query(all_entries, query)
+
+        if not scored_entries:
+            return self.format_for_system_prompt()
+
+        parts: list[str] = []
+        total = 0
+
+        for target, entry, _score in scored_entries:
+            entry_len = len(entry) + 1
+            if total + entry_len > max_chars:
+                break
+            parts.append(entry)
+            total += entry_len
+
+        if not parts:
+            return self.format_for_system_prompt()
+
+        guidance = MEMORY_GUIDANCE
+        content = "\n".join(parts)
+        return f"<memory-context>\n{content}\n\n{guidance}\n</memory-context>"
+
+    def _rank_entries_for_query(
+        self,
+        all_entries: dict[str, list[str]],
+        query: str,
+    ) -> list[tuple[str, str, float]]:
+        from sediman.memory.entry import get_meta_map_for_target, MemoryEntryMeta
+
+        query_lower = query.lower()
+        query_words = set(query_lower.split())
+        results: list[tuple[str, str, float]] = []
+
+        for target in ("memory", "user"):
+            entries = all_entries.get(target, [])
+            meta_map = get_meta_map_for_target(target)
+
+            for entry in entries:
+                meta = meta_map.get(entry)
+                text_score = self._text_relevance(entry, query_words)
+
+                recency_score = 0.5
+                access_score = 0.5
+                type_bonus = 0.0
+                if meta:
+                    age_hours = meta.age_hours
+                    if age_hours < 1:
+                        recency_score = 1.0
+                    elif age_hours < 24:
+                        recency_score = 0.9
+                    elif age_hours < 168:
+                        recency_score = 0.7
+                    elif age_hours < 720:
+                        recency_score = 0.5
+                    else:
+                        recency_score = 0.3
+
+                    access_count = meta.access_count
+                    if access_count > 10:
+                        access_score = 1.0
+                    elif access_count > 5:
+                        access_score = 0.8
+                    elif access_count > 2:
+                        access_score = 0.6
+                    else:
+                        access_score = 0.4
+
+                    if meta.type == "preference":
+                        type_bonus = 0.15
+                    elif meta.type == "fact":
+                        type_bonus = 0.1
+
+                combined = (
+                    text_score * 0.5
+                    + recency_score * 0.25
+                    + access_score * 0.15
+                    + type_bonus
+                )
+
+                if text_score > 0 or recency_score > 0.6 or access_score > 0.7:
+                    results.append((target, entry, combined))
+
+        results.sort(key=lambda x: -x[2])
+        return results
+
+    @staticmethod
+    def _text_relevance(entry: str, query_words: set[str]) -> float:
+        entry_lower = entry.lower()
+        entry_words = set(entry_lower.split())
+        if not query_words or not entry_words:
+            return 0.0
+        overlap = len(query_words & entry_words)
+        return overlap / max(len(query_words), 1)
+
+    def refresh_snapshot(self) -> str:
+        self._snapshot = self._format_snapshot()
+        self._snapshot_loaded = True
+        return self._snapshot or ""
+
+    def add_or_consolidate(self, target: str, content: str) -> StoreResult:
+        result = self.add(target, content)
+        if result.success:
+            return result
+
+        if "would exceed the limit" in result.message:
+            consolidated = self._try_consolidate(target, content)
+            if consolidated is not None:
+                return consolidated
+
+        return result
+
+    def _try_consolidate(self, target: str, new_content: str) -> StoreResult | None:
+        try:
+            from sediman.memory.consolidator import MemoryConsolidator
+            consolidator = MemoryConsolidator()
+            return consolidator.consolidate_and_add(self, target, new_content)
+        except Exception as e:
+            logger.debug("memory_consolidation_failed", error=str(e))
+            return None
+
     # ── Entry operations ─────────────────────────────────────────
 
     def add(self, target: str, content: str) -> StoreResult:
@@ -166,6 +292,22 @@ class MemoryStore:
             )
 
         self._atomic_write(self._get_file(target), new_text)
+
+        try:
+            from sediman.memory.entry import ensure_meta_for_entry, classify_entry_type
+            from sediman.memory.changelog import append_change, MemoryChange
+            entry_type = classify_entry_type(content)
+            meta = ensure_meta_for_entry(content, target, type=entry_type, source="agent")
+            append_change(MemoryChange(
+                action="add",
+                target=target,
+                content=content,
+                entry_id=meta.id,
+                source="agent",
+            ))
+        except Exception as e:
+            logger.debug("memory_meta_track_failed", error=str(e))
+
         logger.info("memory_entry_added", target=target, chars=len(content))
 
         usage = self.get_usage(target)
@@ -220,6 +362,34 @@ class MemoryStore:
             )
 
         self._atomic_write(self._get_file(target), new_text)
+
+        try:
+            from sediman.memory.entry import (
+                ensure_meta_for_entry, delete_entry_meta, MemoryEntryMeta,
+                _remove_from_target_index,
+            )
+            from sediman.memory.changelog import append_change, MemoryChange
+            old_id = MemoryEntryMeta.make_id(old_entry)
+            delete_entry_meta(old_id)
+            _remove_from_target_index(target, old_id)
+            entry_type_meta = "fact"
+            try:
+                from sediman.memory.entry import classify_entry_type
+                entry_type_meta = classify_entry_type(new_entry)
+            except Exception:
+                pass
+            meta = ensure_meta_for_entry(new_entry, target, type=entry_type_meta, source="agent")
+            append_change(MemoryChange(
+                action="replace",
+                target=target,
+                content=new_entry,
+                old_content=old_entry,
+                entry_id=meta.id,
+                source="agent",
+            ))
+        except Exception as e:
+            logger.debug("memory_meta_track_replace_failed", error=str(e))
+
         logger.info("memory_entry_replaced", target=target)
 
         usage = self.get_usage(target)
@@ -230,7 +400,7 @@ class MemoryStore:
             usage=usage,
         )
 
-    def remove(self, target: str, entry: str) -> StoreResult:
+    def remove(self, target: str, entry: str, reason: str = "") -> StoreResult:
         entries = self._parse_entries(target)
         entry_clean = entry.strip()
 
@@ -251,6 +421,25 @@ class MemoryStore:
             if path.exists():
                 path.unlink()
 
+        try:
+            from sediman.memory.entry import (
+                delete_entry_meta, MemoryEntryMeta, _remove_from_target_index,
+            )
+            from sediman.memory.changelog import append_change, MemoryChange
+            entry_id = MemoryEntryMeta.make_id(entry)
+            delete_entry_meta(entry_id)
+            _remove_from_target_index(target, entry_id)
+            append_change(MemoryChange(
+                action="remove",
+                target=target,
+                content=entry,
+                entry_id=entry_id,
+                reason=reason or "manual",
+                source="agent",
+            ))
+        except Exception as e:
+            logger.debug("memory_meta_track_remove_failed", error=str(e))
+
         logger.info("memory_entry_removed", target=target)
 
         usage = self.get_usage(target)
@@ -260,6 +449,13 @@ class MemoryStore:
             entries=updated,
             usage=usage,
         )
+
+    def record_access(self, content: str) -> None:
+        try:
+            from sediman.memory.entry import record_access_by_content
+            record_access_by_content(content)
+        except Exception as e:
+            logger.debug("memory_record_access_failed", error=str(e))
 
     # ── Read helpers ─────────────────────────────────────────────
 

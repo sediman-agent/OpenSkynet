@@ -1,126 +1,159 @@
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use reqwest::header::{HeaderMap, HeaderValue};
-use tokio::sync::Mutex;
-use url::Url;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::UnixStream;
 
 use crate::types::*;
 
 #[derive(thiserror::Error, Debug)]
 pub enum BridgeError {
-    #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
-    #[error("WebSocket error: {0}")]
-    Ws(#[from] tokio_tungstenite::tungstenite::Error),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("URL parse error: {0}")]
-    Url(#[from] url::ParseError),
     #[error("API error: {0}")]
     Api(String),
-    #[error("Connection refused: {0}")]
+    #[error("Connection failed: {0}")]
     Connection(String),
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 pub type BridgeResult<T> = Result<T, BridgeError>;
 
 #[derive(Debug)]
 pub struct ApiClient {
-    base_url: Url,
-    pub(crate) http: reqwest::Client,
-    #[allow(dead_code)]
-    ws_tx: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedSender<WsMessage>>>>,
+    socket_path: PathBuf,
+    next_id: AtomicU64,
 }
 
 impl ApiClient {
-    pub fn new(base_url: &str) -> BridgeResult<Self> {
-        let base = Url::parse(base_url)?;
-        let mut headers = HeaderMap::new();
-        headers.insert("Content-Type", HeaderValue::from_static("application/json"));
-
-        let http = reqwest::Client::builder()
-            .default_headers(headers)
-            .build()?;
-
-        Ok(Self {
-            base_url: base,
-            http,
-            ws_tx: Arc::new(Mutex::new(None)),
-        })
+    pub fn new(socket_path: &str) -> Self {
+        Self {
+            socket_path: PathBuf::from(socket_path),
+            next_id: AtomicU64::new(1),
+        }
     }
 
-    pub(crate) fn url(&self, path: &str) -> BridgeResult<Url> {
-        Ok(self.base_url.join(path)?)
+    pub fn socket_path_str(&self) -> &str {
+        self.socket_path.to_str().unwrap_or("/tmp/sediman.sock")
     }
+
+    /// Send a JSON-RPC 2.0 request and deserialize the result.
+    pub(crate) async fn call<T: serde::de::DeserializeOwned>(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> BridgeResult<T> {
+        let result = self.send_request(method, params).await?;
+        Ok(serde_json::from_value(result)?)
+    }
+
+    /// Send a JSON-RPC 2.0 request and return the raw result Value.
+    pub(crate) async fn send_request(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> BridgeResult<serde_json::Value> {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params,
+        });
+
+        let stream = UnixStream::connect(&self.socket_path)
+            .await
+            .map_err(|e| BridgeError::Connection(e.to_string()))?;
+        let (reader, mut writer) = stream.into_split();
+
+        let mut raw = serde_json::to_string(&request)?;
+        raw.push('\n');
+        writer
+            .write_all(raw.as_bytes())
+            .await
+            .map_err(|e| BridgeError::Connection(e.to_string()))?;
+        writer.shutdown().await.ok();
+
+        let mut line = String::new();
+        let mut buf_reader = BufReader::new(reader);
+        buf_reader
+            .read_line(&mut line)
+            .await
+            .map_err(|e| BridgeError::Connection(e.to_string()))?;
+
+        let response: serde_json::Value = serde_json::from_str(&line)?;
+
+        if let Some(err) = response.get("error") {
+            let msg = err["message"]
+                .as_str()
+                .unwrap_or("unknown error")
+                .to_string();
+            return Err(BridgeError::Api(msg));
+        }
+
+        Ok(response["result"].clone())
+    }
+
+    // ── public API methods ──────────────────────────────────────
 
     pub async fn status(&self) -> BridgeResult<ServerStatus> {
-        let resp = self.http.get(self.url("/api/status")?).send().await?;
-        Ok(resp.json().await?)
+        self.call("system.status", serde_json::json!({})).await
     }
 
     pub async fn list_skills(&self) -> BridgeResult<Vec<SkillSummary>> {
-        let resp = self.http.get(self.url("/api/skills")?).send().await?;
-        Ok(resp.json().await?)
+        self.call("skills.list", serde_json::json!({})).await
     }
 
     pub async fn get_skill(&self, name: &str) -> BridgeResult<SkillDetail> {
-        let resp = self
-            .http
-            .get(self.url(&format!("/api/skills/{}", name))?)
-            .send()
-            .await?;
-        Ok(resp.json().await?)
+        self.call("skills.get", serde_json::json!({"name": name})).await
     }
 
     pub async fn delete_skill(&self, name: &str) -> BridgeResult<()> {
-        self.http
-            .delete(self.url(&format!("/api/skills/{}", name))?)
-            .send()
-            .await?;
+        self.call::<serde_json::Value>(
+            "skills.delete",
+            serde_json::json!({"name": name}),
+        )
+        .await?;
         Ok(())
     }
 
     pub async fn execute_skill(&self, name: &str) -> BridgeResult<AgentResult> {
-        let resp = self
-            .http
-            .post(self.url(&format!("/api/skills/{}/run", name))?)
-            .send()
-            .await?;
-        Ok(resp.json().await?)
+        self.call("skills.run", serde_json::json!({"name": name})).await
     }
 
-    pub async fn hub_browse(&self, category: Option<&str>) -> BridgeResult<Vec<HubSkill>> {
-        let mut url = self.url("/api/hub/browse")?;
+    pub async fn hub_browse(
+        &self,
+        category: Option<&str>,
+    ) -> BridgeResult<Vec<HubSkill>> {
+        let mut params = serde_json::json!({});
         if let Some(cat) = category {
-            url.set_query(Some(&format!("category={}", cat)));
+            params["category"] = serde_json::json!(cat);
         }
-        let resp = self.http.get(url).send().await?;
-        Ok(resp.json().await?)
+        self.call("hub.browse", params).await
     }
 
     pub async fn hub_search(&self, query: &str) -> BridgeResult<Vec<HubSkill>> {
-        let url = self.url(&format!("/api/hub/search?q={}", query))?;
-        let resp = self.http.get(url).send().await?;
-        Ok(resp.json().await?)
+        self.call("hub.search", serde_json::json!({"query": query}))
+            .await
     }
 
     pub async fn hub_install(&self, name: &str, force: bool) -> BridgeResult<()> {
-        let body = serde_json::json!({"name": name, "force": force});
-        let resp = self
-            .http
-            .post(self.url("/api/hub/install")?)
-            .json(&body)
-            .send()
-            .await?;
-        if !resp.status().is_success() {
-            return Err(BridgeError::Api(resp.text().await?));
-        }
+        self.call::<serde_json::Value>(
+            "hub.install",
+            serde_json::json!({"name": name, "force": force}),
+        )
+        .await?;
         Ok(())
     }
 
+    pub async fn hub_info(&self, name: &str) -> BridgeResult<HubSkill> {
+        self.call("hub.info", serde_json::json!({"name": name}))
+            .await
+    }
+
     pub async fn list_schedules(&self) -> BridgeResult<Vec<CronJob>> {
-        let resp = self.http.get(self.url("/api/schedule")?).send().await?;
-        Ok(resp.json().await?)
+        self.call("schedule.list", serde_json::json!({})).await
     }
 
     pub async fn add_schedule(
@@ -128,38 +161,35 @@ impl ApiClient {
         cron_expr: &str,
         task: &str,
     ) -> BridgeResult<String> {
-        let body = serde_json::json!({"cron_expr": cron_expr, "task": task});
-        let resp = self
-            .http
-            .post(self.url("/api/schedule")?)
-            .json(&body)
-            .send()
+        let resp: serde_json::Value = self
+            .call(
+                "schedule.add",
+                serde_json::json!({"cron": cron_expr, "task": task}),
+            )
             .await?;
-        let job: serde_json::Value = resp.json().await?;
-        Ok(job["id"].as_str().unwrap_or("unknown").to_string())
+        Ok(resp["job_id"].as_str().unwrap_or("unknown").to_string())
     }
 
     pub async fn remove_schedule(&self, job_id: &str) -> BridgeResult<()> {
-        self.http
-            .delete(self.url(&format!("/api/schedule/{}", job_id))?)
-            .send()
-            .await?;
+        self.call::<serde_json::Value>(
+            "schedule.remove",
+            serde_json::json!({"job_id": job_id}),
+        )
+        .await?;
         Ok(())
     }
 
     pub async fn get_memory(&self) -> BridgeResult<MemoryData> {
-        let resp = self.http.get(self.url("/api/memory")?).send().await?;
-        Ok(resp.json().await?)
+        self.call("memory.get", serde_json::json!({})).await
     }
 
     pub async fn get_sessions(&self) -> BridgeResult<Vec<SessionInfo>> {
-        let resp = self.http.get(self.url("/api/sessions")?).send().await?;
-        Ok(resp.json().await?)
+        self.call("sessions.list", serde_json::json!({})).await
     }
 
     pub async fn get_screenshot(&self) -> BridgeResult<Vec<u8>> {
-        let resp = self.http.get(self.url("/api/screenshot")?).send().await?;
-        Ok(resp.bytes().await?.to_vec())
+        // screenshot is handled locally by the TUI — return empty
+        Ok(Vec::new())
     }
 }
 
@@ -168,71 +198,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_new_client_valid_url() {
-        let c = ApiClient::new("http://localhost:8080").unwrap();
-        assert_eq!(c.base_url.as_str(), "http://localhost:8080/");
+    fn test_new_client() {
+        let c = ApiClient::new("/tmp/sediman.sock");
+        assert_eq!(c.socket_path_str(), "/tmp/sediman.sock");
     }
 
     #[test]
-    fn test_new_client_trailing_slash() {
-        let c = ApiClient::new("http://localhost:8080/").unwrap();
-        assert_eq!(c.base_url.as_str(), "http://localhost:8080/");
+    fn test_new_client_custom_path() {
+        let c = ApiClient::new("/var/run/sediman.sock");
+        assert_eq!(c.socket_path_str(), "/var/run/sediman.sock");
     }
 
     #[test]
-    fn test_new_client_invalid_url() {
-        let err = ApiClient::new("not a url").unwrap_err();
-        assert!(matches!(err, BridgeError::Url(_)));
-    }
-
-    #[test]
-    fn test_new_client_empty_url() {
-        let err = ApiClient::new("").unwrap_err();
-        assert!(matches!(err, BridgeError::Url(_)));
-    }
-
-    #[test]
-    fn test_url_construction() {
-        let c = ApiClient::new("http://localhost:8080").unwrap();
-        assert_eq!(
-            c.url("/api/status").unwrap().as_str(),
-            "http://localhost:8080/api/status"
-        );
-    }
-
-    #[test]
-    fn test_url_construction_with_trailing_slash() {
-        let c = ApiClient::new("http://localhost:8080/").unwrap();
-        assert_eq!(
-            c.url("api/skills").unwrap().as_str(),
-            "http://localhost:8080/api/skills"
-        );
-    }
-
-    #[test]
-    fn test_url_with_query() {
-        let c = ApiClient::new("http://localhost:8080").unwrap();
-        let mut url = c.url("/api/hub/search").unwrap();
-        url.set_query(Some("q=test"));
-        assert_eq!(url.as_str(), "http://localhost:8080/api/hub/search?q=test");
-    }
-
-    #[test]
-    fn test_url_with_nested_path() {
-        let c = ApiClient::new("http://localhost:8080").unwrap();
-        let url = c.url("/api/skills/my-skill").unwrap();
-        assert_eq!(url.as_str(), "http://localhost:8080/api/skills/my-skill");
-    }
-
-    #[test]
-    fn test_url_https() {
-        let c = ApiClient::new("https://api.sediman.ai").unwrap();
-        let url = c.url("/v1/status").unwrap();
-        assert_eq!(url.as_str(), "https://api.sediman.ai/v1/status");
-    }
-
-    #[test]
-    fn test_bridge_error_display_http() {
+    fn test_bridge_error_display_api() {
         let err = BridgeError::Api("bad request".into());
         assert_eq!(format!("{}", err), "API error: bad request");
     }
@@ -240,13 +218,10 @@ mod tests {
     #[test]
     fn test_bridge_error_display_connection() {
         let err = BridgeError::Connection("refused".into());
-        assert_eq!(format!("{}", err), "Connection refused: refused");
-    }
-
-    #[test]
-    fn test_bridge_error_from_url_parse() {
-        let err: BridgeError = url::ParseError::EmptyHost.into();
-        assert!(matches!(err, BridgeError::Url(_)));
+        assert_eq!(
+            format!("{}", err),
+            "Connection failed: refused"
+        );
     }
 
     #[test]

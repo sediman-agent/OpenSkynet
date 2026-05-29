@@ -1,9 +1,18 @@
+"""Vector store with SQLite backend for persistent vector embeddings.
+
+Replaces the single JSON file approach with SQLite for better concurrency,
+atomicity, and scalability. Falls back to JSON if SQLite is unavailable.
+"""
+
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
+import sqlite3
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -13,8 +22,21 @@ from sediman.config import DATA_DIR
 
 logger = structlog.get_logger()
 
-def _get_index_path() -> Path:
-    return DATA_DIR / "vector_index.json"
+_VECTOR_DB_PATH = DATA_DIR / "vectors.db"
+_LEGACY_INDEX_PATH = DATA_DIR / "vector_index.json"
+
+_VEC_SCHEMA = """
+CREATE TABLE IF NOT EXISTS vectors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL UNIQUE,
+    vector BLOB NOT NULL,
+    provider TEXT NOT NULL DEFAULT 'unknown',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at REAL NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_vectors_text ON vectors(text);
+CREATE INDEX IF NOT EXISTS idx_vectors_provider ON vectors(provider);
+"""
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -35,68 +57,212 @@ def _normalize(vec: list[float]) -> list[float]:
     return [x / norm for x in vec]
 
 
+def _vec_to_blob(vec: list[float]) -> bytes:
+    import struct
+    return struct.pack(f'{len(vec)}f', *vec)
+
+
+def _blob_to_vec(blob: bytes) -> list[float]:
+    import struct
+    n = len(blob) // 4
+    return list(struct.unpack(f'{n}f', blob))
+
+
 class VectorStore:
-    def __init__(self, similarity_threshold: float = 0.3):
-        from sediman.memory.embeddings import create_embedding_provider
-
-        self._provider = create_embedding_provider()
-        self._entries: list[dict[str, Any]] = []
+    def __init__(self, similarity_threshold: float = 0.3, lazy: bool = True):
+        self._provider = None
+        self._provider_name: str | None = None
         self._similarity_threshold = similarity_threshold
-        self._dirty = False
-        self._load()
+        self._lazy = lazy
+        self._db_path = _VECTOR_DB_PATH
+        self._use_sqlite = True
+        self._legacy_entries: list[dict[str, Any]] = []
+        self._legacy_dirty = False
+        self._legacy_loaded = False
 
-    def _load(self) -> None:
-        index_file = _get_index_path()
-        if not index_file.exists():
+        if not lazy:
+            self._ensure_provider()
+            self._ensure_loaded()
+
+    def _ensure_provider(self) -> Any:
+        if self._provider is None:
+            from sediman.memory.embeddings import create_embedding_provider
+            self._provider = create_embedding_provider()
+            self._provider_name = self._provider.name
+        return self._provider
+
+    def _get_conn(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self._db_path))
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-64000")
+        return conn
+
+    def _ensure_loaded(self) -> None:
+        self._ensure_db_schema()
+        if not self._use_sqlite:
+            self._legacy_load()
+
+    def _ensure_db_schema(self) -> None:
+        try:
+            self._db_path.parent.mkdir(parents=True, exist_ok=True)
+            conn = self._get_conn()
+            try:
+                conn.executescript(_VEC_SCHEMA)
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning("vector_sqlite_init_failed", error=str(e))
+            self._use_sqlite = False
+            self._migrate_from_legacy()
+
+    def _migrate_from_legacy(self) -> None:
+        if not _LEGACY_INDEX_PATH.exists():
             return
         try:
-            raw = index_file.read_text()
+            raw = _LEGACY_INDEX_PATH.read_text()
             data = json.loads(raw)
-            self._entries = data.get("entries", [])
-            logger.info("vector_index_loaded", entries=len(self._entries))
-        except (json.JSONDecodeError, OSError) as e:
-            logger.debug("vector_index_load_failed", error=str(e))
+            entries = data.get("entries", [])
+            if entries:
+                self._legacy_entries = entries
+                logger.info("vector_legacy_loaded", entries=len(entries))
+        except Exception as e:
+            logger.debug("vector_legacy_load_failed", error=str(e))
 
-    def _save(self) -> None:
-        if not self._dirty:
+    def _legacy_load(self) -> None:
+        if self._legacy_loaded:
+            return
+        if not _LEGACY_INDEX_PATH.exists():
+            self._legacy_loaded = True
             return
         try:
-            index_file = _get_index_path()
-            index_file.parent.mkdir(parents=True, exist_ok=True)
+            raw = _LEGACY_INDEX_PATH.read_text()
+            data = json.loads(raw)
+            self._legacy_entries = data.get("entries", [])
+        except Exception:
+            self._legacy_entries = []
+        self._legacy_loaded = True
+
+    def _legacy_save(self) -> None:
+        if not self._legacy_dirty:
+            return
+        try:
+            _LEGACY_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
             fd, tmp = tempfile.mkstemp(
-                dir=str(index_file.parent), prefix=".tmp-", suffix=".json"
+                dir=str(_LEGACY_INDEX_PATH.parent), prefix=".tmp-", suffix=".json"
             )
             with os.fdopen(fd, "w") as f:
-                json.dump({"entries": self._entries}, f, default=str)
-            Path(tmp).rename(index_file)
-            self._dirty = False
+                json.dump({"entries": self._legacy_entries}, f, default=str)
+            Path(tmp).rename(_LEGACY_INDEX_PATH)
+            self._legacy_dirty = False
         except OSError as e:
-            logger.warning("vector_index_save_failed", error=str(e))
+            logger.warning("vector_legacy_save_failed", error=str(e))
+
+    # ── Async API ───────────────────────────────────────────────
+
+    async def async_add(self, text: str, metadata: dict[str, Any] | None = None) -> int:
+        self._ensure_loaded()
+        metadata = metadata or {}
+
+        if self._use_sqlite:
+            existing = self._sql_find_exact(text)
+            if existing is not None:
+                return existing
+
+            provider = self._ensure_provider()
+            vecs = await provider.embed([text])
+            vec = _normalize(vecs[0])
+            blob = _vec_to_blob(vec)
+            meta_json = json.dumps(metadata, default=str)
+
+            try:
+                conn = self._get_conn()
+                try:
+                    cursor = conn.execute(
+                        "INSERT INTO vectors (text, vector, provider, metadata) VALUES (?, ?, ?, ?)",
+                        (text, blob, self._provider_name or "unknown", meta_json),
+                    )
+                    conn.commit()
+                    return cursor.lastrowid
+                finally:
+                    conn.close()
+            except sqlite3.IntegrityError:
+                return self._sql_find_exact(text) or 0
+            except Exception as e:
+                logger.debug("vector_sql_insert_failed", error=str(e))
+                return self._legacy_add(text, vec, metadata)
+
+        return self._legacy_add_sync(text, metadata)
+
+    async def async_add_batch(
+        self, items: list[tuple[str, dict[str, Any]]],
+    ) -> list[int]:
+        self._ensure_loaded()
+        if not items:
+            return []
+
+        texts = [t for t, _ in items]
+        metas = [m for _, m in items]
+
+        new_indices: list[int] = []
+        new_texts: list[str] = []
+        new_metas: list[dict[str, Any]] = []
+
+        for i, text in enumerate(texts):
+            existing = self._sql_find_exact(text) if self._use_sqlite else self._legacy_find_exact(text)
+            if existing is not None:
+                new_indices.append(existing)
+            else:
+                new_texts.append(text)
+                new_metas.append(metas[i] if i < len(metas) else {})
+                new_indices.append(-1)
+
+        if new_texts:
+            provider = self._ensure_provider()
+            vecs = await provider.embed(new_texts)
+            for text, meta, vec in zip(new_texts, new_metas, vecs):
+                idx = self._add_vector(text, vec, meta)
+                new_indices = [idx if x == -1 else x for x in new_indices]
+
+        return new_indices
+
+    async def async_search(
+        self,
+        query: str,
+        k: int = 5,
+        threshold: float | None = None,
+    ) -> list[dict[str, Any]]:
+        self._ensure_loaded()
+        if not query.strip():
+            return []
+
+        threshold = threshold if threshold is not None else self._similarity_threshold
+        provider = self._ensure_provider()
+        vecs = await provider.embed([query])
+        query_vec = _normalize(vecs[0])
+
+        if self._use_sqlite:
+            return self._sql_search_with_vec(query_vec, k, threshold)
+        return self._legacy_search_with_vec(query_vec, k, threshold)
+
+    # ── Sync API (backward-compat) ────────────────────────────────
 
     def add(self, text: str, metadata: dict[str, Any] | None = None) -> int:
+        self._ensure_loaded()
         metadata = metadata or {}
-        existing_idx = self._find_exact(text)
-        if existing_idx is not None:
-            return existing_idx
 
-        vec = self._provider.embed_sync([text])[0]
-        vec = _normalize(vec)
-        entry: dict[str, Any] = {
-            "text": text,
-            "vector": vec,
-            "provider": self._provider.name,
-            "metadata": metadata,
-        }
-        self._entries.append(entry)
-        self._dirty = True
-        self._save()
-        return len(self._entries) - 1
+        if self._use_sqlite:
+            existing = self._sql_find_exact(text)
+            if existing is not None:
+                return existing
 
-    def _find_exact(self, text: str) -> int | None:
-        for i, entry in enumerate(self._entries):
-            if entry["text"] == text:
-                return i
-        return None
+            provider = self._ensure_provider()
+            vec = provider.embed_sync([text])[0]
+            vec = _normalize(vec)
+            return self._add_vector(text, vec, metadata)
+
+        return self._legacy_add_sync(text, metadata)
 
     def search(
         self,
@@ -104,23 +270,139 @@ class VectorStore:
         k: int = 5,
         threshold: float | None = None,
     ) -> list[dict[str, Any]]:
-        if not self._entries:
-            return []
+        self._ensure_loaded()
         if not query.strip():
             return []
 
         threshold = threshold if threshold is not None else self._similarity_threshold
-        query_vec = self._provider.embed_sync([query])[0]
-        query_vec = _normalize(query_vec)
+        provider = self._ensure_provider()
+        query_vec = _normalize(provider.embed_sync([query])[0])
 
+        if self._use_sqlite:
+            return self._sql_search_with_vec(query_vec, k, threshold)
+        return self._legacy_search_with_vec(query_vec, k, threshold)
+
+    # ── Shared vector add ──────────────────────────────────────
+
+    def _add_vector(self, text: str, vec: list[float], metadata: dict[str, Any]) -> int:
+        blob = _vec_to_blob(vec)
+        meta_json = json.dumps(metadata, default=str)
+
+        if self._use_sqlite:
+            try:
+                conn = self._get_conn()
+                try:
+                    cursor = conn.execute(
+                        "INSERT INTO vectors (text, vector, provider, metadata) VALUES (?, ?, ?, ?)",
+                        (text, blob, self._provider_name or "unknown", meta_json),
+                    )
+                    conn.commit()
+                    return cursor.lastrowid
+                finally:
+                    conn.close()
+            except sqlite3.IntegrityError:
+                return self._sql_find_exact(text) or 0
+            except Exception as e:
+                logger.debug("vector_sql_insert_fallback", error=str(e))
+                return self._legacy_add(text, vec, metadata)
+
+        return self._legacy_add(text, vec, metadata)
+
+    # ── SQLite search ──────────────────────────────────────────
+
+    def _sql_search_with_vec(
+        self,
+        query_vec: list[float],
+        k: int,
+        threshold: float,
+    ) -> list[dict[str, Any]]:
+        try:
+            conn = self._get_conn()
+            try:
+                rows = conn.execute(
+                    "SELECT id, text, vector, metadata FROM vectors"
+                ).fetchall()
+            finally:
+                conn.close()
+
+            scored: list[tuple[float, dict[str, Any]]] = []
+            for row_id, text, blob, meta_json in rows:
+                vec = _blob_to_vec(blob)
+                sim = _cosine_similarity(query_vec, vec)
+                if sim >= threshold:
+                    try:
+                        meta = json.loads(meta_json)
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {}
+                    scored.append((sim, {"text": text, "score": round(sim, 4), "metadata": meta}))
+
+            scored.sort(key=lambda x: x[0], reverse=True)
+            return [s[1] for s in scored[:k]]
+        except Exception as e:
+            logger.debug("vector_sql_search_failed", error=str(e))
+            return self._legacy_search_with_vec(query_vec, k, threshold)
+
+    def _sql_find_exact(self, text: str) -> int | None:
+        try:
+            conn = self._get_conn()
+            try:
+                row = conn.execute(
+                    "SELECT id FROM vectors WHERE text = ?", (text,)
+                ).fetchone()
+                return row[0] if row else None
+            finally:
+                conn.close()
+        except Exception:
+            return None
+
+    # ── Legacy fallback ────────────────────────────────────────
+
+    def _legacy_add(self, text: str, vec: list[float], metadata: dict[str, Any]) -> int:
+        entry = {
+            "text": text,
+            "vector": vec,
+            "provider": self._provider_name,
+            "metadata": metadata,
+        }
+        self._legacy_entries.append(entry)
+        self._legacy_dirty = True
+        self._legacy_save()
+        return len(self._legacy_entries) - 1
+
+    def _legacy_add_sync(self, text: str, metadata: dict[str, Any]) -> int:
+        self._ensure_loaded()
+        existing = self._legacy_find_exact(text)
+        if existing is not None:
+            return existing
+
+        provider = self._ensure_provider()
+        vec = _normalize(provider.embed_sync([text])[0])
+        return self._legacy_add(text, vec, metadata)
+
+    def _legacy_find_exact(self, text: str) -> int | None:
+        for i, entry in enumerate(self._legacy_entries):
+            if entry["text"] == text:
+                return i
+        return None
+
+    def _legacy_search_with_vec(
+        self,
+        query_vec: list[float],
+        k: int,
+        threshold: float,
+    ) -> list[dict[str, Any]]:
+        if not self._legacy_entries:
+            return []
         scored: list[tuple[float, dict[str, Any]]] = []
-        for entry in self._entries:
-            sim = _cosine_similarity(query_vec, entry["vector"])
+        for entry in self._legacy_entries:
+            vec = entry.get("vector", [])
+            if not vec:
+                continue
+            sim = _cosine_similarity(query_vec, vec)
             if sim >= threshold:
                 scored.append((sim, entry))
 
         scored.sort(key=lambda x: x[0], reverse=True)
-
         results = []
         for sim, entry in scored[:k]:
             results.append({
@@ -130,36 +412,128 @@ class VectorStore:
             })
         return results
 
+    # ── Mutation ────────────────────────────────────────────────
+
     def remove(self, text: str) -> bool:
-        idx = self._find_exact(text)
+        self._ensure_loaded()
+        if self._use_sqlite:
+            try:
+                conn = self._get_conn()
+                try:
+                    cursor = conn.execute("DELETE FROM vectors WHERE text = ?", (text,))
+                    conn.commit()
+                    if cursor.rowcount > 0:
+                        return True
+                finally:
+                    conn.close()
+            except Exception as e:
+                logger.debug("vector_sql_remove_failed", error=str(e))
+
+        idx = self._legacy_find_exact(text)
         if idx is not None:
-            self._entries.pop(idx)
-            self._dirty = True
-            self._save()
+            self._legacy_entries.pop(idx)
+            self._legacy_dirty = True
+            self._legacy_save()
             return True
         return False
 
+    def remove_by_metadata(self, key: str, value: Any) -> int:
+        self._ensure_loaded()
+        removed = 0
+
+        if self._use_sqlite:
+            try:
+                conn = self._get_conn()
+                try:
+                    rows = conn.execute("SELECT id, metadata FROM vectors").fetchall()
+                    ids_to_remove = []
+                    for row_id, meta_json in rows:
+                        try:
+                            meta = json.loads(meta_json)
+                        except (json.JSONDecodeError, TypeError):
+                            continue
+                        if meta.get(key) == value:
+                            ids_to_remove.append(row_id)
+                    if ids_to_remove:
+                        placeholders = ",".join("?" for _ in ids_to_remove)
+                        cursor = conn.execute(
+                            f"DELETE FROM vectors WHERE id IN ({placeholders})",
+                            ids_to_remove,
+                        )
+                        conn.commit()
+                        removed = cursor.rowcount
+                finally:
+                    conn.close()
+                return removed
+            except Exception:
+                pass
+
+        before = len(self._legacy_entries)
+        self._legacy_entries = [
+            e for e in self._legacy_entries
+            if e.get("metadata", {}).get(key) != value
+        ]
+        removed = before - len(self._legacy_entries)
+        if removed > 0:
+            self._legacy_dirty = True
+            self._legacy_save()
+        return removed
+
     def clear(self) -> None:
-        self._entries.clear()
-        self._dirty = True
-        self._save()
+        if self._use_sqlite:
+            try:
+                conn = self._get_conn()
+                try:
+                    conn.execute("DELETE FROM vectors")
+                    conn.commit()
+                finally:
+                    conn.close()
+                return
+            except Exception:
+                pass
+        self._legacy_entries.clear()
+        self._legacy_dirty = True
+        self._legacy_save()
+
+    # ── Properties / queries ─────────────────────────────────────
 
     @property
     def count(self) -> int:
-        return len(self._entries)
+        self._ensure_loaded()
+        if self._use_sqlite:
+            try:
+                conn = self._get_conn()
+                try:
+                    row = conn.execute("SELECT COUNT(*) FROM vectors").fetchone()
+                    return row[0] if row else 0
+                finally:
+                    conn.close()
+            except Exception:
+                pass
+        return len(self._legacy_entries)
 
     @property
     def provider(self) -> Any:
-        return self._provider
+        return self._ensure_provider()
 
     def get_all(self) -> list[dict[str, Any]]:
+        self._ensure_loaded()
+        if self._use_sqlite:
+            try:
+                conn = self._get_conn()
+                try:
+                    rows = conn.execute("SELECT text, metadata, provider FROM vectors").fetchall()
+                    return [
+                        {"text": r[0], "metadata": json.loads(r[1]) if r[1] else {}, "provider": r[2]}
+                        for r in rows
+                    ]
+                finally:
+                    conn.close()
+            except Exception:
+                pass
         return [
-            {
-                "text": e["text"],
-                "metadata": e.get("metadata", {}),
-                "provider": e.get("provider", "unknown"),
-            }
-            for e in self._entries
+            {"text": e["text"], "metadata": e.get("metadata", {}), "provider": e.get("provider", "unknown")}
+            for e in self._legacy_entries
         ]
 
     def search_by_metadata(
@@ -167,28 +541,66 @@ class VectorStore:
         metadata_filter: dict[str, Any],
         k: int = 20,
     ) -> list[dict[str, Any]]:
+        self._ensure_loaded()
         matching = []
-        for entry in self._entries:
+        all_entries = self.get_all()
+        for entry in all_entries:
             meta = entry.get("metadata", {})
             if all(meta.get(k) == v for k, v in metadata_filter.items()):
-                matching.append({
-                    "text": entry["text"],
-                    "score": 1.0,
-                    "metadata": meta,
-                })
+                matching.append({"text": entry["text"], "score": 1.0, "metadata": meta})
         return matching[:k]
 
-    def rebuild_index(self) -> None:
-        if not self._entries:
+    async def async_rebuild_index(self) -> None:
+        self._ensure_loaded()
+        all_entries = self.get_all()
+        if not all_entries:
             return
-        texts = [e["text"] for e in self._entries]
+        texts = [e["text"] for e in all_entries]
         try:
-            vectors = self._provider.embed_sync(texts)
-            for entry, vec in zip(self._entries, vectors):
-                entry["vector"] = _normalize(vec)
-                entry["provider"] = self._provider.name
-            self._dirty = True
-            self._save()
-            logger.info("vector_index_rebuilt", entries=len(self._entries))
+            provider = self._ensure_provider()
+            vectors = await provider.embed(texts)
+            for entry_dict, vec in zip(all_entries, vectors):
+                normalized = _normalize(vec)
+                if self._use_sqlite:
+                    try:
+                        conn = self._get_conn()
+                        try:
+                            conn.execute(
+                                "UPDATE vectors SET vector = ?, provider = ? WHERE text = ?",
+                                (_vec_to_blob(normalized), self._provider_name, entry_dict["text"]),
+                            )
+                            conn.commit()
+                        finally:
+                            conn.close()
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.warning("vector_index_rebuild_failed", error=str(e))
+
+    def rebuild_index(self) -> None:
+        self._ensure_loaded()
+        all_entries = self.get_all()
+        if not all_entries:
+            return
+        texts = [e["text"] for e in all_entries]
+        try:
+            provider = self._ensure_provider()
+            vectors = provider.embed_sync(texts)
+            for entry_dict, vec in zip(all_entries, vectors):
+                normalized = _normalize(vec)
+                if self._use_sqlite:
+                    try:
+                        conn = self._get_conn()
+                        try:
+                            conn.execute(
+                                "UPDATE vectors SET vector = ?, provider = ? WHERE text = ?",
+                                (_vec_to_blob(normalized), self._provider_name, entry_dict["text"]),
+                            )
+                            conn.commit()
+                        finally:
+                            conn.close()
+                    except Exception:
+                        pass
+            logger.info("vector_index_rebuilt", entries=len(all_entries))
         except Exception as e:
             logger.warning("vector_index_rebuild_failed", error=str(e))

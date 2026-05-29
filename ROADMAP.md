@@ -1,10 +1,12 @@
 # Sediman Roadmap
 
-Features planned to close the gap with Hermes Agent and beyond.
+Features planned to close the gap with OpenCode / Claude Code and beyond.
 
 ---
 
 ## Completed
+
+### Core Agent
 
 - [x] **Agent loop** — think-act-observe-reflect cycle
 - [x] **Browser Use integration** — real Chromium via Playwright
@@ -15,7 +17,6 @@ Features planned to close the gap with Hermes Agent and beyond.
 - [x] **Skill healer** — LLM-based repair when page layouts change
 - [x] **Skill validator** — name format, injection/exfiltration/destructive detection, trust levels
 - [x] **Skills Hub** — browse, search, install, validate, publish community skills
-- [x] **CLI + TUI** — Click CLI, prompt_toolkit TUI with slash commands
 - [x] **Cron scheduler** — APScheduler-based 24/7 task scheduling
 - [x] **Persistent memory** — dual-file bounded storage, background LLM review
 - [x] **Memory security** — prompt injection, exfiltration, invisible unicode scanning
@@ -23,25 +24,88 @@ Features planned to close the gap with Hermes Agent and beyond.
 - [x] **Subagent orchestration** — parallel delegation with semaphore
 - [x] **Context compression** — LLM-based conversation compaction
 - [x] **Screen recording** — JS-injected cursor tracking, FPS capture, trace-to-skill conversion
-- [x] **REST + WebSocket API** — FastAPI server with streaming
 - [x] **`clarify` tool** — ask user questions with multiple-choice support
 - [x] **`todo` tool** — session-scoped task list with status tracking
 - [x] **`terminal` tool** — shell execution with per-command approval, dangerous pattern blocking, and session-level override
 
----
-
-## In Progress
-
 ### File Tools
-
-Filesystem interaction is the single biggest capability gap. The agent currently cannot read, write, search, or edit files locally.
 
 - [x] **`read_file`** — Read files with line numbers and pagination (offset/limit)
 - [x] **`write_file`** — Write content to files, create parent directories automatically
 - [x] **`patch`** — Targeted find-and-replace edits with fuzzy matching. Auto-run syntax checks after editing
 - [x] **`search_files`** — Ripgrep-backed file search by content (regex) and by name (glob). Faster than shelling out to grep/find
 
-### Web Tools
+### Rust TUI (sediman-tui)
+
+- [x] **Ratatui-based terminal UI** — fast, native rendering with no Python dependency
+- [x] **sediman-tui-core** — reusable widget framework (command system, fuzzy matching, layout, theming, event loop, text editor, markdown rendering)
+- [x] **sediman-tui-bridge** — IPC bridge to Python backend
+- [x] **38 slash commands** — matching the Python TUI command set
+- [x] **Fuzzy command matching** — Levenshtein distance fallback for typos
+- [x] **Permission system** — ask/acceptEdits/plan/auto modes with Shift+Tab cycling
+- [x] **Interrupt handling** — Esc to cancel running agent
+- [x] **Scrollable output** — Shift+Up/Down and PageUp/PageDown scrolling
+- [x] **Chat message history** — user messages rendered as conversation threads
+- [x] **Context usage bar** — token estimation with color thresholds
+- [x] **Shell command execution** — `!` prefix for running commands
+- [x] **Theme system** — built-in themes + custom JSON theme loading
+
+### Architecture
+
+- [x] **Unix socket JSON-RPC bridge** — replaced HTTP + WebSocket with `/tmp/sediman.sock` (Unix domain socket). ~15x faster than localhost HTTP loopback
+- [x] **`@sediman/sdk` (TypeScript)** — typed client library wrapping the API surface. Dual-transport: Unix socket for local, HTTPS/WS for SaaS. Powers both the TUI and external consumers
+- [x] **Python RPC server** — `rpc_server.py` replaces the FastAPI server for local usage. Same code, no HTTP overhead, single process
+
+---
+
+## In Progress
+
+### Rust TUI polish (target: OpenCode-level UX)
+
+The TUI works but has a long way to go visually. Top priorities:
+
+- [ ] **OpenTUI-style rendering** — port from Ratatui to OpenTUI (Zig + TypeScript bindings) for GPU-like terminal performance, flexbox layout, and rich text rendering
+- [ ] **Rich markdown rendering** — code blocks with syntax highlighting, inline images, tables, task lists
+- [ ] **Inline browser screenshot preview** — render screenshots as ANSI/Kitty/ITerm2 inline images
+- [ ] **Animated spinner** — real animation frames, not static text
+- [ ] **Side panel** — skills/memory/schedule/status tabs rendered alongside main content
+- [ ] **Notification system** — cron job completion, long-running task alerts
+- [ ] **Tab completion** — wire the existing `Completer` into the input handler
+- [ ] **Config file** — `~/.sediman/config.toml` for persistent settings
+- [ ] **Session autosave/resume** — persist and restore conversation state
+- [ ] **WebSocket reconnection** — graceful recovery on backend restart
+- [ ] **Visual theme polish** — match OpenCode's color scheme and typography
+- [ ] **Help overlay** — rich categorized command list with search
+
+### TypeScript Migration (Python → TypeScript)
+
+Incremental migration of the Python backend to TypeScript, module by module:
+
+- [ ] **RPC server** — move from `rpc_server.py` to `@sediman/rpc-server` (Bun/Node)
+- [ ] **Skill engine** — port SkillEngine to `@sediman/sdk/modules/skills`
+- [ ] **Scheduler** — port CronManager to `@sediman/sdk/modules/scheduler`
+- [ ] **Memory store** — port MemoryStore to `@sediman/sdk/modules/memory`
+- [ ] **Hub client** — port HubClient + GitHubInstaller to `@sediman/sdk/modules/hub`
+- [ ] **Sessions** — port session store to `@sediman/sdk/modules/sessions`
+- [ ] **Recording** — port RecordingManager + TraceToSkill to `@sediman/sdk/modules/recording`
+- [ ] **Agent loop** — port the core agent loop (longest lead time)
+- [ ] **Browser control** — port BrowserSession (Playwright → Playwright for TS)
+- [ ] **LLM provider** — port create_provider / OpenAICompatibleProvider
+
+### Missing commands (Python TUI parity)
+
+These exist in the Python TUI but not yet in the Rust TUI:
+
+- [ ] `/install` — Install skill from GitHub or hub
+- [ ] `/search` — Search the hub for skills
+- [ ] `/update` — Update installed skills
+- [ ] `/outdated` — Check for skill updates
+- [ ] `/skill-info` — Show skill provenance and source info
+- [ ] `/checkpoint*` — Filesystem checkpoint CRUD via sediman-sandbox
+- [ ] `/rewind` — Revert current directory to checkpoint
+- [ ] `/branch` / `/branches` — Named checkpoint branches
+
+### Web Tool
 
 - [ ] **`web_extract`** — Extract web page and PDF content to markdown. Current `web_search` is a stub that delegates to the browser subagent. Need a real implementation using HTTP fetch + HTML-to-markdown conversion. Pages under 5K chars return full markdown; larger pages get LLM-summarized
 
@@ -152,13 +216,19 @@ The terminal tool currently runs commands locally. Add sandboxed execution envir
 
 ## Priority Order
 
-1. ~~**File tools** (read/write/patch/search)~~ ✅ Done
-2. **Web extract** — unlocks research and data extraction
-3. **Session search tool** — low effort, high value (DB already exists)
-4. **Granular browser tools** — finer control, less context waste
-5. **Code execution** — programmatic tool chaining
-6. **Memory + cronjob tools** — expose existing subsystems
-7. **Media tools** (vision, image gen, TTS)
-8. **Messaging gateway + MCP**
-9. **Terminal backends + process management**
-10. **Web dashboard + advanced features**
+1. ~~**File tools**~~ ✅ Done
+2. ~~**Rust TUI**~~ ✅ Working — needs polish
+3. ~~**Unix socket JSON-RPC**~~ ✅ Done
+4. ~~**`@sediman/sdk` (TypeScript)**~~ ✅ Done
+5. **TUI visual polish** — match OpenCode-level rendering
+6. **Missing slash commands** — Python TUI parity
+7. **Web extract** — unlocks research and data extraction
+8. **Session search tool** — low effort, high value (DB already exists)
+9. **Granular browser tools** — finer control, less context waste
+10. **Code execution** — programmatic tool chaining
+11. **Memory + cronjob tools** — expose existing subsystems
+12. **TypeScript migration** — module by module (skills → scheduler → memory → hub → sessions → recording → agent → browser → LLM)
+13. **Media tools** (vision, image gen, TTS)
+14. **Messaging gateway + MCP**
+15. **Terminal backends + process management**
+16. **Web dashboard + SaaS platform**

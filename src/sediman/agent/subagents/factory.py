@@ -92,6 +92,7 @@ class SubagentFactory:
             temp_dir = tempfile.mkdtemp(prefix="sediman-isolated-")
             isolated_browser = BrowserSession(
                 headless=True,
+                stealth=True,
                 user_data_dir=temp_dir,
             )
             try:

@@ -100,7 +100,9 @@ class SedimanTUI:
             else:
                 from sediman.browser.session import BrowserSession
 
-                self._browser = BrowserSession(headless=self.headless)
+                self._browser = BrowserSession(
+                    headless=self.headless, stealth=True
+                )
             await self._browser.start()
         return self._browser
 

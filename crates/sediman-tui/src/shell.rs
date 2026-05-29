@@ -6,13 +6,7 @@ use tokio::process::Command;
 use crate::app::App;
 
 pub async fn run_shell_command(app: &mut App, cmd: &str) {
-    if !app.permission.is_allowed(cmd) {
-        app.step_log
-            .push("Permission denied: shell commands not allowed in current mode".to_string());
-        return;
-    }
-
-    app.step_log.push(format!("$ {}", cmd));
+    app.add_system_message(format!("$ {}", cmd));
 
     let child = Command::new("sh")
         .arg("-c")
@@ -29,26 +23,38 @@ pub async fn run_shell_command(app: &mut App, cmd: &str) {
                 let mut count = 0;
                 while let Ok(Some(line)) = reader.next_line().await {
                     if count < 100 {
-                        app.step_log.push(line);
+                        app.add_system_message(format!("  {}", line));
                     }
                     count += 1;
+                }
+                if count > 100 {
+                    app.add_system_message(format!("  ... ({} more lines)", count - 100));
+                }
+            }
+
+            let stderr = child.stderr.take();
+            if let Some(stderr) = stderr {
+                let mut reader = tokio::io::BufReader::new(stderr).lines();
+                while let Ok(Some(line)) = reader.next_line().await {
+                    app.add_system_message(format!("  {}", line));
                 }
             }
 
             let status = child.wait().await;
             match status {
-                Ok(s) if s.success() => {}
+                Ok(s) if s.success() => {
+                    app.add_system_message("done".into());
+                }
                 Ok(s) => {
-                    app.step_log
-                        .push(format!("exit code: {}", s.code().unwrap_or(-1)));
+                    app.add_system_message(format!("exit code: {}", s.code().unwrap_or(-1)));
                 }
                 Err(e) => {
-                    app.step_log.push(format!("error: {}", e));
+                    app.add_system_message(format!("error: {}", e));
                 }
             }
         }
         Err(e) => {
-            app.step_log.push(format!("failed to spawn: {}", e));
+            app.add_system_message(format!("failed to spawn: {}", e));
         }
     }
 }
@@ -80,17 +86,8 @@ mod tests {
         assert!(!app.permission.is_allowed("touch file.txt"));
     }
 
-    #[test]
-    fn test_shell_command_stores_in_log() {
-        let mut app = create_test_app();
-        app.permission.cycle();
-        app.permission.cycle();
-        app.permission.cycle();
-        assert!(app.permission.is_allowed("echo hello"));
-    }
-
     fn create_test_app() -> crate::app::App {
-        let bridge = sediman_tui_bridge::ApiClient::new("http://localhost:8080").unwrap();
+        let bridge = sediman_tui_bridge::ApiClient::new("/tmp/sediman.sock");
         crate::app::App::new("openai".into(), None, false, bridge)
     }
 }

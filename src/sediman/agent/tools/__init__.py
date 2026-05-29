@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import re
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 import structlog
 
@@ -14,16 +13,7 @@ TerminalApprovalCallback = Callable[[str, str], Awaitable[bool]]
 _terminal_approval_callback: TerminalApprovalCallback | None = None
 _terminal_session_allowed: bool = False
 _memory_manager = None
-
-_DANGEROUS_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"rm\s+(-\w*f\w*\s+)?/"),
-    re.compile(r"mkfs\b"),
-    re.compile(r":\(\)\s*\{"),
-    re.compile(r">\s*/dev/sd"),
-    re.compile(r"chmod\s+-R\s+777\s+/"),
-    re.compile(r"curl\s.*\|\s*(ba)?sh\s*$"),
-    re.compile(r"wget\s.*\|\s*(ba)?sh\s*$"),
-]
+_subagent_factory: Any | None = None
 
 
 def set_terminal_approval_callback(cb: TerminalApprovalCallback | None) -> None:
@@ -55,8 +45,13 @@ def get_memory_manager():
     return _memory_manager
 
 
-def _is_dangerous(command: str) -> bool:
-    return any(p.search(command) for p in _DANGEROUS_PATTERNS)
+def set_subagent_factory(factory: Any | None) -> None:
+    global _subagent_factory
+    _subagent_factory = factory
+
+
+def get_subagent_factory() -> Any | None:
+    return _subagent_factory
 
 
 def create_agent_tool_registry() -> ToolRegistry:
@@ -82,6 +77,10 @@ def create_agent_tool_registry() -> ToolRegistry:
     )
 
     registry = ToolRegistry()
+
+    from sediman.integrations import get_all_tools
+    for tool_def, handler in get_all_tools():
+        registry.register(tool_def, handler)
 
     registry.register(
         ToolDefinition(
@@ -148,6 +147,10 @@ def create_agent_tool_registry() -> ToolRegistry:
                         "type": "string",
                         "description": "The task to delegate to the subagent",
                     },
+                    "agent_type": {
+                        "type": "string",
+                        "description": "Type of subagent: 'browser' for web tasks (default), 'code' for file editing tasks, 'explore' for quick surveys, 'debug' for diagnostics, 'review' for critique.",
+                    },
                 },
                 "required": ["task"],
             },
@@ -183,7 +186,7 @@ def create_agent_tool_registry() -> ToolRegistry:
     registry.register(
         ToolDefinition(
             name="terminal",
-            description="Execute shell commands on the local system. Each command requires user approval before execution unless the user has approved all commands for the session. Use for file operations, running scripts, installing packages, and system tasks. Do NOT use for reading files — prefer the read_file tool. Do NOT use for searching — prefer the search_files tool. Set timeout for long-running commands.",
+            description="Execute shell commands on the local system. Each command requires user approval before execution unless the user has approved all commands for the session. Use for file operations, running scripts, installing packages, and system tasks. Do NOT use for reading files — prefer the read_file tool. Do NOT use for searching — prefer the search_files tool. Set timeout for long-running commands. Set allow_net=true if the command needs network access (curl, npm install, git clone).",
             parameters={
                 "type": "object",
                 "properties": {
@@ -198,6 +201,10 @@ def create_agent_tool_registry() -> ToolRegistry:
                     "timeout": {
                         "type": "integer",
                         "description": "Timeout in seconds (default: 30, max: 180)",
+                    },
+                    "allow_net": {
+                        "type": "boolean",
+                        "description": "Allow network access (default: false). Set to true for curl, npm install, git clone, pip install, etc.",
                     },
                 },
                 "required": ["command"],

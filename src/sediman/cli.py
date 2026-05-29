@@ -72,6 +72,18 @@ def main() -> None:
     "--timeout", default=None, type=int, help="Max seconds to run before cancelling"
 )
 @click.option("--verbose", is_flag=True, help="Show detailed logs")
+@click.option(
+    "--stealth/--no-stealth",
+    "stealth",
+    default=True,
+    help="Use stealth Chromium with anti-detection patches (default: on)",
+)
+@click.option("--proxy", default=None, help="Proxy URL for stealth mode (e.g. http://user:pass@proxy:8080)")
+@click.option(
+    "--notify",
+    default=None,
+    help="Send result to integration target, e.g. discord:alerts or telegram:admin",
+)
 def run(
     task: str,
     model: str | None,
@@ -80,6 +92,9 @@ def run(
     headless: bool,
     timeout: int | None,
     verbose: bool,
+    stealth: bool,
+    proxy: str | None,
+    notify: str | None,
 ) -> None:
     """Run a one-shot browser task."""
     if verbose:
@@ -92,12 +107,15 @@ def run(
     suppress_noisy_loggers()
 
     try:
-        asyncio.run(_run_task(task, model, provider, base_url, headless, timeout))
+        result = asyncio.run(
+            _run_task(task, model, provider, base_url, headless, timeout, stealth, proxy)
+        )
+        if notify and result:
+            _send_notification(notify, f"Task result: {task}\n\n{result.result[:1000]}")
     except KeyboardInterrupt:
         pass
     except Exception as exc:
         from sediman.display import friendly_error
-
         friendly_error(exc)
         sys.exit(1)
 
@@ -112,8 +130,20 @@ def run(
 )
 @click.option("--base-url", default=None, help="Override the default LLM API endpoint")
 @click.option("--headless/--no-headless", default=False, help="Run browser headless")
+@click.option(
+    "--stealth/--no-stealth",
+    "stealth",
+    default=True,
+    help="Use stealth Chromium with anti-detection patches (default: on)",
+)
+@click.option("--proxy", default=None, help="Proxy URL for stealth mode (e.g. http://user:pass@proxy:8080)")
 def chat(
-    model: str | None, provider: str, base_url: str | None, headless: bool
+    model: str | None,
+    provider: str,
+    base_url: str | None,
+    headless: bool,
+    stealth: bool,
+    proxy: str | None,
 ) -> None:
     """Interactive agent session with slash commands."""
     _validate_startup(provider, model, base_url)
@@ -121,7 +151,8 @@ def chat(
     from sediman.tui import SedimanTUI
 
     tui = SedimanTUI(
-        provider=provider, model=model, base_url=base_url, headless=headless
+        provider=provider, model=model, base_url=base_url, headless=headless,
+        stealth=stealth, proxy=proxy,
     )
     try:
         tui.run()
@@ -180,8 +211,21 @@ def skill_list() -> None:
 )
 @click.option("--base-url", default=None, help="Override the default LLM API endpoint")
 @click.option("--headless/--no-headless", default=False, help="Run browser headless")
+@click.option(
+    "--stealth/--no-stealth",
+    "stealth",
+    default=True,
+    help="Use stealth Chromium (default: on)",
+)
+@click.option("--proxy", default=None, help="Proxy URL for stealth mode")
 def skill_run(
-    name: str, model: str | None, provider: str, base_url: str | None, headless: bool
+    name: str,
+    model: str | None,
+    provider: str,
+    base_url: str | None,
+    headless: bool,
+    stealth: bool,
+    proxy: str | None,
 ) -> None:
     """Run a saved skill."""
     from sediman.skills.engine import SkillEngine
@@ -209,7 +253,7 @@ def skill_run(
     print_startup_banner(provider, model, headless, mode=f"skill: {name}")
 
     try:
-        asyncio.run(_run_skill(skill_data, model, provider, base_url, headless))
+        asyncio.run(_run_skill(skill_data, model, provider, base_url, headless, stealth, proxy))
     except KeyboardInterrupt:
         pass
     except Exception as exc:
@@ -828,6 +872,11 @@ def schedule_list() -> None:
 )
 @click.option("--model", default=None, help="LLM model")
 @click.option("--base-url", default=None, help="Custom API base URL")
+@click.option(
+    "--notify",
+    default=None,
+    help="Send result to integration target, e.g. discord:alerts or telegram:admin",
+)
 def schedule_add(
     cron_expr: str,
     task: str | None,
@@ -835,12 +884,14 @@ def schedule_add(
     provider: str,
     model: str | None,
     base_url: str | None,
+    notify: str | None,
 ) -> None:
     """Add a scheduled task.
 
     \b
     sediman schedule add "0 9 * * *" "Check Hacker News"
     sediman schedule add "*/30 * * * *" --skill stock-tracker
+    sediman schedule add "0 9 * * *" "Check price" --notify discord:alerts
     """
     if not task and not skill:
         from sediman.display import print_error
@@ -858,10 +909,11 @@ def schedule_add(
         provider=provider,
         model=model,
         base_url=base_url,
+        notify=notify,
     )
     from sediman.display import print_success
 
-    print_success("Scheduled", f"Job [{job_id[:8]}] {cron_expr} → {task or skill}")
+    print_success("Scheduled", f"Job [{job_id[:8]}] {cron_expr} → {task or skill}" + (f" notify: {notify}" if notify else ""))
 
 
 @schedule.command("remove")
@@ -980,6 +1032,149 @@ def schedule_register_skill(
     )
 
 
+@main.group()
+def integration() -> None:
+    """Manage Discord, Telegram, and other integrations."""
+    pass
+
+
+@integration.command("list")
+def integration_list() -> None:
+    """List configured integrations and their status."""
+    from sediman.integrations import list_integrations
+    from sediman.display import console
+
+    integrations = list_integrations()
+    if not integrations:
+        console.print("  No integrations configured.")
+        return
+
+    from rich.table import Table
+
+    table = Table(
+        title="Integrations",
+        show_header=True,
+        header_style="cyan",
+        box=None,
+        padding=(0, 2),
+    )
+    table.add_column("Name", style="green")
+    table.add_column("Enabled")
+    table.add_column("Configured")
+    table.add_column("Connected")
+    table.add_column("Targets")
+
+    for name, info in integrations.items():
+        targets = ", ".join(info.get("channels", info.get("chats", {})))
+        table.add_row(
+            name,
+            "Yes" if info["enabled"] else "No",
+            "Yes" if info["configured"] else "No",
+            "Yes" if info["connected"] else "No",
+            targets,
+        )
+
+    console.print(table)
+
+
+@integration.command("configure")
+@click.argument("name")
+@click.option("--enable/--disable", default=None, help="Enable or disable this integration")
+@click.option("--token", default=None, help="Bot token for authentication")
+@click.option("--channel", multiple=True, help="Named channel mapping (key:id), e.g. alerts:123456")
+@click.option("--chat", multiple=True, help="Named chat mapping (key:id), e.g. admin:987654")
+def integration_configure(
+    name: str,
+    enable: bool | None,
+    token: str | None,
+    channel: tuple[str, ...],
+    chat: tuple[str, ...],
+) -> None:
+    """Configure an integration (discord or telegram).
+
+    \b
+    sediman integration configure discord --enable --token="MTOKEN" --channel alerts:123456789
+    sediman integration configure telegram --enable --token="TOKEN" --chat admin:123456789
+    """
+    from sediman.integrations import update_config, get_config
+    from sediman.display import print_success
+
+    updates: dict[str, str | bool | dict[str, str]] = {}
+    if enable is not None:
+        updates["enabled"] = enable
+    if token:
+        updates["token"] = token
+    if channel:
+        channels: dict[str, str] = {}
+        for c in channel:
+            if ":" in c:
+                key, val = c.split(":", 1)
+                channels[key] = val
+        if channels:
+            updates["channels"] = channels
+    if chat:
+        chats: dict[str, str] = {}
+        for c in chat:
+            if ":" in c:
+                key, val = c.split(":", 1)
+                chats[key] = val
+        if chats:
+            updates["chats"] = chats
+
+    try:
+        result = update_config(name, updates)
+        enabled = result.get("enabled", False)
+        configured = bool(result.get("token"))
+        print_success(
+            "Configured",
+            f"{name}: enabled={enabled}, configured={configured}",
+        )
+    except ValueError as e:
+        from sediman.display import print_error
+        print_error(str(e))
+        sys.exit(1)
+
+
+@integration.command("test")
+@click.argument("name")
+@click.option("--target", default=None, help="Target channel/chat to send test message to")
+def integration_test(name: str, target: str | None) -> None:
+    """Test an integration by sending a test message."""
+    import asyncio
+    from sediman.integrations import get_integration, get_config
+    from sediman.display import console, print_success, print_error
+
+    config = get_config()
+    if name not in config:
+        print_error(f"Unknown integration: {name}")
+        sys.exit(1)
+
+    inst = get_integration(name)
+    if not inst:
+        print_error(f"Integration '{name}' is not enabled or configured.")
+        sys.exit(1)
+
+    if not target:
+        targets = config[name].get("channels", config[name].get("chats", {}))
+        if not targets:
+            print_error(f"No targets configured for {name}. Specify --target.")
+            sys.exit(1)
+        target = list(targets.keys())[0]
+
+    console.print(f"  Sending test message via {name} to {target}...")
+
+    async def _test():
+        result = await inst.send(target, "Hello from Sediman! Integration test successful.")
+        return result
+
+    try:
+        result = asyncio.run(_test())
+        print_success("Test passed", result)
+    except Exception as e:
+        print_error("Test failed", str(e))
+        sys.exit(1)
+
+
 @main.command()
 def memory() -> None:
     """Show current agent memory."""
@@ -1036,8 +1231,21 @@ def sessions() -> None:
 )
 @click.option("--model", default=None, help="LLM model to use")
 @click.option("--base-url", default=None, help="Custom API base URL")
+@click.option(
+    "--stealth/--no-stealth",
+    "stealth",
+    default=True,
+    help="Use stealth Chromium (default: on)",
+)
+@click.option("--proxy", default=None, help="Proxy URL for stealth mode")
 def serve(
-    host: str, port: int, provider: str, model: str | None, base_url: str | None
+    host: str,
+    port: int,
+    provider: str,
+    model: str | None,
+    base_url: str | None,
+    stealth: bool,
+    proxy: str | None,
 ) -> None:
     """Start the agent server: API + scheduler + headed browser.
 
@@ -1072,6 +1280,8 @@ async def _record_skill(
     base_url: str | None,
     fps: int,
     max_duration: int,
+    stealth: bool = True,
+    proxy: str | None = None,
 ) -> None:
 
     from sediman.agent.recording_manager import RecordingManager
@@ -1093,7 +1303,7 @@ async def _record_skill(
     print_startup_banner(provider, model, headless=False, mode=f"recording: {name}")
 
     llm = create_provider(provider, model, base_url)
-    browser = BrowserSession(headless=False)
+    browser = BrowserSession(headless=False, stealth=stealth, proxy=proxy)
 
     try:
         console.print(f"  Starting browser for recording [cyan]{name}[/cyan]...")
@@ -1202,10 +1412,12 @@ async def _run_task(
     base_url: str | None,
     headless: bool,
     timeout: int | None = None,
-) -> None:
+    stealth: bool = True,
+    proxy: str | None = None,
+) -> AgentResult | None:
     import time
 
-    from sediman.agent.loop import AgentLoop
+    from sediman.agent.loop import AgentLoop, AgentResult
     from sediman.browser.session import BrowserSession
     from sediman.display import TaskProgress, print_result_panel, print_badges
     from sediman.llm.provider import create_provider
@@ -1218,9 +1430,10 @@ async def _run_task(
     print_startup_banner(provider, model, headless)
 
     llm = create_provider(provider, model, base_url)
-    browser = BrowserSession(headless=headless)
+    browser = BrowserSession(headless=headless, stealth=stealth, proxy=proxy)
 
     progress = TaskProgress()
+    result: AgentResult | None = None
 
     def on_step(event) -> None:
         from sediman.agent.loop import StepEvent
@@ -1261,6 +1474,7 @@ async def _run_task(
             scheduled_job_id=result.scheduled_job_id,
             schedule_cron=result.schedule_cron,
         )
+        return result
 
     except asyncio.TimeoutError:
         progress.stop()
@@ -1275,6 +1489,7 @@ async def _run_task(
         raise
     finally:
         await browser.stop()
+    return result
 
 
 async def _run_skill(
@@ -1283,6 +1498,8 @@ async def _run_skill(
     provider: str,
     base_url: str | None,
     headless: bool,
+    stealth: bool = True,
+    proxy: str | None = None,
 ) -> None:
     import time
 
@@ -1295,7 +1512,7 @@ async def _run_skill(
     await ensure_db()
 
     llm = create_provider(provider, model, base_url)
-    browser = BrowserSession(headless=headless)
+    browser = BrowserSession(headless=headless, stealth=stealth, proxy=proxy)
 
     progress = TaskProgress()
 
@@ -1363,6 +1580,22 @@ async def _show_sessions() -> None:
         table.add_row(str(s["id"])[:8], task_text, s.get("created_at", ""))
 
     console.print(table)
+
+
+def _send_notification(notify: str, text: str) -> None:
+    """Send a notification via integration target (e.g. discord:alerts)."""
+    if ":" not in notify:
+        return
+    integration_name, target = notify.split(":", 1)
+    try:
+        import asyncio
+        from sediman.integrations import get_integration
+        inst = get_integration(integration_name)
+        if inst:
+            asyncio.run(inst.send(target, text))
+    except Exception as e:
+        import structlog
+        structlog.get_logger().warning("notification_failed", notify=notify, error=str(e))
 
 
 if __name__ == "__main__":

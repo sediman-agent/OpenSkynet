@@ -103,6 +103,7 @@ class PermissionRules:
             "list_files": "allow",
             "search_files": "allow",
             "terminal": "allow",
-            "delegate_task": "deny",
+            "skill_manage": "allow",
+            "delegate_task": "allow",
             "*": "deny",
         })

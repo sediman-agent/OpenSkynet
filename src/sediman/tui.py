@@ -158,11 +158,15 @@ class SedimanTUI:
         model: str | None = None,
         base_url: str | None = None,
         headless: bool = False,
+        stealth: bool = True,
+        proxy: str | None = None,
     ):
         self.provider = provider
         self.model = model
         self.base_url = base_url
         self.headless = headless
+        self.stealth = stealth
+        self.proxy = proxy
         self._llm: Any = None
         self._browser: Any = None
         self._agent: Any = None
@@ -207,8 +211,9 @@ class SedimanTUI:
         lines.append("")
 
         mode = "headless" if self.headless else "headed + vision"
+        stealth_label = "stealth" if self.stealth else "vanilla"
         lines.append(
-            f"  \033[32m*\033[0m Browser: {mode}"
+            f"  \033[32m*\033[0m Browser: {mode} ({stealth_label})"
         )
 
         if skills:
@@ -240,7 +245,9 @@ class SedimanTUI:
         if self._browser is None:
             from sediman.browser.session import BrowserSession
 
-            self._browser = BrowserSession(headless=self.headless)
+            self._browser = BrowserSession(
+                headless=self.headless, stealth=self.stealth, proxy=self.proxy
+            )
             await self._browser.start()
         return self._browser
 

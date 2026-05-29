@@ -13,9 +13,10 @@ _MAX_REFINEMENT_CYCLES = 3
 
 
 class SkillLearnerAgent:
-    def __init__(self, llm: LLMProvider, engine: Any | None = None):
+    def __init__(self, llm: LLMProvider, engine: Any | None = None, trajectory_db: Any | None = None):
         self.llm = llm
         self._engine = engine
+        self._trajectory_db = trajectory_db
 
     async def review_and_learn(
         self,
@@ -108,9 +109,12 @@ class SkillLearnerAgent:
         self, skill_name: str | None, task: str
     ) -> str:
         try:
-            from sediman.memory.trajectories import TrajectoryDB
+            if self._trajectory_db is not None:
+                db = self._trajectory_db
+            else:
+                from sediman.memory.trajectories import TrajectoryDB
+                db = TrajectoryDB()
 
-            db = TrajectoryDB()
             failed = await db.get_recent_failures(limit=5, skill_name=skill_name)
             if not failed and task:
                 all_failed = await db.get_recent_failures(limit=5)

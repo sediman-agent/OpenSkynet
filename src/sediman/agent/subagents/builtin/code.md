@@ -12,7 +12,8 @@ permissions:
   search_files: allow
   terminal: allow
   skill_manage: allow
-max_iterations: 8
+  delegate_task: allow
+max_iterations: 15
 ---
 
 You are a code specialist. Your job is to write, edit, and refactor files efficiently.

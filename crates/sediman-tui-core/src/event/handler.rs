@@ -8,53 +8,51 @@ use super::message::AppEvent;
 
 pub struct EventLoop {
     tick_interval: Duration,
-    event_tx: mpsc::UnboundedSender<AppEvent>,
-    event_rx: mpsc::UnboundedReceiver<AppEvent>,
+    out_tx: mpsc::UnboundedSender<AppEvent>,
 }
 
 impl EventLoop {
-    pub fn new(tick_hz: f64) -> Self {
-        let (event_tx, event_rx) = mpsc::unbounded_channel();
+    pub fn new(tick_hz: f64, out_tx: mpsc::UnboundedSender<AppEvent>) -> Self {
         Self {
             tick_interval: Duration::from_secs_f64(1.0 / tick_hz),
-            event_tx,
-            event_rx,
+            out_tx,
         }
     }
 
     pub fn sender(&self) -> mpsc::UnboundedSender<AppEvent> {
-        self.event_tx.clone()
+        self.out_tx.clone()
     }
 
-    pub async fn run<F, Fut>(mut self, mut on_event: F)
-    where
-        F: FnMut(AppEvent) -> Fut,
-        Fut: std::future::Future<Output = ()>,
-    {
+    pub async fn run(self) {
         let mut reader = EventStream::new();
         let mut ticker = tokio::time::interval(self.tick_interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let tx = self.out_tx;
 
         loop {
-            tokio::select! {
-                _ = ticker.tick() => {
-                    on_event(AppEvent::Tick).await;
-                }
+            let event = tokio::select! {
+                _ = ticker.tick() => Some(AppEvent::Tick),
                 Some(Ok(event)) = reader.next() => {
                     match event {
                         Event::Key(key) if key.kind == KeyEventKind::Press => {
-                            on_event(AppEvent::Key(key)).await;
+                            Some(AppEvent::Key(key))
+                        }
+                        Event::Mouse(mouse) => {
+                            Some(AppEvent::Mouse(mouse))
                         }
                         Event::Resize(w, h) => {
-                            on_event(AppEvent::Resize(w, h)).await;
+                            Some(AppEvent::Resize(w, h))
                         }
-                        _ => {}
+                        _ => None,
                     }
                 }
-                Some(msg) = self.event_rx.recv() => {
-                    on_event(msg).await;
+                else => None,
+            };
+
+            if let Some(ev) = event {
+                if tx.send(ev).is_err() {
+                    break;
                 }
-                else => break,
             }
         }
     }

@@ -1,19 +1,29 @@
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import structlog
 
+from sediman.agent.sandbox_runner import SandboxRunner, get_sandbox_dirs
 from sediman.agent.tool_dispatch import ToolResult
 
 logger = structlog.get_logger()
+
+_runner: SandboxRunner | None = None
+
+
+def _get_runner() -> SandboxRunner:
+    global _runner
+    if _runner is None:
+        _runner = SandboxRunner()
+    return _runner
 
 
 async def _handle_terminal(
     command: str | None = None,
     cwd: str | None = None,
     timeout: int = 30,
+    allow_net: bool = False,
     **kwargs: Any,
 ) -> ToolResult:
     if not command or not command.strip():
@@ -21,14 +31,6 @@ async def _handle_terminal(
 
     command = command.strip()
     timeout = max(1, min(timeout, 180))
-
-    from ..tools import _is_dangerous
-    if _is_dangerous(command):
-        return ToolResult(
-            success=False,
-            output=f"Command blocked (dangerous pattern): {command[:100]}",
-            data={"command": command, "blocked": True, "dangerous_pattern": True},
-        )
 
     from ..tools import _terminal_session_allowed, _terminal_approval_callback
     if not _terminal_session_allowed:
@@ -47,39 +49,34 @@ async def _handle_terminal(
                 data={"command": command, "denied": True},
             )
 
-    try:
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd or None,
+    runner = _get_runner()
+    allow_dirs = get_sandbox_dirs(cwd)
+
+    result = await runner.run(
+        command=command,
+        cwd=cwd,
+        timeout=timeout,
+        allow_dirs=allow_dirs,
+        allow_net=allow_net,
+    )
+
+    if not result.sandboxed:
+        logger.warning(
+            "terminal_ran_without_sandbox",
+            command=command[:80],
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        parts: list[str] = []
-        if stdout:
-            parts.append(stdout.decode(errors="replace"))
-        if stderr:
-            parts.append(stderr.decode(errors="replace"))
-        output = "\n".join(parts) if parts else "(no output)"
-        if proc.returncode != 0:
-            output += f"\n[exit code: {proc.returncode}]"
-        if len(output) > 10000:
-            output = output[:10000] + "\n... (output truncated)"
-        return ToolResult(
-            success=proc.returncode == 0,
-            output=output,
-            data={"command": command, "exit_code": proc.returncode},
-        )
-    except asyncio.TimeoutError:
-        try:
-            proc.kill()
-        except ProcessLookupError:
-            pass
-        return ToolResult(
-            success=False,
-            output=f"Command timed out after {timeout}s: {command[:100]}",
-            data={"command": command, "timed_out": True},
-        )
-    except (OSError, asyncio.CancelledError) as e:
-        logger.error("terminal_execution_error", command=command[:100], error=str(e))
-        return ToolResult(success=False, output=f"Command failed: {e}")
+
+    output = result.output
+    if len(output) > 10000:
+        output = output[:10000] + "\n... (output truncated)"
+
+    return ToolResult(
+        success=result.success,
+        output=output,
+        data={
+            "command": command,
+            "exit_code": result.exit_code,
+            "sandboxed": result.sandboxed,
+            "timed_out": result.timed_out,
+        },
+    )

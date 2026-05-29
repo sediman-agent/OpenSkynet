@@ -6,25 +6,23 @@ pub async fn handle_sessions(app: &mut App, _args: &str) {
     match app.bridge.get_sessions().await {
         Ok(sessions) => {
             if sessions.is_empty() {
-                app.step_log.push("  No sessions yet.".into());
+                app.add_system_message("No sessions yet.".into());
                 return;
             }
-            app.step_log.push(format!(" Recent Sessions ({})", sessions.len()));
+            app.add_system_message(format!("Recent Sessions ({})", sessions.len()));
             for s in &sessions {
                 let task = if s.task.len() > 50 {
                     format!("{}...", &s.task[..47])
                 } else {
                     s.task.clone()
                 };
-                app.step_log.push(format!(
-                    "  [{}] {} — {}",
-                    s.id,
-                    task,
-                    s.created_at
+                app.add_system_message(format!(
+                    "  [{}] {} - {}",
+                    s.id, task, s.created_at
                 ));
             }
         }
-        Err(e) => app.step_log.push(format!("✗ Failed: {}", e)),
+        Err(e) => app.add_error_message(format!("Failed: {}", e)),
     }
 }
 
@@ -32,20 +30,20 @@ pub async fn handle_resume(app: &mut App, _args: &str) {
     match app.bridge.get_sessions().await {
         Ok(sessions) => {
             if sessions.is_empty() {
-                app.step_log.push("  No sessions to resume.".into());
+                app.add_system_message("No sessions to resume.".into());
                 return;
             }
-            app.step_log.push(" Recent sessions — use /sessions for details:".into());
+            app.add_system_message("Recent sessions - use /sessions for details:".into());
             for (i, s) in sessions.iter().take(10).enumerate() {
                 let task = if s.task.len() > 55 {
                     format!("{}...", &s.task[..52])
                 } else {
                     s.task.clone()
                 };
-                app.step_log.push(format!("  {}. [{}] {}", i + 1, s.id, task));
+                app.add_system_message(format!("  {}. [{}] {}", i + 1, s.id, task));
             }
         }
-        Err(e) => app.step_log.push(format!("✗ Failed: {}", e)),
+        Err(e) => app.add_error_message(format!("Failed: {}", e)),
     }
 }
 

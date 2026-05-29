@@ -26,7 +26,7 @@ class TestBrowserSubagentInit:
         browser = MagicMock()
         llm = MagicMock()
         agent = BrowserSubagent(browser_session=browser, llm_provider=llm)
-        assert agent.max_steps == 50
+        assert agent.max_steps == 25
 
     def test_custom_max_steps(self):
         agent = BrowserSubagent(browser_session=MagicMock(), llm_provider=MagicMock(), max_steps=20)

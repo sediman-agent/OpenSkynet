@@ -3,17 +3,13 @@ use sediman_tui_core::command::{Command, CommandCategory};
 use crate::app::App;
 
 pub async fn handle_plan(app: &mut App, _args: &str) {
-    if app.permission.current_label() == "plan" {
-        app.permission.set_plan_mode(!app.permission.is_plan_mode());
-        if app.permission.is_plan_mode() {
-            app.step_log.push("ℹ Plan mode on — research only, no changes.".into());
-        } else {
-            app.step_log.push("ℹ Plan mode off.".into());
-        }
+    if app.permission.is_plan_mode() {
+        app.permission.set_plan_mode(false);
+        app.add_system_message("Plan mode off.".into());
     } else {
         app.permission.set_plan_mode(true);
-        app.step_log.push("ℹ Plan mode: researching without making changes.".into());
-        app.step_log.push("  Type /plan again to toggle off.".into());
+        app.add_system_message("Plan mode: researching without making changes.".into());
+        app.add_system_message("Type /plan again to toggle off.".into());
     }
 }
 

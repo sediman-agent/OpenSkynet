@@ -44,8 +44,21 @@ class SkillAuditor:
                 }
                 skill_details.append(detail)
 
+        # Fast-path: rule-based staleness check first
         stale_names = self._identify_stale(skill_details)
+        if not stale_names:
+            return {"actions": [], "summary": "All skills are active. No audit actions needed."}
 
+        # Only call LLM if there are actually stale skills to act on
+        actions = []
+        for name in stale_names:
+            actions.append({
+                "skill_name": name,
+                "action": "archive",
+                "reason": f"Skill has not been used in >{_STALE_THRESHOLD_DAYS} days.",
+            })
+
+        # Optionally run LLM audit for additional insights beyond staleness
         system_prompt = self._build_prompt(skill_details, stale_names)
         messages = [
             {"role": "system", "content": system_prompt},
@@ -55,16 +68,22 @@ class SkillAuditor:
         try:
             response = await self.llm.chat(messages=messages, tools=[])
             if not response.text:
-                return {"actions": [], "summary": "Audit produced no response."}
+                return {"actions": actions, "summary": f"Auto-archived {len(stale_names)} stale skill(s)."}
 
             result = self._parse_response(response.text)
             if result:
                 await self._apply_actions(result, engine)
-            return result or {"actions": [], "summary": "Audit could not parse response."}
-
+                # Merge rule-based actions with LLM actions
+                llm_actions = result.get("actions", [])
+                seen = {a["skill_name"] for a in actions}
+                for a in llm_actions:
+                    if a["skill_name"] not in seen:
+                        actions.append(a)
+                return {"actions": actions, "summary": result.get("summary", f"Audited {len(actions)} skill(s).")}
         except Exception as e:
             logger.warning("skill_audit_failed", error=str(e))
-            return {"actions": [], "summary": f"Audit failed: {e}"}
+
+        return {"actions": actions, "summary": f"Auto-archived {len(stale_names)} stale skill(s)."}
 
     def _identify_stale(self, skills: list[dict[str, Any]]) -> list[str]:
         now = datetime.now(timezone.utc)

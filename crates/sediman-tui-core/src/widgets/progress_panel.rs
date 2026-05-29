@@ -1,19 +1,13 @@
-use ratatui::{
-    layout::{Alignment, Rect},
-    style::{Color, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
-    Frame,
-};
+use crate::renderer::{CellBuffer, Color, Rect, Style};
 
 const PHASE_SYMBOLS: &[(&str, &str, Color)] = &[
-    ("planning", "◈", Color::Yellow),
-    ("executing", "▶", Color::Blue),
-    ("observing", "◎", Color::Cyan),
-    ("reflecting", "◆", Color::Magenta),
-    ("delegating", "◇", Color::Green),
-    ("done", "✓", Color::Green),
-    ("failed", "✗", Color::Red),
+    ("planning", "◈", Color::YELLOW),
+    ("executing", "▶", Color::BLUE),
+    ("observing", "◎", Color::CYAN),
+    ("reflecting", "◆", Color::MAGENTA),
+    ("delegating", "◇", Color::GREEN),
+    ("done", "✓", Color::GREEN),
+    ("failed", "✗", Color::RED),
 ];
 
 pub struct ProgressPanel<'a> {
@@ -24,44 +18,51 @@ pub struct ProgressPanel<'a> {
 }
 
 impl<'a> ProgressPanel<'a> {
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
-        let title = format!(
-            "  ⏳ {}s  {}",
-            self.elapsed.as_secs(),
-            self.spinner_text
-        );
+    pub fn render(&self, buf: &mut CellBuffer, area: Rect) {
+        let title = format!("  ⏳ {}s  {}", self.elapsed.as_secs(), self.spinner_text);
+        // Draw border box.
+        draw_border_box(buf, area, Color::BLUE, &title);
 
-        let lines: Vec<Line> = self
-            .step_log
-            .iter()
-            .rev()
-            .take(self.visible_lines)
-            .rev()
-            .map(|s| {
-                let (symbol, color) = PHASE_SYMBOLS
-                    .iter()
-                    .find(|(name, _, _)| s.contains(name))
-                    .map(|(_, sym, color)| (*sym, *color))
-                    .unwrap_or(("", Color::White));
+        let inner = area.inner(1, 1, 1, 1);
+        let mut y = inner.y;
+        for line in self.step_log.iter().rev().take(self.visible_lines).rev() {
+            if y >= inner.bottom() {
+                break;
+            }
+            let (symbol, color) = PHASE_SYMBOLS
+                .iter()
+                .find(|(name, _, _)| line.contains(name))
+                .map(|(_, sym, color)| (*sym, *color))
+                .unwrap_or(("", Color::WHITE));
 
-                Line::from(Span::styled(
-                    format!("{} {}", symbol, s),
-                    Style::new().fg(color),
-                ))
-            })
-            .collect();
+            let full_line = format!("{} {}", symbol, line);
+            buf.draw_str(inner.x, y, &full_line, Style::new().fg(color));
+            y += 1;
+        }
+    }
+}
 
-        let paragraph = Paragraph::new(lines)
-            .block(
-                Block::default()
-                    .title(title)
-                    .title_alignment(Alignment::Left)
-                    .borders(Borders::ALL)
-                    .border_style(Style::new().fg(Color::Blue)),
-            )
-            .wrap(Wrap { trim: false });
-
-        frame.render_widget(paragraph, area);
+fn draw_border_box(buf: &mut CellBuffer, area: Rect, color: Color, title: &str) {
+    let style = Style::new().fg(color);
+    // Top + bottom.
+    for x in area.x..area.right() {
+        buf.put_char(x, area.y, '─', style);
+        buf.put_char(x, area.y + area.height - 1, '─', style);
+    }
+    // Sides.
+    for y in area.y + 1..area.y + area.height - 1 {
+        buf.put_char(area.x, y, '│', style);
+        buf.put_char(area.x + area.width - 1, y, '│', style);
+    }
+    // Corners.
+    buf.put_char(area.x, area.y, '┌', style);
+    buf.put_char(area.x + area.width - 1, area.y, '┐', style);
+    buf.put_char(area.x, area.y + area.height - 1, '└', style);
+    buf.put_char(area.x + area.width - 1, area.y + area.height - 1, '┘', style);
+    // Title.
+    if !title.is_empty() {
+        let tl = title.len().min(area.width as usize - 2);
+        buf.draw_str(area.x + 1, area.y, &title[..tl], style);
     }
 }
 
@@ -108,7 +109,6 @@ mod tests {
             spinner_text: "test",
             visible_lines: 50,
         };
-        // Only last 50 lines should be visible
         assert_eq!(panel.visible_lines, 50);
     }
 

@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
+
 from sediman.agent.tool_dispatch import ToolResult
 
 from .skills import _TodoStore
 from . import get_memory_manager as _get_memory_manager
+
+logger = structlog.get_logger()
 
 
 def _memory_manager():
@@ -327,12 +331,42 @@ async def _handle_web_search(query: str, **kwargs: Any) -> ToolResult:
     )
 
 
-async def _handle_delegate_task(task: str, **kwargs: Any) -> ToolResult:
-    return ToolResult(
-        success=True,
-        output=f"Task delegation queued: {task[:100]}",
-        data={"task": task, "delegated": True},
-    )
+async def _handle_delegate_task(task: str, agent_type: str = "browser", **kwargs: Any) -> ToolResult:
+    if not task or not task.strip():
+        return ToolResult(success=False, output="task is required.")
+
+    from . import get_subagent_factory
+    factory = get_subagent_factory()
+    if factory is None:
+        return ToolResult(
+            success=True,
+            output=f"Task queued for delegation: {task[:100]}",
+            data={"task": task, "agent_type": agent_type, "delegated": True},
+        )
+
+    try:
+        result = await factory.spawn(
+            agent_type=agent_type,
+            task=task.strip(),
+            parent_context={},
+        )
+        return ToolResult(
+            success=result.success,
+            output=result.summary or "No result from subagent.",
+            data={
+                "task": task,
+                "agent_type": agent_type,
+                "success": result.success,
+                "artifacts": [a.to_dict() if hasattr(a, 'to_dict') else str(a) for a in (result.artifacts or [])],
+            },
+        )
+    except Exception as e:
+        logger.error("delegate_task_failed", error=str(e))
+        return ToolResult(
+            success=False,
+            output=f"Subagent delegation failed: {e}",
+            data={"task": task, "agent_type": agent_type, "delegated": False},
+        )
 
 
 async def _handle_get_schedule_results(

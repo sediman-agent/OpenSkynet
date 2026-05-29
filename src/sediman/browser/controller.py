@@ -37,6 +37,11 @@ class ElementInfo:
     is_visible: bool = True
     bounding_box: dict[str, float] | None = None
     children: list[ElementInfo] = field(default_factory=list)
+    level: str = ""
+    checked: str = ""
+    disabled: str = ""
+    selected: str = ""
+    required: str = ""
 
 
 @dataclass
@@ -143,13 +148,33 @@ class BrowserController:
         self._started = False
         logger.info("browser_controller_stopped")
 
+    # ── Overlay Dismissal ─────────────────────────────────────
+
+    async def dismiss_overlays(self) -> str:
+        """Detect and dismiss common popup/cookie/banner overlays."""
+        if not self._page:
+            return ""
+        try:
+            dismissed = await self._page.evaluate(_DISMISS_OVERLAYS_JS)
+            if dismissed:
+                self._emit_step("dismiss_overlay", f"Removed {dismissed} overlay(s)")
+                return f"Dismissed {dismissed} overlay(s)"
+            return ""
+        except Exception as e:
+            logger.debug("dismiss_overlays_failed", error=str(e))
+            return ""
+
     # ── Core Actions ───────────────────────────────────────
 
     async def navigate(self, url: str) -> str:
         if not self._page:
             return "Browser not started."
         try:
-            response = await self._page.goto(url, wait_until="networkidle", timeout=30000)
+            response = await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            try:
+                await self._page.wait_for_load_state("networkidle", timeout=5000)
+            except Exception:
+                pass
             final_url = self._page.url
             status = response.status if response else "unknown"
             self._emit_step("navigate", f"{final_url} (status: {status})")
@@ -162,8 +187,7 @@ class BrowserController:
         if not self._page:
             return "Browser not started."
         try:
-            selector = f'[data-sediman-ref-id="{ref_id}"]'
-            element = await self._page.query_selector(selector)
+            element = await self._resolve_element(ref_id)
             if not element:
                 return f"Element [ref_id={ref_id}] not found on page. Try browser_snapshot() to see available elements."
             tag = await element.evaluate("el => el.tagName.toLowerCase()")
@@ -179,8 +203,7 @@ class BrowserController:
         if not self._page:
             return "Browser not started."
         try:
-            selector = f'[data-sediman-ref-id="{ref_id}"]'
-            element = await self._page.query_selector(selector)
+            element = await self._resolve_element(ref_id)
             if not element:
                 return f"Element [ref_id={ref_id}] not found on page. Try browser_snapshot() to see available elements."
             tag = await element.evaluate("el => el.tagName.toLowerCase()")
@@ -192,6 +215,64 @@ class BrowserController:
         except Exception as e:
             logger.warning("type_failed", ref_id=ref_id, error=str(e))
             return f"Type failed for [ref_id={ref_id}]: {e}"
+
+    async def _resolve_element(self, ref_id: int):
+        """Cascading element resolution: ref_id -> aria -> text -> role."""
+        if not self._page:
+            return None
+
+        selector = f'[data-sediman-ref-id="{ref_id}"]'
+        element = await self._page.query_selector(selector)
+        if element:
+            return element
+
+        snapshot = await self.snapshot()
+        target = None
+        for el in snapshot.elements:
+            if el.ref_id == ref_id:
+                target = el
+                break
+
+        if not target:
+            return None
+
+        if target.aria_label:
+            el = await self._page.query_selector(f'[aria-label="{target.aria_label}"]')
+            if el:
+                return el
+
+        if target.href and target.tag == 'a':
+            el = await self._page.query_selector(f'a[href="{target.href}"]')
+            if el:
+                return el
+
+        if target.text and len(target.text) > 3:
+            escaped = target.text[:60].replace('"', '\\"')
+            for tag_match in [target.tag, 'button', 'a', 'span', 'div']:
+                el = await self._page.query_selector(
+                    f'{tag_match}:text-is("{escaped}")'
+                )
+                if el:
+                    return el
+            el = await self._page.query_selector(f':text("{escaped}")')
+            if el:
+                return el
+
+        if target.role and target.tag in ('button', 'a', 'input'):
+            el = await self._page.query_selector(f'[role="{target.role}"]')
+            if el:
+                count = await self._page.evaluate(
+                    f'document.querySelectorAll(\'[role="{target.role}"]\').length'
+                )
+                if count == 1:
+                    return el
+
+        if target.placeholder:
+            el = await self._page.query_selector(f'[placeholder="{target.placeholder}"]')
+            if el:
+                return el
+
+        return None
 
     async def scroll(self, direction: str = "down", amount: int = 300) -> str:
         if not self._page:
@@ -228,7 +309,11 @@ class BrowserController:
         if not self._page:
             return "Browser not started."
         try:
-            await self._page.go_back(wait_until="networkidle")
+            await self._page.go_back(wait_until="domcontentloaded")
+            try:
+                await self._page.wait_for_load_state("networkidle", timeout=3000)
+            except Exception:
+                pass
             self._emit_step("go_back", self._page.url)
             return f"Went back to {self._page.url}"
         except Exception as e:
@@ -238,7 +323,11 @@ class BrowserController:
         if not self._page:
             return "Browser not started."
         try:
-            await self._page.go_forward(wait_until="networkidle")
+            await self._page.go_forward(wait_until="domcontentloaded")
+            try:
+                await self._page.wait_for_load_state("networkidle", timeout=3000)
+            except Exception:
+                pass
             self._emit_step("go_forward", self._page.url)
             return f"Went forward to {self._page.url}"
         except Exception as e:
@@ -248,7 +337,11 @@ class BrowserController:
         if not self._page:
             return "Browser not started."
         try:
-            await self._page.reload(wait_until="networkidle")
+            await self._page.reload(wait_until="domcontentloaded")
+            try:
+                await self._page.wait_for_load_state("networkidle", timeout=3000)
+            except Exception:
+                pass
             self._emit_step("refresh", self._page.url)
             return f"Refreshed {self._page.url}"
         except Exception as e:
@@ -283,6 +376,8 @@ class BrowserController:
         if not self._page:
             return PageSnapshot(url="", title="", elements=[])
 
+        await self.dismiss_overlays()
+
         url = self._page.url
         title = await self._page.title()
 
@@ -304,11 +399,16 @@ class BrowserController:
                 aria_label=raw.get("ariaLabel", ""),
                 title=raw.get("title", ""),
                 is_visible=raw.get("isVisible", True),
+                level=raw.get("level", ""),
+                checked=raw.get("checked", ""),
+                disabled=raw.get("disabled", ""),
+                selected=raw.get("selected", ""),
+                required=raw.get("required", ""),
             )
             elements.append(info)
 
         # Extract text preview (first 2000 chars)
-        text_preview = await self._page.evaluate("() => document.body.innerText.slice(0,2000)")
+        text_preview = await self._page.evaluate("() => document.body.innerText.slice(0,4000)")
 
         scroll_position = await self._page.evaluate(
             "() => ({x: window.scrollX, y: window.scrollY})"
@@ -400,65 +500,258 @@ class BrowserController:
 
 # ── JavaScript for snapshotting ─────────────────────────
 
+_DISMISS_OVERLAYS_JS = """
+(() => {
+    let count = 0;
+    const overlaySelectors = [
+        '[id*="cookie" i]', '[class*="cookie" i]', '[id*="consent" i]',
+        '[class*="consent" i]', '[class*="gdpr" i]', '[class*="banner" i]',
+        '[id*="banner" i]', '[class*="popup" i]', '[class*="modal-overlay" i]',
+        '[class*="lightbox" i]', '[class*="newsletter" i]', '[class*="subscribe" i]',
+        '[id*="onetrust" i]', '[class*="onetrust" i]', '[id*="didomi" i]',
+        '[class*="didomi" i]', '[id*="accept" i].overlay', '[class*="cc-banner" i]',
+        '[class*="toast" i]', '[class*="notification-bar" i]',
+        '[aria-modal="true"][role="dialog"]',
+    ];
+
+    const acceptButtons = [
+        'button[id*="accept" i]', 'button[class*="accept" i]',
+        'button[id*="agree" i]', 'button[class*="agree" i]',
+        'button[id*="allow" i]', 'button[class*="allow" i]',
+        'button[id*="consent" i]', 'button[class*="consent" i]',
+        'button[id*="got-it" i]', 'button[class*="got-it" i]',
+        'button[id*="close" i]', 'button[class*="close" i]',
+        'a[id*="accept" i]', 'a[class*="accept" i]',
+        '[class*="dismiss" i]', '[aria-label*="close" i]',
+        '[aria-label*="accept" i]', '[aria-label*="dismiss" i]',
+    ];
+
+    for (const sel of acceptButtons) {
+        try {
+            const btns = document.querySelectorAll(sel);
+            for (const btn of btns) {
+                const rect = btn.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {
+                    const text = (btn.textContent || '').trim().toLowerCase();
+                    if (text.length < 50 && (
+                        text.includes('accept') || text.includes('agree') ||
+                        text.includes('allow') || text.includes('got it') ||
+                        text.includes('ok') || text.includes('close') ||
+                        text.includes('dismiss') || text.includes('continue')
+                    )) {
+                        btn.click();
+                        count++;
+                        break;
+                    }
+                }
+            }
+            if (count > 0) break;
+        } catch(e) {}
+    }
+
+    for (const sel of overlaySelectors) {
+        try {
+            const els = document.querySelectorAll(sel);
+            for (const el of els) {
+                const style = window.getComputedStyle(el);
+                if (style.position === 'fixed' || style.position === 'absolute') {
+                    const rect = el.getBoundingClientRect();
+                    if (rect.width > window.innerWidth * 0.3 || rect.height > window.innerHeight * 0.3) {
+                        el.remove();
+                        count++;
+                    }
+                }
+            }
+        } catch(e) {}
+    }
+
+    return count;
+})()
+"""
+
 _SNAPSHOT_JS = """
 (() => {
-    // Remove old ref IDs
     document.querySelectorAll('[data-sediman-ref-id]').forEach(el => {
         el.removeAttribute('data-sediman-ref-id');
     });
+
+    const MAX_ELEMENTS = 120;
     let counter = 0;
-    const results = [];
-    const interactiveTags = new Set([
+
+    const INTERACTIVE_TAGS = new Set([
         'a', 'button', 'input', 'textarea', 'select', 'option', 'label',
         'form', 'details', 'summary', 'nav', 'menu', 'menuitem'
     ]);
-    const walk = (node) => {
-        if (node.nodeType !== 1) return; // not element
-        const tag = node.tagName.toLowerCase();
-        const style = window.getComputedStyle(node);
-        const isVisible = style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    const HEADING_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+    const CONTENT_TAGS = new Set([
+        'p', 'span', 'div', 'li', 'td', 'th', 'tr', 'table', 'thead', 'tbody',
+        'ol', 'ul', 'dl', 'dt', 'dd', 'section', 'article', 'main', 'aside',
+        'header', 'footer', 'figure', 'figcaption', 'blockquote', 'pre', 'code',
+        'strong', 'em', 'b', 'i', 'mark', 'small', 'sub', 'sup', 'time',
+        'address', 'cite', 'caption', 'summary', 'details'
+    ]);
+    const SKIP_TAGS = new Set([
+        'script', 'style', 'noscript', 'svg', 'path', 'meta', 'link', 'head',
+        'br', 'hr', 'wbr', 'template', 'slot', 'iframe'
+    ]);
+
+    const results = [];
+
+    function isVisuallyInViewport(node) {
         const rect = node.getBoundingClientRect();
-        const inViewport = rect.top < window.innerHeight && rect.bottom > 0 && rect.width > 0 && rect.height > 0;
-        const isInteractive = interactiveTags.has(tag) ||
-            node.onclick || node.getAttribute('onclick') ||
-            node.getAttribute('role') ||
-            node.tagName === 'A' || node.tagName === 'BUTTON' ||
-            (node.tagName === 'INPUT' && node.type !== 'hidden');
-        if ((isInteractive || tag === 'img' || tag === 'h1' || tag === 'h2' || tag === 'h3') && isVisible && inViewport) {
+        if (rect.width === 0 && rect.height === 0) return false;
+        const buffer = 200;
+        return rect.bottom > -buffer && rect.top < window.innerHeight + buffer &&
+               rect.right > -buffer && rect.left < window.innerWidth + buffer;
+    }
+
+    function isHidden(node) {
+        const style = window.getComputedStyle(node);
+        return style.display === 'none' || style.visibility === 'hidden' ||
+               style.opacity === '0' || style.clip === 'rect(0px, 0px, 0px, 0px)';
+    }
+
+    function getDirectText(node) {
+        let text = '';
+        for (const child of node.childNodes) {
+            if (child.nodeType === 3) {
+                text += child.textContent;
+            }
+        }
+        return text.trim().slice(0, 300);
+    }
+
+    function getRole(node, tag) {
+        const explicit = node.getAttribute('role');
+        if (explicit) return explicit;
+        const roleMap = {
+            'a': node.hasAttribute('href') ? 'link' : '',
+            'button': 'button',
+            'input': 'textbox',
+            'textarea': 'textbox',
+            'select': 'combobox',
+            'option': 'option',
+            'li': 'listitem',
+            'ul': 'list',
+            'ol': 'list',
+            'table': 'table',
+            'tr': 'row',
+            'td': 'cell',
+            'th': 'columnheader',
+            'thead': 'rowgroup',
+            'tbody': 'rowgroup',
+            'nav': 'navigation',
+            'main': 'main',
+            'header': 'banner',
+            'footer': 'contentinfo',
+            'form': 'form',
+            'img': 'img',
+            'h1': 'heading', 'h2': 'heading', 'h3': 'heading',
+            'h4': 'heading', 'h5': 'heading', 'h6': 'heading',
+            'details': 'group',
+            'summary': 'button',
+            'dialog': 'dialog',
+            'section': 'region',
+            'article': 'article',
+            'aside': 'complementary',
+            'figure': 'figure',
+            'figcaption': 'caption',
+        };
+        return roleMap[tag] || '';
+    }
+
+    function shouldInclude(node, tag) {
+        if (SKIP_TAGS.has(tag)) return false;
+        if (isHidden(node)) return false;
+
+        if (INTERACTIVE_TAGS.has(tag)) return true;
+        if (HEADING_TAGS.has(tag)) return true;
+        if (tag === 'img') return true;
+
+        if (node.getAttribute('role')) return true;
+        if (node.getAttribute('aria-label')) return true;
+        if (node.getAttribute('onclick') || node.onclick) return true;
+        if (node.getAttribute('tabindex') && node.getAttribute('tabindex') !== '-1') return true;
+        if (tag === 'input' && node.type !== 'hidden') return true;
+
+        if (CONTENT_TAGS.has(tag)) {
+            const directText = getDirectText(node);
+            const hasChildElements = node.children.length > 0;
+            if (directText.length > 0 || hasChildElements) return true;
+        }
+
+        return false;
+    }
+
+    function walk(node, depth) {
+        if (counter >= MAX_ELEMENTS) return;
+        if (depth > 15) return;
+
+        const tag = node.tagName.toLowerCase();
+        if (SKIP_TAGS.has(tag)) return;
+        if (isHidden(node)) return;
+
+        if (shouldInclude(node, tag)) {
+            const inViewport = isVisuallyInViewport(node);
+
             counter++;
             node.setAttribute('data-sediman-ref-id', String(counter));
-            const text = (node.innerText || node.textContent || '').trim().slice(0, 200);
-            const placeholder = node.getAttribute('placeholder') || '';
+
+            const ownText = getDirectText(node);
+            const fullText = (node.innerText || node.textContent || '').trim().slice(0, 200);
+            const displayText = ownText.length > 0 ? ownText : (fullText !== ownText ? fullText.slice(0, 150) : '');
+
+            const role = getRole(node, tag);
             const ariaLabel = node.getAttribute('aria-label') || '';
-            const title = node.getAttribute('title') || '';
-            const role = node.getAttribute('role') || '';
-            results.push({
+            const placeholder = node.getAttribute('placeholder') || '';
+            const href = node.getAttribute('href') || '';
+            const src = node.getAttribute('src') || '';
+            const alt = node.getAttribute('alt') || '';
+            const inputType = node.getAttribute('type') || '';
+            const value = (node.value !== undefined && node.value !== null) ? String(node.value) : '';
+            const titleAttr = node.getAttribute('title') || '';
+            const checked = node.checked != null ? String(!!node.checked) : '';
+            const disabled = node.disabled ? 'true' : '';
+            const selected = node.selected != null ? String(!!node.selected) : '';
+            const level = HEADING_TAGS.has(tag) ? tag.replace('h', '') : (node.getAttribute('aria-level') || '');
+            const required = node.required ? 'true' : '';
+
+            const entry = {
                 ref_id: counter,
                 tag: tag,
-                text: text,
+                text: displayText,
                 role: role,
                 placeholder: placeholder,
-                href: node.getAttribute('href') || '',
-                src: node.getAttribute('src') || '',
-                alt: node.getAttribute('alt') || '',
-                type: node.getAttribute('type') || '',
-                value: node.value || '',
+                href: href.startsWith('javascript:') ? '' : href,
+                src: src,
+                alt: alt,
+                type: inputType,
+                value: value.slice(0, 80),
                 ariaLabel: ariaLabel,
-                title: title,
-                isVisible: true,
-            });
+                title: titleAttr,
+                isVisible: inViewport,
+            };
+            if (level) entry.level = level;
+            if (checked) entry.checked = checked;
+            if (disabled) entry.disabled = disabled;
+            if (selected) entry.selected = selected;
+            if (required) entry.required = required;
+
+            results.push(entry);
         }
+
         for (const child of node.children) {
-            walk(child);
+            walk(child, depth + 1);
         }
-    };
-    walk(document.body);
+    }
+
+    walk(document.body, 0);
     return results;
 })()
 """
 
 
-def format_snapshot(snapshot: PageSnapshot, max_elements: int = 50) -> str:
+def format_snapshot(snapshot: PageSnapshot, max_elements: int = 80) -> str:
     """Format a PageSnapshot into a text representation for LLM consumption."""
     lines = []
     lines.append(f"URL: {snapshot.url}")
@@ -469,34 +762,52 @@ def format_snapshot(snapshot: PageSnapshot, max_elements: int = 50) -> str:
 
     elements = snapshot.elements[:max_elements]
     if not elements:
-        lines.append("No interactive elements found on the page.")
+        lines.append("No elements found on the page.")
     else:
-        lines.append(f"Interactive elements ({len(elements)} shown):")
+        lines.append(f"Page elements ({len(elements)} shown):")
         for el in elements:
-            parts = [f"[{el.ref_id}] {el.tag}"]
-            if el.role:
+            parts = [f"[{el.ref_id}]"]
+            tag_label = el.tag.upper() if el.tag in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6') else el.tag
+            if el.level and el.role == 'heading':
+                tag_label = f"h{el.level}"
+            parts.append(tag_label)
+
+            if el.role and el.role != el.tag:
                 parts.append(f"role={el.role}")
             if el.text:
-                parts.append(f'"{el.text[:80]}"')
+                display = el.text[:120].replace('\n', ' ')
+                parts.append(f'"{display}"')
             if el.placeholder:
                 parts.append(f"placeholder=\"{el.placeholder[:40]}\"")
             if el.aria_label:
-                parts.append(f"aria-label=\"{el.aria_label[:40]}\"")
+                parts.append(f"aria=\"{el.aria_label[:40]}\"")
             if el.href:
-                parts.append(f"href={el.href[:60]}")
+                parts.append(f"href={el.href[:80]}")
             if el.src:
                 parts.append(f"src={el.src[:60]}")
             if el.alt:
                 parts.append(f"alt=\"{el.alt[:40]}\"")
-            if el.type:
+            if el.type and el.tag in ('input', 'button'):
                 parts.append(f"type={el.type}")
-            if el.value:
-                parts.append(f"value=\"{el.value[:40]}\"")
-            lines.append("  " + " ".join(parts[1:]) if len(parts) > 1 else "  " + parts[0])
+            if el.value and el.tag in ('input', 'textarea', 'select'):
+                display_val = el.value[:40]
+                parts.append(f"val=\"{display_val}\"")
+            if el.checked:
+                parts.append(f"checked={el.checked}")
+            if el.disabled:
+                parts.append("disabled")
+            if el.selected:
+                parts.append(f"selected={el.selected}")
+            if el.required:
+                parts.append("required")
+            if not el.is_visible:
+                parts.append("offscreen")
+
+            lines.append("  " + " ".join(parts))
 
     if snapshot.text_preview:
         lines.append("")
-        lines.append("Page text preview:")
-        lines.append(snapshot.text_preview[:500])
+        lines.append("Page text:")
+        lines.append(snapshot.text_preview[:800])
 
     return "\n".join(lines)

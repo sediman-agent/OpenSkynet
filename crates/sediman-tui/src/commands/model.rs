@@ -4,13 +4,13 @@ use crate::app::App;
 
 pub async fn handle_model(app: &mut App, args: &str) {
     if args.is_empty() {
-        app.step_log.push(format!(
-            " Current model: {}/{}",
+        app.add_system_message(format!(
+            "Current model: {}/{}",
             app.provider,
             app.model.as_deref().unwrap_or("default")
         ));
-        app.step_log.push(" Usage: /model <provider:model>".into());
-        app.step_log.push("     or: /model <model> (keeps current provider)".into());
+        app.add_system_message("Usage: /model <provider:model>".into());
+        app.add_system_message("    or: /model <model> (keeps current provider)".into());
         return;
     }
 
@@ -22,28 +22,25 @@ pub async fn handle_model(app: &mut App, args: &str) {
 
     app.provider = new_provider;
     app.model = new_model;
-    app.step_log.push(format!(
-        "✓ Switched to {}/{}",
+    app.add_system_message(format!(
+        "Switched to {}/{}",
         app.provider,
         app.model.as_deref().unwrap_or("default")
     ));
-    // Reset agent so it reinitializes on next task
-    // (the Python backend handles the actual LLM provider)
-    app.step_log
-        .push("  Note: agent will use new model on next task".into());
+    app.add_system_message("Agent will use new model on next task".into());
 }
 
 pub async fn handle_models(app: &mut App, _args: &str) {
-    app.step_log.push(" Available providers:".into());
-    app.step_log.push("  openai — gpt-4o (default), gpt-4o-mini, etc.".into());
-    app.step_log.push("  ollama — qwen3, llama3, etc. (http://localhost:11434/v1)".into());
-    app.step_log.push("  custom — any OpenAI-compatible API".into());
-    app.step_log.push("".into());
-    app.step_log.push(format!(
-        " Current: {}",
+    app.add_system_message("Available providers:".into());
+    app.add_system_message("  openai - gpt-4o (default), gpt-4o-mini, etc.".into());
+    app.add_system_message("  ollama - qwen3, llama3, etc. (http://localhost:11434/v1)".into());
+    app.add_system_message("  custom - any OpenAI-compatible API".into());
+    app.add_system_message("".into());
+    app.add_system_message(format!(
+        "Current: {}",
         app.model.as_deref().unwrap_or("not set")
     ));
-    app.step_log.push(" Switch with: /model <provider:model>".into());
+    app.add_system_message("Switch with: /model <provider:model>".into());
 }
 
 pub static CMD_MODEL: Command = Command {

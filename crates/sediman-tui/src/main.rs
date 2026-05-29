@@ -10,6 +10,7 @@ mod shell;
 mod permission;
 mod interrupt;
 mod logging;
+mod gpu_app;
 
 #[derive(Parser, Debug)]
 #[command(name = "sediman-tui", about = "Sediman TUI — browser agent terminal frontend", version = "0.1.1")]
@@ -21,45 +22,63 @@ struct Args {
     model: Option<String>,
 
     #[arg(long)]
-    base_url: Option<String>,
-
-    #[arg(long)]
     headless: bool,
 
-    #[arg(long, default_value = "http://localhost:8080")]
-    api_url: String,
+    #[arg(long, default_value = "/tmp/sediman.sock")]
+    socket: String,
+
+    #[arg(long)]
+    gpu: bool,
 }
 
 #[tokio::main]
 async fn main() {
     logging::setup();
 
-    // Ensure terminal is always restored, even on panic
     let original_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
-        ratatui::restore();
+        crossterm::terminal::disable_raw_mode().ok();
+        use std::io::Write;
+        let mut stdout = std::io::stdout();
+        let _ = stdout.write_all(b"\x1b[?25h");
+        let _ = stdout.write_all(b"\x1b[?1049l");
+        let _ = stdout.flush();
         original_hook(info);
     }));
 
     let args = Args::parse();
 
-    let bridge = match sediman_tui_bridge::ApiClient::new(&args.api_url) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Failed to connect to API at {}: {}", args.api_url, e);
-            eprintln!("Start the API server with: sediman serve");
-            std::process::exit(1);
-        }
-    };
-
+    let bridge = sediman_tui_bridge::ApiClient::new(&args.socket);
     let app_state = app::App::new(args.provider, args.model, args.headless, bridge);
 
-    let mut terminal = ratatui::init();
-    let _ = terminal.clear();
+    if args.gpu {
+        #[cfg(feature = "gpu")]
+        {
+            let result = gpu_app::run_gpu(app_state).await;
+            if let Err(e) = result {
+                eprintln!("GPU error: {}", e);
+                std::process::exit(1);
+            }
+            return;
+        }
+        #[cfg(not(feature = "gpu"))]
+        {
+            eprintln!("GPU support not compiled in. Rebuild with: cargo build --features gpu");
+            std::process::exit(1);
+        }
+    }
 
-    let result = app::run(app_state, &mut terminal).await;
+    crossterm::terminal::enable_raw_mode().expect("Failed to enable raw mode");
+    let mut stdout = std::io::stdout();
+    let _ = std::io::Write::write_all(&mut stdout, b"\x1b[?1049h");
+    let _ = std::io::Write::write_all(&mut stdout, b"\x1b[?25l");
 
-    ratatui::restore();
+    let result = app::run(app_state).await;
+
+    crossterm::terminal::disable_raw_mode().ok();
+    let _ = std::io::Write::write_all(&mut stdout, b"\x1b[?25h");
+    let _ = std::io::Write::write_all(&mut stdout, b"\x1b[?1049l");
+    let _ = std::io::Write::flush(&mut stdout);
 
     if let Err(e) = result {
         eprintln!("Error: {}", e);

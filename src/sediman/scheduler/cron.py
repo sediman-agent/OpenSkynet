@@ -54,6 +54,7 @@ class CronManager:
         provider: str = "openai",
         model: str | None = None,
         base_url: str | None = None,
+        notify: str | None = None,
     ) -> str:
         job_id = uuid.uuid4().hex[:12]
         job = {
@@ -68,6 +69,7 @@ class CronManager:
             "last_run": None,
             "last_result": None,
             "enabled": True,
+            "notify": notify,
         }
         self._job_path(job_id).write_text(json.dumps(job, indent=2))
         _list_jobs_cache.pop(str(self.jobs_dir), None)
@@ -243,6 +245,7 @@ async def _execute_cron_job_inner(job: dict[str, Any]) -> str:
     )
     browser = BrowserSession(
         headless=True,
+        stealth=True,
         user_data_dir=str(Path.home() / ".sediman" / "browser-profile-cron"),
     )
 
@@ -264,6 +267,19 @@ async def _execute_cron_job_inner(job: dict[str, Any]) -> str:
         # Update job with result
         cron = CronManager()
         cron.update_job_result(job["id"], result)
+
+        # Send notification if configured
+        notify = job.get("notify")
+        if notify and ":" in notify:
+            try:
+                integration_name, target = notify.split(":", 1)
+                from sediman.integrations import get_integration
+                inst = get_integration(integration_name)
+                if inst:
+                    summary = result[:500] if result else "No result"
+                    await inst.send(target, f"Cron job [{job['id'][:8]}] completed:\n\n{summary}")
+            except Exception as e:
+                logger.warning("cron_notification_failed", notify=notify, error=str(e))
 
         logger.info("cron_job_executed", job_id=job["id"], result_length=len(result))
         return result

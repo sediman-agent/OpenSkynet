@@ -1,17 +1,110 @@
 use crate::client::{ApiClient, BridgeResult};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MemoryUsageInfo {
+    pub chars: usize,
+    pub limit: usize,
+    pub pct: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MemoryEntry {
+    pub text: String,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub entry_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access_count: Option<usize>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MemoryGetResult {
+    pub entries: std::collections::HashMap<String, Vec<String>>,
+    pub usage: std::collections::HashMap<String, MemoryUsageInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChangelogEntry {
+    pub action: String,
+    pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChangelogResult {
+    pub changes: Vec<ChangelogEntry>,
+}
 
 impl ApiClient {
-    pub async fn remember(&self, text: &str) -> BridgeResult<()> {
-        let body = serde_json::json!({"text": text});
-        let resp = self
-            .http
-            .post(self.url("/api/memory")?)
-            .json(&body)
-            .send()
-            .await?;
-        if !resp.status().is_success() {
-            return Err(crate::client::BridgeError::Api(resp.text().await?));
-        }
+    pub async fn memory_get(&self) -> BridgeResult<MemoryGetResult> {
+        self.call("memory.get", serde_json::json!({})).await
+    }
+
+    pub async fn memory_add(&self, target: &str, content: &str) -> BridgeResult<()> {
+        self.call::<serde_json::Value>(
+            "memory.add",
+            serde_json::json!({"target": target, "content": content}),
+        )
+        .await?;
         Ok(())
+    }
+
+    pub async fn memory_remove(&self, target: &str, content: &str) -> BridgeResult<()> {
+        self.call::<serde_json::Value>(
+            "memory.remove",
+            serde_json::json!({"target": target, "content": content}),
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn memory_search(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> BridgeResult<Vec<String>> {
+        let result: serde_json::Value = self
+            .call(
+                "memory.search",
+                serde_json::json!({"query": query, "limit": limit}),
+            )
+            .await?;
+        let results = result
+            .get("results")
+            .and_then(|r| r.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        Ok(results)
+    }
+
+    pub async fn memory_changelog(
+        &self,
+        target: Option<&str>,
+        limit: usize,
+    ) -> BridgeResult<Vec<ChangelogEntry>> {
+        let result: ChangelogResult = self
+            .call(
+                "memory.changelog",
+                serde_json::json!({
+                    "target": target,
+                    "limit": limit,
+                }),
+            )
+            .await?;
+        Ok(result.changes)
+    }
+
+    pub async fn remember(&self, text: &str) -> BridgeResult<()> {
+        self.memory_add("memory", text).await
     }
 }

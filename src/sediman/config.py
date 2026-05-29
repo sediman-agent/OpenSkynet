@@ -62,4 +62,21 @@ CORS_ORIGINS = [
 
 OPENBROWSER_HOST = os.environ.get("SEDIMAN_OPENBROWSER_HOST", "127.0.0.1")
 OPENBROWSER_PORT = int(os.environ.get("SEDIMAN_OPENBROWSER_PORT", "7788"))
-OPENBROWSER_JS = os.environ.get("SEDIMAN_OPENBROWSER_JS", "true").lower() in ("true", "1", "yes")
+OPENBROWSER_JS = os.environ.get("SEDIMAN_OPENBROWSER_JS", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
+STEALTH_ENABLED = os.environ.get("SEDIMAN_STEALTH", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+STEALTH_PROXY = os.environ.get("SEDIMAN_STEALTH_PROXY", "")
+STEALTH_FINGERPRINT_SEED = os.environ.get("SEDIMAN_STEALTH_FINGERPRINT_SEED", "")
+STEALTH_BINARY_PATH = os.environ.get("SEDIMAN_STEALTH_BINARY_PATH", "")
+
+INTEGRATIONS_CONFIG_PATH = DATA_DIR / "integrations.json"
+DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
