@@ -223,7 +223,7 @@ Join the waitlist at **[sediman.ai](https://sediman.ai)** and get early access p
 
 ## License
 
-[Business Source License 1.1 (BSL)](LICENSE).
+[LICENSE](LICENSE).
 
 ---
 
