@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -207,6 +208,28 @@ async def execute_cron_job(job: dict[str, Any]) -> str:
             pass
 
 
+def _cron_profile_dir(job_id: str) -> Path:
+    return Path.home() / ".sediman" / f"browser-profile-cron-{job_id}"
+
+
+def cleanup_stale_cron_profiles(active_job_ids: set[str] | None = None) -> int:
+    base = Path.home() / ".sediman"
+    prefix = "browser-profile-cron-"
+    removed = 0
+    for entry in base.glob(f"{prefix}*"):
+        if not entry.is_dir():
+            continue
+        job_id = entry.name[len(prefix):]
+        if active_job_ids is not None and job_id in active_job_ids:
+            continue
+        try:
+            shutil.rmtree(entry, ignore_errors=True)
+            removed += 1
+        except Exception:
+            pass
+    return removed
+
+
 async def _execute_cron_job_inner(job: dict[str, Any]) -> str:
     from sediman.agent.loop import AgentLoop
     from sediman.browser.session import BrowserSession
@@ -217,6 +240,9 @@ async def _execute_cron_job_inner(job: dict[str, Any]) -> str:
 
     await init_db()
 
+    job_id = job.get("id", "unknown")
+    profile_dir = _cron_profile_dir(job_id)
+
     llm = create_provider(
         provider=job.get("provider", "openai"),
         model=job.get("model"),
@@ -224,7 +250,7 @@ async def _execute_cron_job_inner(job: dict[str, Any]) -> str:
     )
     browser = BrowserSession(
         headless=True,
-        user_data_dir=str(Path.home() / ".sediman" / "browser-profile-cron"),
+        user_data_dir=str(profile_dir),
     )
 
     try:
@@ -242,15 +268,18 @@ async def _execute_cron_job_inner(job: dict[str, Any]) -> str:
             agent_result = await agent.run(job["task"])
             result = agent_result.result
 
-        # Update job with result
         cron = CronManager()
-        cron.update_job_result(job["id"], result)
+        cron.update_job_result(job_id, result)
 
-        logger.info("cron_job_executed", job_id=job["id"], result_length=len(result))
+        logger.info("cron_job_executed", job_id=job_id, result_length=len(result))
         return result
 
     finally:
         await browser.stop()
+        try:
+            shutil.rmtree(profile_dir, ignore_errors=True)
+        except Exception:
+            pass
 
 
 def start_scheduler() -> None:
