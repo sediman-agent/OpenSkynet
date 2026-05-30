@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +20,8 @@ MAX_RESULTS_PER_JOB = 100
 
 _CRON_FIELD_RE = re.compile(r"^[\d*/,-]+$")
 _JOB_ID_RE = re.compile(r"^[a-f0-9]{1,12}$")
+_list_jobs_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+_CACHE_TTL = 30.0
 
 
 def validate_cron_expr(expr: str) -> bool:
@@ -33,6 +35,10 @@ class CronManager:
     def __init__(self) -> None:
         self.jobs_dir = JOBS_DIR
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def _results_file(self) -> Path:
+        return RESULTS_FILE
 
     def _job_path(self, job_id: str) -> Path:
         if not _JOB_ID_RE.match(job_id):
@@ -63,6 +69,7 @@ class CronManager:
             "enabled": True,
         }
         self._job_path(job_id).write_text(json.dumps(job, indent=2))
+        _list_jobs_cache.pop(str(self.jobs_dir), None)
         logger.info("cron_job_added", job_id=job_id, cron=cron_expr, task=task)
         return job_id
 
@@ -79,11 +86,18 @@ class CronManager:
         return json.loads(path.read_text())
 
     def list_jobs(self) -> list[dict[str, Any]]:
+        cache_key = str(self.jobs_dir)
+        now = time.time()
+        if cache_key in _list_jobs_cache:
+            ts, cached = _list_jobs_cache[cache_key]
+            if now - ts < _CACHE_TTL:
+                return cached
         if not self.jobs_dir.exists():
             return []
         jobs = []
         for p in sorted(self.jobs_dir.glob("*.json")):
             jobs.append(json.loads(p.read_text()))
+        _list_jobs_cache[cache_key] = (now, jobs)
         return jobs
 
     def remove_job(self, job_id: str) -> bool:
@@ -93,12 +107,14 @@ class CronManager:
             return False
         if path.exists():
             path.unlink()
+            _list_jobs_cache.pop(str(self.jobs_dir), None)
             logger.info("cron_job_removed", job_id=job_id)
             return True
 
         for p in self.jobs_dir.glob("*.json"):
             if _JOB_ID_RE.match(p.stem) and p.stem.startswith(job_id):
                 p.unlink()
+                _list_jobs_cache.pop(str(self.jobs_dir), None)
                 logger.info("cron_job_removed", job_id=p.stem)
                 return True
 
@@ -111,6 +127,7 @@ class CronManager:
         job["last_run"] = datetime.now(timezone.utc).isoformat()
         job["last_result"] = result[:500]
         self._job_path(job["id"]).write_text(json.dumps(job, indent=2))
+        _list_jobs_cache.pop(str(self.jobs_dir), None)
         self._append_result_history(job_id, job.get("task", ""), result)
 
     def _append_result_history(self, job_id: str, task: str, result: str) -> None:
@@ -199,6 +216,8 @@ async def execute_cron_job(job: dict[str, Any]) -> str:
 
     try:
         return await _execute_cron_job_inner(job)
+    except Exception:
+        return None
     finally:
         try:
             structlog.reset_defaults()
@@ -299,7 +318,7 @@ def start_scheduler() -> None:
 async def _run_scheduled_task(job: dict[str, Any]) -> None:
     """Wrapper for APScheduler to run a cron job."""
     try:
-        result = await execute_cron_job(job)
+        await execute_cron_job(job)
         logger.info("scheduled_task_complete", job_id=job["id"])
     except Exception as e:
         logger.error("scheduled_task_failed", job_id=job["id"], error=str(e), exc_info=True)

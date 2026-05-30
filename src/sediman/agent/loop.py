@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -23,6 +24,8 @@ from sediman.agent.state import (
     Reflection,
     Strategy,
 )
+from sediman.agent.subagents.factory import SubagentFactory
+from sediman.agent.subagents.registry import SubagentRegistry
 from sediman.agent.tool_dispatch import ToolRegistry
 from sediman.agent.tools import create_agent_tool_registry
 from sediman.browser.session import BrowserSession
@@ -102,8 +105,11 @@ class AgentLoop:
         self._memory = memory_manager or MemoryManager(llm_provider)
         self._memory_initialized = False
         self._pending_review = False
+        self._skill_engine: Any | None = None
         self._skill_learner = SkillLearnerAgent(llm_provider)
         self._skill_auditor = SkillAuditor(llm_provider)
+        self._subagent_registry = SubagentRegistry()
+        self._subagent_factory: SubagentFactory | None = None
 
         saved = _load_agent_state()
         self._iters_since_skill = saved.get("iters_since_skill", 0)
@@ -112,9 +118,32 @@ class AgentLoop:
     def _get_tool_registry(self) -> ToolRegistry:
         if self._tool_registry is None:
             self._tool_registry = create_agent_tool_registry()
+            from sediman.agent.checkpoint import CheckpointManager
+            cp = CheckpointManager(enabled=True)
+            self._tool_registry.set_checkpoint_manager(cp)
         return self._tool_registry
 
-    def _get_browser_agent(self) -> BrowserSubagent:
+    def _get_engine(self) -> Any:
+        if self._skill_engine is None:
+            from sediman.skills.engine import SkillEngine
+            self._skill_engine = SkillEngine()
+            self._skill_learner._engine = self._skill_engine
+            self._skill_auditor._engine = self._skill_engine
+        return self._skill_engine
+
+    def _get_subagent_factory(self) -> SubagentFactory:
+        if self._subagent_factory is None:
+            self._subagent_factory = SubagentFactory(
+                registry=self._subagent_registry,
+                llm_provider=self.llm,
+                browser_session=self.browser,
+                tool_registry=self._get_tool_registry(),
+                on_step=self.on_step,
+                flash_mode=self.flash_mode,
+            )
+        return self._subagent_factory
+
+    def _get_browser_agent(self, recording_name: str | None = None) -> BrowserSubagent:
         on_browser_step = None
         if self.on_step:
             browser_step_counter = [0]
@@ -133,6 +162,7 @@ class AgentLoop:
             flash_mode=self.flash_mode,
             on_browser_step=on_browser_step,
             conversation=self._conversation,
+            recording_name=recording_name,
         )
 
     async def run(self, task: str) -> AgentResult:
@@ -156,9 +186,20 @@ class AgentLoop:
         if state.errors:
             previous_failure = state.errors[-1]
 
-        episodic_context = None
+        # Emit streaming plan reasoning if on_step is wired
+        def on_plan_token(token: str) -> None:
+            if self.on_step:
+                self.on_step(StepEvent(
+                    step=0,
+                    action=f"Planning: {token[:60]}",
+                    observation="",
+                    phase="planning",
+                    detail=token[:100],
+                ))
 
-        plan = await self._manager.plan(task, self._conversation, previous_failure)
+        plan = await self._manager.plan(
+            task, self._conversation, previous_failure, on_streaming_token=on_plan_token
+        )
         state = self._build_plan_steps(state, plan)
 
         logger.info(
@@ -211,7 +252,6 @@ class AgentLoop:
 
         # ── Phase 2: Iterative Execution Loop ──────────────────
         delegate_steps = [s for s in state.plan_steps if s.strategy == Strategy.DELEGATE]
-        non_delegate_steps = [s for s in state.plan_steps if s.strategy != Strategy.DELEGATE]
 
         if len(delegate_steps) > 1:
             await self._execute_parallel_delegates(state, delegate_steps)
@@ -266,31 +306,7 @@ class AgentLoop:
                 detail=reflection.reasoning[:100] if reflection.reasoning else "",
             )
 
-            if reflection.task_complete and reflection.confidence >= 0.6:
-                step.status = "completed"
-                step.result = step.result or observation.content[:500]
-                state.advance_step()
-            elif reflection.should_retry and step.retries < step.max_retries:
-                step.retries += 1
-                step.status = "pending"
-                self._emit(state, f"Retrying step (attempt {step.retries + 1})", detail=step.description[:80])
-            elif self._try_fallback(step):
-                self._emit(
-                    state,
-                    f"Falling back to {step.strategy.value}",
-                    detail=f"Previous strategy {step.original_strategy.value if step.original_strategy else 'unknown'} failed",
-                )
-            elif reflection.should_replan and state.iteration < state.max_iterations:
-                self._emit(state, "Replanning based on reflection...", detail=reflection.reasoning[:100] if reflection.reasoning else "")
-                await self._replan(state, reflection)
-            else:
-                if reflection.confidence >= 0.3:
-                    step.status = "completed"
-                    step.result = step.result or observation.content[:500]
-                else:
-                    step.status = "failed"
-                    state.errors.append(f"Step failed: {step.description[:80]}")
-                state.advance_step()
+            await self._handle_reflection_result(state, step, reflection, observation)
 
         # ── Phase 5: Final Assembly ─────────────────────────────
         state = self._assemble_result(state, plan)
@@ -353,7 +369,8 @@ class AgentLoop:
         self, state: AgentState, step: PlanStep, plan: ManagerPlan
     ) -> None:
         skill_context = self._find_relevant_skills(step.description)
-        browser_agent = self._get_browser_agent()
+        recording_name = self._get_active_recording_name()
+        browser_agent = self._get_browser_agent(recording_name=recording_name)
 
         browser_result: BrowserResult = await browser_agent.run(
             task=step.description,
@@ -467,21 +484,21 @@ class AgentLoop:
         self, state: AgentState, step: PlanStep, plan: ManagerPlan
     ) -> None:
         from sediman.skills.executor import execute_skill
-        from sediman.skills.engine import SkillEngine
 
-        engine = SkillEngine()
+        engine = self._get_engine()
         skill_name = plan.skill_to_use or ""
         skill_data = engine.read(skill_name)
 
         if skill_data:
             try:
-                result = await execute_skill(skill_data, self.browser, self.llm)
+                result = await execute_skill(skill_data, self.browser, self.llm, engine=engine)
                 step.result = result
                 engine.record_usage(skill_name)
             except Exception as e:
                 step.result = f"Skill execution failed: {e}"
         else:
-            browser_agent = self._get_browser_agent()
+            recording_name = self._get_active_recording_name()
+            browser_agent = self._get_browser_agent(recording_name=recording_name)
             browser_result = await browser_agent.run(task=step.description)
             step.result = browser_result.text
             state.actions_taken.extend(browser_result.actions)
@@ -537,6 +554,39 @@ class AgentLoop:
                 should_retry=not observation.success and step.retries < step.max_retries,
             )
 
+    async def _handle_reflection_result(
+        self,
+        state: AgentState,
+        step: PlanStep,
+        reflection: Reflection,
+        observation: Observation,
+    ) -> None:
+        if reflection.task_complete and reflection.confidence >= 0.6:
+            step.status = "completed"
+            step.result = step.result or observation.content[:500]
+            state.advance_step()
+        elif reflection.should_retry and step.retries < step.max_retries:
+            step.retries += 1
+            step.status = "pending"
+            self._emit(state, f"Retrying step (attempt {step.retries + 1})", detail=step.description[:80])
+        elif self._try_fallback(step):
+            self._emit(
+                state,
+                f"Falling back to {step.strategy.value}",
+                detail=f"Previous strategy {step.original_strategy.value if step.original_strategy else 'unknown'} failed",
+            )
+        elif reflection.should_replan and state.iteration < state.max_iterations:
+            self._emit(state, "Replanning based on reflection...", detail=reflection.reasoning[:100] if reflection.reasoning else "")
+            await self._replan(state, reflection)
+        else:
+            if reflection.confidence >= 0.3:
+                step.status = "completed"
+                step.result = step.result or observation.content[:500]
+            else:
+                step.status = "failed"
+                state.errors.append(f"Step failed: {step.description[:80]}")
+            state.advance_step()
+
     async def _replan(self, state: AgentState, reflection: Reflection) -> None:
         failed_step = state.current_step
         if failed_step:
@@ -587,9 +637,38 @@ class AgentLoop:
             "skill_review_threshold": self._skill_review_threshold,
         })
 
+    def _get_active_recording_name(self) -> str | None:
+        try:
+            from sediman.agent.recording_manager import RecordingManager
+            mgr = RecordingManager.get_instance()
+            if mgr.is_recording():
+                recorder = mgr.get_active_recorder()
+                if recorder and recorder.session:
+                    return recorder.session.name
+        except Exception:
+            pass
+        return None
+
+    async def _verify_skill(self, skill_name: str) -> bool:
+        try:
+            from sediman.skills.executor import execute_skill
+            engine = self._get_engine()
+            skill_data = engine.read(skill_name)
+            if not skill_data:
+                return False
+            result = await execute_skill(skill_data, self.browser, self.llm, max_retries=0)
+            from sediman.errors import looks_like_error
+            if looks_like_error(result):
+                logger.info("skill_verification_failed", name=skill_name, result=result[:100])
+                return False
+            logger.info("skill_verification_passed", name=skill_name)
+            return True
+        except Exception as e:
+            logger.debug("skill_verification_error", name=skill_name, error=str(e))
+            return False
+
     async def _post_task(self, state: AgentState, plan: ManagerPlan, task: str) -> None:
-        # Save auto-created subagent if ManagerAgent designed one
-        if plan.create_subagent:
+        if getattr(plan, "create_subagent", None):
             try:
                 from sediman.agent.subagents.template import AgentTemplate
 
@@ -607,44 +686,6 @@ class AgentLoop:
             except Exception as e:
                 logger.warning("auto_subagent_save_failed", error=str(e))
 
-        await self._save_session(task, state.result, state.actions_taken)
-
-        all_actions = state.actions_taken
-        recorded = self._recorder.record(
-            task=task,
-            plan=plan,
-            browser_result=state.result,
-            browser_actions=all_actions,
-        )
-        if recorded:
-            state.skill_created = recorded
-
-        if not state.skill_created:
-            self._iters_since_skill += len(all_actions)
-            self._persist_skill_counter()
-        else:
-            self._iters_since_skill = 0
-            self._persist_skill_counter()
-
-        if (
-            not state.skill_created
-            and not self._pending_review
-            and self._iters_since_skill >= self._skill_review_threshold
-        ):
-            self._pending_review = True
-            try:
-                learned = await self._run_skill_review(
-                    task=task,
-                    actions=all_actions,
-                    result=state.result,
-                )
-                if learned:
-                    state.skill_created = learned
-                    self._iters_since_skill = 0
-                    self._persist_skill_counter()
-            finally:
-                self._pending_review = False
-
         if plan.schedule:
             job_id = self._create_scheduled_job(plan)
             if job_id:
@@ -654,25 +695,91 @@ class AgentLoop:
                 if schedule_tag not in state.result and f"Schedule configured: {plan.schedule.cron}" not in state.result:
                     state.result += f"\n\n{schedule_tag}"
 
-        if plan.memory:
-            await self._memory.handle_tool_call("memory", {
-                "action": "add",
-                "target": "memory",
-                "content": plan.memory,
-            })
+        recorded = self._recorder.record(
+            task=task,
+            plan=plan,
+            browser_result=state.result,
+            browser_actions=state.actions_taken,
+            engine=self._get_engine(),
+        )
+        if recorded:
+            state.skill_created = recorded
+            self._cached_skill_summaries = None
 
-        await self._memory.on_turn_start()
-        if self._memory.should_review():
-            await self._memory.run_background_review(self._conversation)
-            audit_result = await self._skill_auditor.audit()
-            if audit_result.get("actions"):
-                logger.info(
-                    "skill_audit_completed",
-                    actions=len(audit_result["actions"]),
-                    summary=audit_result.get("summary", "")[:100],
-                )
+        asyncio.create_task(self._run_background_post_task(state, plan, task))
 
-        await self._memory.on_session_end()
+    async def _run_background_post_task(self, state: AgentState, plan: ManagerPlan, task: str) -> None:
+        try:
+            await self._save_session(task, state.result, state.actions_taken)
+
+            try:
+                from sediman.agent.recording_manager import RecordingManager
+                mgr = RecordingManager.get_instance()
+                if mgr.is_recording():
+                    await mgr.drain_active_events()
+            except Exception:
+                pass
+
+            all_actions = state.actions_taken
+
+            if state.skill_created:
+                verified = await self._verify_skill(state.skill_created)
+                if not verified:
+                    logger.info("auto_recorded_skill_verification_failed", name=state.skill_created)
+
+            if not state.skill_created:
+                self._iters_since_skill += len(all_actions)
+                self._persist_skill_counter()
+            else:
+                self._iters_since_skill = 0
+                self._persist_skill_counter()
+
+            if (
+                not state.skill_created
+                and not self._pending_review
+                and self._iters_since_skill >= self._skill_review_threshold
+            ):
+                self._pending_review = True
+                try:
+                    learned = await self._run_skill_review(
+                        task=task,
+                        actions=all_actions,
+                        result=state.result,
+                    )
+                    if learned:
+                        state.skill_created = learned
+                        self._cached_skill_summaries = None
+                        self._iters_since_skill = 0
+                        self._persist_skill_counter()
+                finally:
+                    self._pending_review = False
+
+            try:
+                await self._save_trajectory(state, task)
+            except Exception as e:
+                logger.warning("trajectory_save_failed", error=str(e))
+
+            if plan.memory:
+                await self._memory.handle_tool_call("memory", {
+                    "action": "add",
+                    "target": "memory",
+                    "content": plan.memory,
+                })
+
+            await self._memory.on_turn_start()
+            if self._memory.should_review():
+                await self._memory.run_background_review(self._conversation)
+                audit_result = await self._skill_auditor.audit()
+                if audit_result.get("actions"):
+                    logger.info(
+                        "skill_audit_completed",
+                        actions=len(audit_result["actions"]),
+                        summary=audit_result.get("summary", "")[:100],
+                    )
+
+            await self._memory.on_session_end()
+        except Exception as e:
+            logger.warning("background_post_task_failed", error=str(e))
 
     async def _run_skill_review(
         self,
@@ -681,8 +788,7 @@ class AgentLoop:
         result: str,
     ) -> str | None:
         try:
-            from sediman.skills.engine import SkillEngine
-            engine = SkillEngine()
+            engine = self._get_engine()
             existing_skills = engine.list_skills()
 
             learned = await self._skill_learner.review_and_learn(
@@ -777,8 +883,7 @@ Current task: {task}
 Note: Continue from where we left off. Remember what was discussed above."""
 
     def _find_relevant_skills(self, task: str) -> str | None:
-        from sediman.skills.engine import SkillEngine
-        engine = SkillEngine()
+        engine = self._get_engine()
         return engine.get_skill_summaries() or None
 
     async def _save_session(self, task: str, result: str, actions: list[dict[str, Any]]) -> None:
