@@ -31,7 +31,6 @@ class TestAgentLoop:
         return AgentLoop(llm_provider=llm, browser_session=browser, max_steps=5)
 
     @pytest.mark.asyncio
-    @pytest.mark.asyncio
     async def test_run_returns_agent_result(self, tmp_sediman_dir):
         from sediman.agent.manager import ManagerPlan
         from sediman.agent.browser_agent import BrowserResult

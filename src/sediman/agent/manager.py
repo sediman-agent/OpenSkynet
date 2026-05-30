@@ -47,18 +47,21 @@ class ManagerAgent:
         if regex_plan is None:
             regex_plan = self._regex_planner.plan(task)
 
-        if regex_plan.schedule and not conversation:
+        has_conversation = bool(conversation)
+        is_fresh_session = conversation is not None and len(conversation) == 0
+
+        if regex_plan.schedule and not has_conversation:
             return ManagerPlan(
                 browser_task="",
                 schedule=regex_plan.schedule,
             )
 
         # Fast-path: explicit URL navigation
-        if self._is_explicit_url_task(task) and not conversation and not previous_failure:
+        if self._is_explicit_url_task(task) and is_fresh_session and not previous_failure:
             return ManagerPlan(browser_task=task)
 
         # Fast-path: strongly-matching coding keywords (optimization for common patterns)
-        if self._is_strong_coding_task(task) and not conversation and not previous_failure:
+        if self._is_strong_coding_task(task) and is_fresh_session and not previous_failure:
             return ManagerPlan(
                 browser_task=task,
                 strategy=Strategy.DELEGATE,
@@ -67,7 +70,8 @@ class ManagerAgent:
             )
 
         # LLM classification: ask the model once to decide browser/code/conversational
-        if not conversation and not previous_failure and len(task) < 1000:
+        # Only activate for fresh sessions (empty conversation list explicitly passed)
+        if is_fresh_session and not previous_failure and len(task) < 1000:
             classification = await self._classify_task(task)
             if classification == "code":
                 return ManagerPlan(
