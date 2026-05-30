@@ -63,7 +63,6 @@ class OpenBrowserSubagent:
     async def run(
         self,
         task: str,
-        skill_summaries: str | None = None,
     ) -> BrowserResult:
         registry = self._build_tool_registry()
         tool_loop = ToolLoop(
@@ -76,8 +75,6 @@ class OpenBrowserSubagent:
         system = _SYSTEM_PROMPT
         if self._memory_context:
             system += f"\n\n<user_context>\n{self._memory_context}\n</user_context>"
-        if skill_summaries:
-            system += f"\n\n<available_skills>\n{skill_summaries}\n</available_skills>"
         if self._conversation:
             from sediman.utils import format_conversation_context
 

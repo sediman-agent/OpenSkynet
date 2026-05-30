@@ -128,7 +128,12 @@ class FastEmbedProvider(EmbeddingProvider):
                 from fastembed import TextEmbedding
                 self._TextEmbedding = TextEmbedding
                 self._model = TextEmbedding(model_name=self.model_name, max_length=512)
-                self._dim = self._model.dimension
+                if hasattr(self._model, 'dimension'):
+                    self._dim = self._model.dimension
+                elif hasattr(self._model, 'embedding_size'):
+                    self._dim = self._model.embedding_size
+                else:
+                    self._dim = 384
             except ImportError:
                 raise RuntimeError(
                     "fastembed not installed. Run: pip install fastembed"

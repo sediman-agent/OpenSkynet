@@ -17,22 +17,13 @@ class TestBuildSystemPrompt:
         )
         assert "user prefers dark mode" in prompt
 
-    def test_includes_skill_summaries(self, tmp_sediman_dir):
-        prompt = build_system_prompt(skill_summaries="- my-skill: does stuff")
-        assert "<available_skills>" in prompt
-        assert "my-skill" in prompt
+    def test_no_skills_section_in_prompt(self, tmp_sediman_dir):
+        prompt = build_system_prompt()
+        assert "<available_skills>\n" not in prompt
 
     def test_no_memory_section_when_empty(self, tmp_sediman_dir):
         prompt = build_system_prompt()
         assert "<memory-context>" not in prompt
-
-    def test_no_skills_section_when_none(self, tmp_sediman_dir):
-        prompt = build_system_prompt(skill_summaries=None)
-        assert "<available_skills>\n" not in prompt
-
-    def test_empty_skill_summaries_omits_section(self, tmp_sediman_dir):
-        prompt = build_system_prompt(skill_summaries="")
-        assert "<available_skills>\n" not in prompt
 
     def test_includes_completion_rules(self, tmp_sediman_dir):
         prompt = build_system_prompt()

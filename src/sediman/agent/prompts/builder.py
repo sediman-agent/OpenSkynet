@@ -88,11 +88,16 @@ class PromptBuilder:
         self._soul = soul_override if soul_override is not None else load_soul()
         self._project_ctx = project_context if project_context is not None else load_project_context()
 
+    def _format_suggested_skills(self, suggested: str | None) -> str:
+        if not suggested or not suggested.strip():
+            return ""
+        return f"<suggested_skills>\n{suggested.strip()}\n</suggested_skills>\n\nWhen a suggested skill matches the user's request, present it with these choices:\n  [1] Allow once — install now, ask next time\n  [2] Always allow this skill — trust permanently\n  [3] Always allow from this source — trust all skills from the source\n  [4] Deny — never suggest this skill again\n  [5] Skip — ask again later\nUse the skill_manage tool with action='record_choice' to record the decision."
+
     def build_system_prompt(
         self,
-        skill_summaries: str | None = None,
         memory_context: str | None = None,
         task: str | None = None,
+        suggested_skills: str | None = None,
     ) -> str:
         sections: list[str] = []
 
@@ -116,8 +121,9 @@ class PromptBuilder:
                 if task_addon:
                     sections.append(task_addon)
 
-        if skill_summaries and skill_summaries.strip():
-            sections.append(f"<available_skills>\n{skill_summaries.strip()}\n</available_skills>")
+        suggested = self._format_suggested_skills(suggested_skills)
+        if suggested:
+            sections.append(suggested)
 
         return "\n\n".join(sections)
 

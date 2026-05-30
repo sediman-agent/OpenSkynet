@@ -84,19 +84,46 @@ def create_agent_tool_registry() -> ToolRegistry:
 
     registry.register(
         ToolDefinition(
+            name="skill_search",
+            description="Search for reusable skills by semantic similarity. Use this tool when you need a workflow for a task — for example, working with PDFs, spreadsheets, web testing, or any repeatable browser workflow. Use scope='internal' for your own learned skills, 'external' for bundled/community skills, or 'all' for both.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "What you want to accomplish, e.g. 'create a PDF', 'test a web app', 'read an xlsx file'",
+                    },
+                    "scope": {
+                        "type": "string",
+                        "enum": ["internal", "external", "all"],
+                        "description": "Where to search: 'internal' = user-learned skills, 'external' = bundled/community skills, 'all' = both",
+                    },
+                    "k": {
+                        "type": "integer",
+                        "description": "Number of results to return (default 5)",
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+        _handle_skill_search,
+    )
+
+    registry.register(
+        ToolDefinition(
             name="skill_manage",
-            description="Manage reusable skills. Use action='create' after completing a complex multi-step task (5+ steps, error recovery, non-obvious workflow). Use action='patch' when you find an existing skill is outdated or broken. Use action='delete' to remove a skill that is no longer useful. Use action='list' to see all skills, 'view' to inspect one.",
+            description="Manage reusable skills. Use action='create' after completing a complex multi-step task (5+ steps, error recovery, non-obvious workflow). Use action='patch' when you find an existing skill is outdated or broken. Use action='delete' to remove a skill that is no longer useful. Use action='list' to see all skills, 'view' to inspect one, 'run' to auto-execute a skill.",
             parameters={
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["create", "patch", "list", "view", "delete"],
-                        "description": "The action to perform. 'create' saves a new skill, 'patch' updates an existing one, 'delete' removes a skill, 'list' shows all skills, 'view' reads one skill.",
+                        "enum": ["create", "patch", "list", "view", "delete", "run"],
+                        "description": "The action to perform. 'create' saves a new skill, 'patch' updates an existing one, 'delete' removes a skill, 'list' shows all skills, 'view' reads one skill, 'run' auto-executes a skill.",
                     },
                     "name": {
                         "type": "string",
-                        "description": "Short kebab-case name for the skill (required for create, patch, view)",
+                        "description": "Short kebab-case name for the skill (required for create, patch, view, run)",
                     },
                     "description": {
                         "type": "string",
@@ -531,3 +558,4 @@ def create_agent_tool_registry() -> ToolRegistry:
 
 # Re-exports for backward compatibility
 from .skills import _TodoStore, _handle_skill_manage  # noqa: E402, F401
+from .skill_search import _handle_skill_search  # noqa: E402, F401

@@ -32,11 +32,10 @@ class TestTurboModePrompt:
             prompt = b.build_system_prompt()
             assert "<persona>" not in prompt
 
-    def test_turbo_includes_skills(self):
+    def test_turbo_omits_skills_section(self):
         b = PromptBuilder(turbo_mode=True)
-        prompt = b.build_system_prompt(skill_summaries="my-skill: does stuff")
-        assert "my-skill" in prompt
-        assert "<available_skills>" in prompt
+        prompt = b.build_system_prompt()
+        assert "<available_skills>" not in prompt
 
     def test_turbo_excludes_project_context(self, tmp_path):
         with patch("sediman.agent.prompts.builder.SOUL_FILE", tmp_path / "SOUL.md"), \

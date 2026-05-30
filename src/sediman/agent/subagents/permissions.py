@@ -113,6 +113,7 @@ class PermissionRules:
             "read_file": "allow",
             "list_files": "allow",
             "skill_manage": "allow",
+            "skill_search": "allow",
             "browser": "allow",
             "web_search": "allow",
             "*": "deny",
@@ -130,6 +131,7 @@ class PermissionRules:
             "search_files": "allow",
             "terminal": "allow",
             "skill_manage": "allow",
+            "skill_search": "allow",
             "delegate_task": "allow",
             "*": "deny",
         })

@@ -141,6 +141,22 @@ async def _handle_skill_manage(
                 data=patched,
             )
 
+        if action == "run":
+            if not name:
+                return ToolResult(
+                    success=False, output="name is required for run action."
+                )
+            skill = engine.read(name)
+            if not skill:
+                return ToolResult(success=False, output=f"Skill '{name}' not found.")
+            return ToolResult(
+                success=True,
+                output=f"Skill '{name}' loaded. Steps:\n" + "\n".join(
+                    f"  {i+1}. {s}" for i, s in enumerate(skill.get("steps", []))
+                ),
+                data=skill,
+            )
+
         if action == "delete":
             if not name:
                 return ToolResult(
@@ -156,9 +172,70 @@ async def _handle_skill_manage(
                 data={"name": name, "deleted": True},
             )
 
+        if action == "install_suggested":
+            if not name or not kwargs.get("source"):
+                return ToolResult(
+                    success=False, output="name and source are required for install_suggested action."
+                )
+            from sediman.skills.engine import SkillEngine
+            from sediman.skills.hub import LocalSkillInstaller
+
+            engine = SkillEngine()
+            installer = LocalSkillInstaller()
+            source = kwargs["source"]
+            ok, msg = installer.install(name, source, engine, force=False)
+            if not ok:
+                from sediman.skills.hub import GitHubInstaller
+
+                gh = GitHubInstaller()
+                ref = f"{source}@{name}"
+                ok, msg = gh.install(ref, engine, force=False)
+            if ok:
+                return ToolResult(success=True, output=f"Installed '{name}' from {source}.")
+            return ToolResult(success=False, output=f"Install failed: {msg}")
+
+        if action == "record_choice":
+            if not name or not kwargs.get("decision"):
+                return ToolResult(
+                    success=False, output="name and decision are required for record_choice action."
+                )
+            from sediman.skills.permissions import SkillPermissions
+
+            decision = kwargs["decision"]
+            source = kwargs.get("source", "unknown")
+            valid = ("allow_once", "always_allow_skill", "always_allow_source", "deny", "skip")
+            if decision not in valid:
+                return ToolResult(
+                    success=False,
+                    output=f"Invalid decision '{decision}'. Valid: {', '.join(valid)}",
+                )
+            perms = SkillPermissions()
+            perms.set_decision(name, source, decision)
+
+            install_msg = ""
+            if decision in ("allow_once", "always_allow_skill", "always_allow_source"):
+                from sediman.skills.engine import SkillEngine
+                from sediman.skills.hub import LocalSkillInstaller
+
+                engine = SkillEngine()
+                installer = LocalSkillInstaller()
+                ok, install_msg = installer.install(name, source, engine, force=True)
+                if not ok:
+                    from sediman.skills.hub import GitHubInstaller
+
+                    gh = GitHubInstaller()
+                    ref = f"{source}@{name}"
+                    ok, install_msg = gh.install(ref, engine, force=True)
+
+            return ToolResult(
+                success=True,
+                output=f"Decision '{decision}' recorded for skill '{name}' from {source}. {install_msg}",
+                data={"decision": decision, "installed": decision != "deny" and decision != "skip"},
+            )
+
         return ToolResult(
             success=False,
-            output=f"Unknown action '{action}'. Use: create, patch, list, view, delete.",
+            output=f"Unknown action '{action}'. Use: create, patch, list, view, delete, install_suggested, record_choice.",
         )
 
     except (ValueError, KeyError, OSError, json.JSONDecodeError) as e:
