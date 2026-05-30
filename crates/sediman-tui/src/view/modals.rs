@@ -668,8 +668,9 @@ pub fn render_skill_browser(buf: &mut CellBuffer, area: Rect, app: &mut App) {
     } else {
         let scroll = app.skill_browser_scroll as usize;
         let visible_items: Vec<_> = filtered.iter().skip(scroll).collect();
+        let mut row_y = y;
         for &(orig_idx, skill) in visible_items.iter() {
-            if y >= max_y {
+            if row_y >= max_y {
                 break;
             }
             let selected = *orig_idx == app.skill_browser_selected;
@@ -681,11 +682,11 @@ pub fn render_skill_browser(buf: &mut CellBuffer, area: Rect, app: &mut App) {
 
             if selected {
                 for sx in (frame.modal.x + 1)..(frame.modal.right() - 1) {
-                    buf.put_char(sx, y, ' ', Style::new().bg(t.primary).fg(t.background_darker));
+                    buf.put_char(sx, row_y, ' ', Style::new().bg(t.primary).fg(t.background_darker));
                 }
                 buf.draw_str(
                     inner_x,
-                    y,
+                    row_y,
                     &format!("\u{25b8} {}{}", name_display, badge),
                     Style::new()
                         .bg(t.primary)
@@ -698,9 +699,9 @@ pub fn render_skill_browser(buf: &mut CellBuffer, area: Rect, app: &mut App) {
                 } else {
                     Style::new().fg(t.text).bg(t.background)
                 };
-                buf.draw_str(inner_x, y, &format!("  {}{}", name_display, badge), name_style);
+                buf.draw_str(inner_x, row_y, &format!("  {}{}", name_display, badge), name_style);
             }
-            y += 1;
+            row_y += 1;
         }
 
         let sep_y = desc_area_y;

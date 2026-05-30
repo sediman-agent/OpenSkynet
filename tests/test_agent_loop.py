@@ -43,7 +43,9 @@ class TestAgentLoop:
              patch.object(loop, "_save_session", new_callable=AsyncMock), \
              patch.object(loop._memory, "initialize", new_callable=AsyncMock), \
              patch.object(loop._memory, "on_turn_start", new_callable=AsyncMock), \
-             patch.object(loop._memory, "on_session_end", new_callable=AsyncMock):
+             patch.object(loop._memory, "on_session_end", new_callable=AsyncMock), \
+             patch("sediman.agent.progress.ProgressTracker") as mock_tracker:
+            mock_tracker.return_value = MagicMock()
             mock_ba = MagicMock()
             mock_ba.run = AsyncMock(return_value=BrowserResult(text="Task completed successfully. The browser navigated to the page and extracted the data.", actions=[{"action": "done"}]))
             mock_get_ba.return_value = mock_ba
