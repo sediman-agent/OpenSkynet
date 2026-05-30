@@ -47,7 +47,6 @@ class BrowserSubagent:
     async def run(
         self,
         task: str,
-        skill_summaries: str | None = None,
     ) -> BrowserResult:
         # Use cached memory context if available; only fall back to disk on first call
         memory_ctx = self._memory_context
@@ -60,7 +59,6 @@ class BrowserSubagent:
             self._memory_context = memory_ctx
 
         system_prompt = self._prompt_builder.build_system_prompt(
-            skill_summaries=skill_summaries,
             memory_context=memory_ctx,
             task=task,
         )

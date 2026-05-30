@@ -9,7 +9,6 @@ from typing import Any, Callable
 
 import structlog
 
-from fnmatch import fnmatch
 from pathlib import Path as _Path
 
 from sediman.agent.browser_agent import BrowserSubagent, BrowserResult
@@ -74,20 +73,6 @@ def _save_agent_state(data: dict[str, Any]) -> None:
     pass
 
 
-def _matches_skill_paths(patterns: list[str]) -> bool:
-    if not patterns:
-        return True
-    try:
-        cwd = _Path.cwd()
-        files = [str(f.relative_to(cwd)) for f in cwd.rglob("*") if f.is_file()]
-    except Exception:
-        return True
-    for pattern in patterns:
-        if any(fnmatch(f, pattern) for f in files):
-            return True
-    return False
-
-
 @dataclass
 class StepEvent:
     step: int
@@ -95,6 +80,8 @@ class StepEvent:
     observation: str
     phase: str = ""
     detail: str = ""
+    url: str | None = None
+    tool_name: str | None = None
 
 
 @dataclass
@@ -117,6 +104,7 @@ class AgentLoop:
         browser_session: BrowserSession,
         max_steps: int = 25,
         on_step: Callable[[StepEvent], None] | None = None,
+        on_streaming_text: Callable[[str, str], None] | None = None,
         flash_mode: bool = True,
         max_conversation: int = 40,
         context_window: int = 10,
@@ -131,6 +119,7 @@ class AgentLoop:
         self.browser = browser_session
         self.max_steps = max_steps
         self.on_step = on_step
+        self.on_streaming_text = on_streaming_text
         self.flash_mode = flash_mode
         self.turbo_mode = turbo_mode
         self.max_conversation = max_conversation
@@ -153,7 +142,7 @@ class AgentLoop:
         self._skip_reflection_on_success = skip_reflection_on_success
 
         # Cached state to avoid redundant disk reads / LLM calls
-        self._cached_skill_summaries: str | None = None
+        self._cached_skill_summaries: str | None = None  # deprecated, kept for compat
         self._cached_browser_use_llm: Any | None = None
         self._cached_memory_context: str | None = None
         self._recording_manager: Any | None = None
@@ -207,6 +196,7 @@ class AgentLoop:
                     action=action,
                     observation=url,
                     phase="executing",
+                    url=url if url.startswith("http") else None,
                 ))
         if self._cached_memory_context is None:
             try:
@@ -326,6 +316,7 @@ class AgentLoop:
                     phase="planning",
                     detail=token[:100],
                 ))
+            self._stream_text(token, phase="planning")
 
         plan = await self._manager.plan(
             task, self._conversation, previous_failure, on_streaming_token=on_plan_token,
@@ -364,7 +355,11 @@ class AgentLoop:
         # ── Fast Path: Conversational (no browser) ──────────────
         if plan.strategy == Strategy.CONVERSATIONAL:
             self._emit(state, "Responding directly...", detail="No browser needed")
-            response_text = plan.response or "I'm Sediman. How can I help you?"
+            response_text = plan.response or ""
+            if not response_text:
+                response_text = "I'm Sediman. How can I help you?"
+            else:
+                self._stream_text(response_text, phase="responding")
             self._conversation.append({"role": "user", "content": task})
             self._conversation.append({"role": "assistant", "content": response_text})
             if len(self._conversation) > self.max_conversation:
@@ -423,7 +418,7 @@ class AgentLoop:
             step.status = "in_progress"
             self._emit(
                 state,
-                f"Iteration {state.iteration}: {step.description[:60]}",
+                f"Step {state.iteration}: {step.description[:80]}",
                 detail=f"Strategy: {step.strategy.value} | Retry: {step.retries}/{step.max_retries}",
             )
 
@@ -568,13 +563,11 @@ class AgentLoop:
         step = PlanStep(id=0, description=task, strategy=Strategy.DIRECT)
         step.status = "in_progress"
 
-        skill_context = self._find_relevant_skills(task)
         recording_name = self._get_active_recording_name()
         browser_agent = self._get_browser_agent(recording_name=recording_name, task=task)
 
         browser_result: BrowserResult = await browser_agent.run(
             task=task,
-            skill_summaries=skill_context,
         )
 
         if browser_agent._browser_use_llm is not None:
@@ -669,9 +662,7 @@ class AgentLoop:
     async def _execute_direct_step(
         self, state: AgentState, step: PlanStep, plan: ManagerPlan
     ) -> None:
-        skill_context = self._find_relevant_skills(step.description)
-
-        tool_result = await self._try_tool_loop_execution(state, step, skill_context)
+        tool_result = await self._try_tool_loop_execution(state, step)
         if tool_result is not None:
             step.result = tool_result
             self._emit(state, f"Completed via tool loop")
@@ -682,15 +673,16 @@ class AgentLoop:
 
         browser_result: BrowserResult = await browser_agent.run(
             task=step.description,
-            skill_summaries=skill_context,
         )
 
         step.result = browser_result.text
         state.actions_taken.extend(browser_result.actions)
         self._emit(state, f"Completed {len(browser_result.actions)} browser actions")
+        if browser_result.text:
+            self._stream_text(browser_result.text[:500], phase="executing")
 
     async def _try_tool_loop_execution(
-        self, state: AgentState, step: PlanStep, skill_context: str | None,
+        self, state: AgentState, step: PlanStep,
     ) -> str | None:
         try:
             await self._ensure_browser_controller()
@@ -707,14 +699,13 @@ class AgentLoop:
                 logger.debug("tool_loop_register_browser_failed", error=str(e))
                 return None
 
-        tool_loop = ToolLoop(llm=self.llm, registry=registry, max_rounds=min(8, self.max_steps), budget=self._budget)
+        tool_loop = ToolLoop(llm=self.llm, registry=registry, max_rounds=min(25, self.max_steps), budget=self._budget)
 
         try:
             from sediman.agent.prompts.builder import PromptBuilder
             prompt_builder = PromptBuilder(flash_mode=self.flash_mode)
             system_prompt = prompt_builder.build_system_prompt(
                 task=step.description,
-                skill_summaries=skill_context,
                 memory_context=self._cached_memory_context,
             )
         except Exception:
@@ -725,8 +716,6 @@ class AgentLoop:
                 "Use browser_click/browser_type to interact with elements by their ref_id.",
                 "After completing the task, respond with a summary of what you did and found.",
             ]
-            if skill_context:
-                system_parts.append(f"\nRelevant skills:\n{skill_context}")
             system_prompt = "\n".join(system_parts)
 
         context_parts = []
@@ -751,12 +740,12 @@ class AgentLoop:
         ]
 
         def _on_tool_call(name: str, args: dict[str, Any]) -> None:
-            self._emit(state, f"Tool: {name}", detail=str(args)[:100])
+            self._emit(state, f"Tool: {name}", detail=str(args)[:100], tool_name=name)
 
         try:
             response = await tool_loop.run(messages=messages, system=system_prompt, on_tool_call=_on_tool_call)
             result = response.text or ""
-            if not result or len(result.strip()) < 20:
+            if not result or len(result.strip()) < 50:
                 return None
             state.actions_taken.append({"action": "tool_loop", "task": step.description[:100]})
             return result
@@ -922,40 +911,65 @@ class AgentLoop:
     ) -> Reflection | None:
         from sediman.agent.guardrails import AuditLog
 
+        content = observation.content or ""
+
+        def _has_data_values(text: str) -> bool:
+            import re as _re
+            if _re.search(r'\d+\.?\d*', text):
+                return True
+            if _re.search(r'https?://\S+', text):
+                return True
+            if _re.search(r'[\w.-]+@[\w.-]+', text):
+                return True
+            return False
+
+        has_done_action = any(
+            a.get("action") == "done" or a.get("type") == "done"
+            for a in state.actions_taken[-5:]
+        )
+        has_error_indicators = self._looks_like_error(content)
+
         if len(state.plan_steps) == 1 and observation.success and not state.errors:
-            AuditLog.get().record("reflection", "single_step_fast_path", "single-step success", step=step.id)
-            return Reflection(
-                task_complete=True,
-                confidence=0.9,
-                reasoning="Single-step plan completed successfully.",
-                should_retry=False,
-                should_replan=False,
-            )
+            if _has_data_values(content) and len(content) > 80:
+                AuditLog.get().record("reflection", "single_step_fast_path", "single-step success with data", step=step.id)
+                return Reflection(
+                    task_complete=True,
+                    confidence=0.75,
+                    reasoning="Single-step plan completed with grounded data.",
+                    should_retry=False,
+                    should_replan=False,
+                )
+            elif has_done_action and not has_error_indicators and len(content) > 40:
+                AuditLog.get().record("reflection", "single_step_done", "single-step with done action", step=step.id)
+                return Reflection(
+                    task_complete=True,
+                    confidence=0.70,
+                    reasoning="Single-step plan completed, browser reported done, no errors.",
+                    should_retry=False,
+                    should_replan=False,
+                )
+            elif not state.errors and step.retries == 0:
+                AuditLog.get().record("reflection", "single_step_verify", "single-step but no grounded data, verifying", step=step.id)
 
         if self._skip_reflection_on_success:
-            has_done_action = any(
-                a.get("action") == "done" or a.get("type") == "done"
-                for a in state.actions_taken[-5:]
-            )
-            has_error_indicators = self._looks_like_error(observation.content or "")
             if (
                 observation.success
                 and has_done_action
-                and len(observation.content or "") > 60
+                and len(content) > 80
                 and not state.errors
                 and not has_error_indicators
                 and step.retries == 0
+                and _has_data_values(content)
             ):
-                AuditLog.get().record("reflection", "fast_path_success", "done_action_present", step=step.id)
+                AuditLog.get().record("reflection", "fast_path_success", "done_action_with_data", step=step.id)
                 return Reflection(
                     task_complete=True,
-                    confidence=0.85,
-                    reasoning="Fast-path: browser reported done, no errors, no retries.",
+                    confidence=0.70,
+                    reasoning="Fast-path: browser reported done with grounded data, no errors.",
                     should_retry=False,
                     should_replan=False,
                 )
 
-        content = observation.content or ""
         if not observation.success and self._looks_like_error(content):
             from sediman.agent.guardrails import AuditLog
             AuditLog.get().record("reflection", "fast_path_error", "error_indicators_detected", step=step.id)
@@ -980,11 +994,11 @@ class AgentLoop:
                 retry_context=f"Observation marked as failed: {content[:200]}",
             )
 
-        if len(content) < 30:
+        if len(content) < 80:
             return Reflection(
                 task_complete=False,
                 confidence=0.25,
-                reasoning=f"Result too short ({len(content)} chars) to be meaningful.",
+                reasoning=f"Result too short ({len(content)} chars) to contain meaningful data.",
                 should_retry=step.retries < step.max_retries,
                 retry_context="Previous attempt produced insufficient output.",
             )
@@ -995,16 +1009,16 @@ class AgentLoop:
             "could", "would", "about", "from", "with", "that", "this",
         )]
         has_err = self._looks_like_error(content)
-        if task_words and observation.success and not has_err and len(content) > 100:
+        if task_words and observation.success and not has_err and len(content) > 150 and _has_data_values(content):
             content_lower = content.lower()
             matched = sum(1 for w in task_words if w in content_lower)
-            threshold = max(2, len(task_words) * 2 // 3)
+            threshold = max(3, len(task_words) * 3 // 4)
             if matched >= threshold:
                 AuditLog.get().record("reflection", "data_match", f"{matched}/{len(task_words)} keywords", step=step.id)
                 return Reflection(
                     task_complete=True,
-                    confidence=0.8,
-                    reasoning=f"Data-match: {matched}/{len(task_words)} task keywords found in result.",
+                    confidence=0.7,
+                    reasoning=f"Data-match: {matched}/{len(task_words)} task keywords found with grounded values.",
                     should_retry=False,
                     should_replan=False,
                 )
@@ -1068,7 +1082,7 @@ class AgentLoop:
     ) -> None:
         from sediman.agent.guardrails import AuditLog
 
-        if reflection.task_complete and reflection.confidence >= 0.65:
+        if reflection.task_complete and reflection.confidence >= 0.70:
             AuditLog.get().record("reflection_result", "completed", f"conf={reflection.confidence:.2f}", step=step.id)
             step.status = "completed"
             step.result = step.result or observation.content[:2000]
@@ -1203,6 +1217,8 @@ class AgentLoop:
 
         if state.errors:
             state.result += f"\n\n[Encountered {len(state.errors)} error(s) during execution]"
+
+        self._stream_text(state.result, phase="result")
 
         self._conversation.append({"role": "user", "content": state.task})
         self._conversation.append({"role": "assistant", "content": state.result})
@@ -1431,7 +1447,7 @@ class AgentLoop:
             step.description = f"{step.description}\n[Fallback from {step.original_strategy.value}: {'; '.join(step.failure_history[-1:])}]"
         return True
 
-    def _emit(self, state: AgentState, message: str, detail: str = "") -> None:
+    def _emit(self, state: AgentState, message: str, detail: str = "", url: str | None = None, tool_name: str | None = None) -> None:
         if self.on_step:
             self.on_step(StepEvent(
                 step=state.iteration,
@@ -1439,7 +1455,16 @@ class AgentLoop:
                 observation="",
                 phase=state.phase.value,
                 detail=detail,
+                url=url,
+                tool_name=tool_name,
             ))
+
+    def _stream_text(self, token: str, phase: str = "responding") -> None:
+        if self.on_streaming_text:
+            try:
+                self.on_streaming_text(token, phase)
+            except Exception:
+                pass
 
     def _build_step_events(self, state: AgentState) -> list[StepEvent]:
         events = []
@@ -1496,25 +1521,25 @@ Note: Continue from where we left off. Remember what was discussed above."""
             args["0"] = task
         return args
 
-    def _find_relevant_skills(self, task: str) -> str | None:
-        if self._cached_skill_summaries is not None:
-            return self._cached_skill_summaries
-        engine = self._get_engine()
-        all_skills = engine.list_skills()
-        visible = []
-        for s in all_skills:
-            if s.get("disable_model_invocation"):
-                continue
-            if s.get("paths") and not _matches_skill_paths(s.get("paths", [])):
-                continue
-            visible.append(s)
-        if not visible:
+    async def _install_suggested_skill(self, skill_name: str, source: str) -> str | None:
+        try:
+            from sediman.skills.hub import LocalSkillInstaller, GitHubInstaller
+            engine = self._get_engine()
+            installer = LocalSkillInstaller()
+            ok, msg = installer.install(skill_name, source, engine, force=False)
+            if not ok:
+                gh = GitHubInstaller()
+                ref = f"{source}@{skill_name}"
+                ok, msg = gh.install(ref, engine, force=False)
+            if ok:
+                self._cached_skill_summaries = None
+                logger.info("suggested_skill_installed", name=skill_name, source=source)
+                return msg
+            logger.warning("suggested_skill_install_failed", name=skill_name, msg=msg)
             return None
-        lines = []
-        for s in visible:
-            lines.append(f"- {s['name']}: {s.get('description', '')[:120]}")
-        self._cached_skill_summaries = "\n".join(lines)
-        return self._cached_skill_summaries
+        except Exception as e:
+            logger.warning("suggested_skill_install_error", name=skill_name, error=str(e))
+            return None
 
     async def _save_session(self, task: str, result: str, actions: list[dict[str, Any]]) -> None:
         try:

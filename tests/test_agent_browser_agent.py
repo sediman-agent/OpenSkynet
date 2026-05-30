@@ -114,9 +114,9 @@ class TestBrowserSubagentRun:
             assert "<conversation_context>" not in sp
 
     @pytest.mark.asyncio
-    async def test_skill_summaries_included(self, browser_agent):
+    async def test_no_skill_summaries_in_prompt(self, browser_agent):
         with patch("sediman.agent.browser_agent.run_browser_task", new_callable=AsyncMock, return_value=("ok", [])) as mock_run:
-            await browser_agent.run("task", skill_summaries="- skill1: does x")
+            await browser_agent.run("task")
             kwargs = mock_run.call_args.kwargs if mock_run.call_args.kwargs else mock_run.call_args[1]
             sp = kwargs.get("system_prompt", "")
-            assert "skill1" in sp
+            assert "<available_skills>\n" not in sp
