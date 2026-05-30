@@ -18,7 +18,9 @@ jobs:
       - name: Install uv
         run: pip install uv
       - name: Install dependencies
-        run: uv sync && uv pip install pytest pytest-asyncio
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+          uv sync && uv pip install pytest pytest-asyncio
       - name: Run Python tests
         run: uv run pytest -x -q
 
