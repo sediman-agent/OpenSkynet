@@ -378,6 +378,16 @@ async def handle_model_list(params: dict[str, Any], notify: NotifyFn | None = No
     return {"models": models}
 
 
+async def handle_auth_set(params: dict[str, Any], notify: NotifyFn | None = None) -> dict[str, Any]:
+    from sediman.auth import set_key
+    provider = (params.get("provider") or "").strip()
+    key = (params.get("key") or "").strip()
+    if not provider or not key:
+        return {"ok": False, "error": "provider and key are required"}
+    set_key(provider, key)
+    return {"ok": True}
+
+
 async def handle_terminal_set(params: dict[str, Any], notify: NotifyFn | None = None) -> dict[str, Any]:
     from sediman.agent.tools import set_terminal_allowed
     allowed = bool(params.get("allowed", False))
@@ -979,6 +989,7 @@ HANDLERS: dict[str, Callable] = {
     "model.switch": handle_model_switch,
     "model.list_providers": handle_model_list_providers,
     "model.list": handle_model_list,
+    "auth.set": handle_auth_set,
     "terminal.set": handle_terminal_set,
     "terminal.status": handle_terminal_status,
     "record.start": handle_record_start,
