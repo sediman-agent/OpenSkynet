@@ -249,15 +249,6 @@ pub fn render_info_modal(
 }
 
 /// OpenCode-style model dialog with search/filter.
-///
-/// Layout (inside border):
-///   y+1: title "Select Model" (Primary, Bold)
-///   y+2: search input "> filter text_" (with cursor)
-///   y+3: separator line
-///   y+4..y+4+visible: model items (provider/model grouping, selected = full row Primary bg)
-///   last line: scroll indicators
-///
-/// Border: rounded corners (╭╮╰╯) with TextMuted color.
 pub fn render_model_dialog(buf: &mut CellBuffer, area: Rect, app: &App) {
     let t = &app.theme;
 
@@ -280,7 +271,7 @@ pub fn render_model_dialog(buf: &mut CellBuffer, area: Rect, app: &App) {
     }
 
     const NUM_VISIBLE: usize = 12;
-    let modal_w: u16 = (area.width * 70 / 100).max(44).min(60);
+    let modal_w: u16 = (area.width * 70 / 100).clamp(44, 60);
     let total_rows = display_rows.len();
     let visible = total_rows.min(NUM_VISIBLE);
 
@@ -314,12 +305,12 @@ pub fn render_model_dialog(buf: &mut CellBuffer, area: Rect, app: &App) {
     } else {
         Style::new().fg(t.text).bg(t.background)
     };
-    let max_filter_w = inner_w.saturating_sub(2) as usize;
+    let max_filter_w = inner_w.saturating_sub(2);
     let truncated_filter: String = filter_display.chars().take(max_filter_w).collect();
     buf.draw_str(inner_x + 2, search_y, &truncated_filter, filter_style);
 
     if !app.model_dialog_filter.is_empty() {
-        let cursor_x = inner_x + 2 + display_width(&truncated_filter) as u16;
+        let cursor_x = inner_x + 2 + display_width(&truncated_filter);
         if cursor_x < frame.modal.right() - 1 {
             buf.put_char(cursor_x, search_y, '\u{2588}',
                 Style::new().fg(t.primary).bg(t.background));
@@ -350,13 +341,13 @@ pub fn render_model_dialog(buf: &mut CellBuffer, area: Rect, app: &App) {
             match row {
                 DisplayRow::Header(name) => {
                     let prov_display = format!("  {}", name);
-                    buf.draw_str(inner_x, row_y, &truncate_str(&prov_display, inner_w),
+                    buf.draw_str(inner_x, row_y, truncate_str(&prov_display, inner_w),
                         Style::new().fg(t.text_muted).bg(t.background).add_modifier(TextAttributes::bold()));
                 }
                 DisplayRow::Model(model_idx) => {
                     let selected = *model_idx == app.model_dialog_model_idx;
                     let model_info = &models[*model_idx];
-                    let display = format!("  {}", truncate_str(&model_info.name, inner_w.saturating_sub(2) as usize));
+                    let display = format!("  {}", truncate_str(&model_info.name, inner_w.saturating_sub(2)));
 
                     if selected {
                         for sx in (frame.modal.x + 1)..(frame.modal.right() - 1) {
@@ -376,7 +367,7 @@ pub fn render_model_dialog(buf: &mut CellBuffer, area: Rect, app: &App) {
     if has_indicators {
         let mut indicator = String::new();
         if has_scroll_up { indicator.push_str("\u{2191} "); }
-        if has_scroll_down { indicator.push_str("\u{2193}"); }
+        if has_scroll_down { indicator.push('\u{2193}'); }
 
         let iy = model_start_y + visible.min(NUM_VISIBLE) as u16;
         let ix = frame.modal.right().saturating_sub(display_width(&indicator) + 2);
@@ -809,7 +800,7 @@ pub fn render_session_browser(buf: &mut CellBuffer, area: Rect, app: &App) {
                 } else {
                     Style::new().fg(t.text_muted).bg(t.background)
                 };
-                buf.draw_str(inner_x + 2, y, &ts, ts_style);
+                buf.draw_str(inner_x + 2, y, ts, ts_style);
             }
             y += 1;
         }

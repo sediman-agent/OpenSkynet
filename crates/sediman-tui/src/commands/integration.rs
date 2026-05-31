@@ -90,8 +90,7 @@ pub async fn handle_connect_discord(app: &mut App, args: &str) {
         return;
     }
 
-    if args.starts_with("--channel ") {
-        let channel_spec = &args[10..];
+    if let Some(channel_spec) = args.strip_prefix("--channel ") {
         let parts: Vec<&str> = channel_spec.splitn(2, '=').collect();
         if parts.len() != 2 {
             app.add_system_message(String::from("Usage: /connect-discord --channel <name>=<channel-id>"));
@@ -162,8 +161,7 @@ pub async fn handle_connect_telegram(app: &mut App, args: &str) {
         return;
     }
 
-    if args.starts_with("--chat ") {
-        let chat_spec = &args[7..];
+    if let Some(chat_spec) = args.strip_prefix("--chat ") {
         let parts: Vec<&str> = chat_spec.splitn(2, '=').collect();
         if parts.len() != 2 {
             app.add_system_message(String::from("Usage: /connect-telegram --chat <name>=<chat-id>"));

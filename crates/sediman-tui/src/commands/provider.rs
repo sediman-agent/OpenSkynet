@@ -25,6 +25,7 @@ pub async fn handle_provider(app: &mut App, args: &str) {
 
     if needs_key {
         app.connect_target = Some(name);
+        app.connect_pending_model = Some(default_model.clone());
         app.api_key_input.clear();
         app.active_modal = Some(crate::app::AppModal::ApiKeyPrompt);
         return;
