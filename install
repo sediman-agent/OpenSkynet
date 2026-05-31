@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── Terminator quick installer ──
+# ── Sediman quick installer ──
 # Usage: curl -fsSL https://raw.githubusercontent.com/sediman-agent/OpenSkynet/main/install | bash
-#   or:  BRANCH=main curl -fsSL ... | bash
+#   or:  BRANCH=main curl -fsSL https://raw.githubusercontent.com/sediman-agent/OpenSkynet/main/install | bash
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'
@@ -17,18 +17,18 @@ info()  { echo -e "  ${GREEN}+${NC} $*"; }
 warn()  { echo -e "  ${YELLOW}!${NC} $*"; }
 error() { echo -e "  ${RED}X${NC} $*" >&2; }
 
-INSTALL_DIR="$HOME/.terminator"
+INSTALL_DIR="$HOME/.sediman"
 REPO_URL="https://github.com/sediman-agent/OpenSkynet.git"
 BRANCH="${BRANCH:-main}"
 
 has_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 echo ""
-echo -e "  ${BOLD}Terminator Installer${NC}"
+echo -e "  ${BOLD}Sediman Quick Installer${NC}"
 echo -e "  ${DIM}https://github.com/sediman-agent/OpenSkynet${NC}"
 echo ""
 
-# ── Step 1: Prerequisites ──
+# ── Step 1: Check / install prerequisites ──
 info "Checking prerequisites..."
 
 if ! has_cmd git; then
@@ -60,33 +60,28 @@ info "rustc $(rustc --version 2>/dev/null | head -1)"
 
 # ── Step 2: Clone / update repo ──
 if [ -d "$INSTALL_DIR/.git" ]; then
-    info "Updating Terminator ($BRANCH)..."
+    info "Updating Sediman ($BRANCH)..."
     cd "$INSTALL_DIR"
     git fetch origin "$BRANCH" --depth 1
     git reset --hard "origin/$BRANCH" 2>/dev/null || git checkout "$BRANCH"
 else
-    info "Cloning Terminator ($BRANCH)..."
+    info "Cloning Sediman ($BRANCH)..."
     rm -rf "$INSTALL_DIR"
     git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
     cd "$INSTALL_DIR"
 fi
 
-# ── Step 3: Python dependencies ──
+# ── Step 3: Install Python dependencies ──
 info "Installing Python dependencies..."
 uv sync --quiet 2>/dev/null || uv sync
 info "Python dependencies installed"
 
 # ── Step 4: Build Rust TUI ──
-info "Building Terminator TUI (this may take a minute on first run)..."
-cargo build --release -p sediman-tui 2>&1 | tail -5
-if [ ! -f "target/release/sediman-tui" ]; then
-    error "TUI build failed!"
-    error "Try manually: cd $INSTALL_DIR && cargo build --release -p sediman-tui"
-    exit 1
-fi
-info "TUI built successfully"
+info "Building TUI (this may take a minute on first run)..."
+cargo build --release -p sediman-tui 2>&1 | tail -1
+info "TUI built"
 
-# ── Step 5: Playwright ──
+# ── Step 5: Install Playwright browser ──
 info "Installing Playwright Chromium..."
 if uv run playwright install chromium 2>/dev/null; then
     info "Playwright Chromium installed"
@@ -95,13 +90,13 @@ else
     warn "Run later: uv run playwright install chromium"
 fi
 
-# ── Step 6: Create terminator command ──
+# ── Step 6: Create wrapper script ──
 mkdir -p "$INSTALL_DIR/bin"
-cat > "$INSTALL_DIR/bin/terminator" << 'WRAPPER'
+cat > "$INSTALL_DIR/bin/sediman" << 'WRAPPER'
 #!/usr/bin/env bash
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+export PATH="$DIR/.venv/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
 pkill -f 'sediman.rpc_server' 2>/dev/null || true
 pkill -f 'sediman-tui' 2>/dev/null || true
@@ -110,7 +105,7 @@ sleep 0.5
 
 exec "$DIR/target/release/sediman-tui" "$@"
 WRAPPER
-chmod +x "$INSTALL_DIR/bin/terminator"
+chmod +x "$INSTALL_DIR/bin/sediman"
 
 # ── Step 7: Add to PATH ──
 add_to_path() {
@@ -118,7 +113,7 @@ add_to_path() {
     local line=$2
     if [ -w "$config_file" ] && ! grep -qF "$INSTALL_DIR/bin" "$config_file" 2>/dev/null; then
         echo "" >> "$config_file"
-        echo "# Terminator" >> "$config_file"
+        echo "# Sediman" >> "$config_file"
         echo "$line" >> "$config_file"
         info "Added to PATH in $config_file"
     fi
@@ -146,14 +141,14 @@ export PATH="$INSTALL_DIR/bin:$PATH"
 
 # ── Done ──
 echo ""
-info "Terminator installed!"
+info "Sediman installed successfully!"
 echo ""
-echo -e "  ${CYAN}terminator${NC}             Launch the TUI"
-echo -e "  ${CYAN}terminator --help${NC}      Show options"
+echo -e "  ${CYAN}sediman${NC}             Start the TUI"
+echo -e "  ${CYAN}sediman --help${NC}      Show options"
 echo ""
 warn "Run 'source ~/.${current_shell}rc' or open a new terminal, then:"
 echo -e "  ${GREEN}export OPENAI_API_KEY=sk-...${NC}"
-echo -e "  ${GREEN}terminator${NC}"
+echo -e "  ${GREEN}sediman${NC}"
 echo ""
 
 if [ -n "${GITHUB_ACTIONS-}" ]; then
