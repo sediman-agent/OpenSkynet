@@ -97,6 +97,10 @@ async fn ensure_backend(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped());
 
+    if let Ok(root) = std::env::var("SEDIMAN_ROOT") {
+        child_cmd.current_dir(&root);
+    }
+
     if let Some(m) = model {
         child_cmd.env("SEDIMAN_MODEL", m);
     }
