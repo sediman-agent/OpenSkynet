@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import subprocess
 import tempfile
 from fnmatch import fnmatch
 from pathlib import Path
@@ -17,25 +16,9 @@ from sediman.skills.healer import heal_skill
 
 logger = structlog.get_logger()
 
-_SHELL_INJECT_RE = re.compile(r"!`(.+?)`")
-
 
 def _looks_like_error(text: str) -> bool:
     return looks_like_error(text)
-
-
-def _apply_shell_injection(text: str) -> str:
-    def _replace(m: re.Match) -> str:
-        cmd = m.group(1).strip()
-        try:
-            result = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, timeout=10
-            )
-            return result.stdout.strip() or result.stderr.strip() or ""
-        except Exception as e:
-            logger.warning("shell_injection_failed", cmd=cmd, error=str(e))
-            return ""
-    return _SHELL_INJECT_RE.sub(_replace, text)
 
 
 def _apply_argument_substitution(text: str, arguments: dict[str, str]) -> str:
@@ -94,12 +77,10 @@ def _format_steps_for_prompt(steps: list[str | dict[str, Any]], args: dict[str, 
     lines = []
     for i, step in enumerate(steps, 1):
         if isinstance(step, str):
-            text = _apply_shell_injection(step)
-            text = _apply_argument_substitution(text, args)
+            text = _apply_argument_substitution(step, args)
             lines.append(f"{i}. {text}")
         elif isinstance(step, dict):
             desc = step.get("description", "")
-            desc = _apply_shell_injection(desc)
             desc = _apply_argument_substitution(desc, args)
             parts = [f"{i}. {desc}"]
             if step.get("url"):
@@ -131,7 +112,6 @@ async def execute_skill(
     retry_policy = skill.get("retry_policy", "retry_on_error")
     args = arguments or {}
 
-    description = _apply_shell_injection(description)
     description = _apply_argument_substitution(description, args)
 
     if context == "fork" and engine:
