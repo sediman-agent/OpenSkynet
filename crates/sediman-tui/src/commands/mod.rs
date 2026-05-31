@@ -15,6 +15,7 @@ pub mod plan;
 pub mod soul;
 pub mod misc;
 pub mod theming;
+pub mod doctor;
 
 use sediman_tui_core::CommandRegistry;
 
@@ -56,7 +57,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     registry.register(&plan::CMD_PLAN);
     registry.register(&soul::CMD_SOUL);
     registry.register(&misc::CMD_USAGE);
-    registry.register(&misc::CMD_DOCTOR);
+    registry.register(&doctor::CMD_DOCTOR);
     registry.register(&misc::CMD_EXPORT);
     registry.register(&misc::CMD_BTW);
     registry.register(&misc::CMD_COLOR);

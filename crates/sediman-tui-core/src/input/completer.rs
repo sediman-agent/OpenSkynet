@@ -43,6 +43,26 @@ impl Completer {
             self.filtered.first().cloned()
         }
     }
+
+    pub fn down(&mut self) {
+        if self.filtered.is_empty() { return; }
+        let idx = self.selected.map(|i| i + 1).unwrap_or(0);
+        self.selected = Some(if idx >= self.filtered.len() { 0 } else { idx });
+    }
+
+    pub fn up(&mut self) {
+        if self.filtered.is_empty() { return; }
+        let idx = self.selected.unwrap_or(0);
+        self.selected = Some(if idx == 0 { self.filtered.len() - 1 } else { idx - 1 });
+    }
+
+    pub fn selected_index(&self) -> Option<usize> {
+        self.selected
+    }
+
+    pub fn selected_text(&self) -> Option<&str> {
+        self.selected.and_then(|i| self.filtered.get(i).map(|s| s.as_str()))
+    }
 }
 
 impl Default for Completer {

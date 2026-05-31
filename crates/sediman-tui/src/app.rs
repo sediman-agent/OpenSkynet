@@ -36,7 +36,9 @@ const HEALTH_CHECK_INTERVAL_TICKS: u64 = 90;
 /// Modal overlay types — only one can be active at a time.
 #[derive(Clone, Debug)]
 pub enum AppModal {
-    Help,
+    Help {
+        scroll: u16,
+    },
     ModelPicker,
     ProviderPicker,
     ConnectPicker,
@@ -44,12 +46,38 @@ pub enum AppModal {
     MemoryEditor,
     SoulEditor,
     SkillBrowser,
+    ScheduleBrowser,
     ThemePicker,
     Info {
         title: String,
         lines: Vec<ModalLine>,
         scroll: u16,
     },
+    Doctor {
+        checks: Vec<DoctorCheck>,
+        cursor: usize,
+        scroll: u16,
+        installing: bool,
+        install_output: Vec<String>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DoctorStatus {
+    Pass,
+    Warn,
+    Fail,
+    Pending,
+}
+
+#[derive(Clone, Debug)]
+pub struct DoctorCheck {
+    pub category: &'static str,
+    pub name: &'static str,
+    pub status: DoctorStatus,
+    pub message: String,
+    pub optional: bool,
+    pub install_cmd: Option<String>,
 }
 
 /// A line in an info modal, with optional styling.
@@ -117,6 +145,9 @@ pub struct App {
     pub streaming_text: String,
     pub streaming_phase: String,
 
+    pub agent_mode: AgentMode,
+    pub pending_paste: Option<String>,
+
     pub messages: Vec<ChatMessage>,
     pub scroll_offset: u16,
     pub auto_scroll: bool,
@@ -155,11 +186,19 @@ pub struct App {
     pub skill_browser_installed: Vec<String>,
     pub skill_browser_scroll: u16,
     pub skill_browser_visible_rows: u16,
+    // Schedule browser state
+    pub schedule_jobs: Vec<sediman_tui_bridge::CronJob>,
+    pub schedule_selected: usize,
+    pub schedule_scroll: u16,
+    pub schedule_input: String,
     // Theme picker state
     pub theme_picker_selected: usize,
     pub theme_picker_names: Vec<String>,
     pub theme_picker_saved_theme: Theme,
     pub theme_picker_saved_name: String,
+    pub toast_text: String,
+    pub toast_expiry: Option<Instant>,
+    pub side_panel_scroll: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -199,6 +238,34 @@ pub enum SideTab {
     Memory,
     Schedule,
     Status,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum AgentMode {
+    Manager,
+    Browser,
+    Coder,
+    Terminator,
+}
+
+impl AgentMode {
+    pub fn cycle(self) -> Self {
+        match self {
+            AgentMode::Manager => AgentMode::Browser,
+            AgentMode::Browser => AgentMode::Coder,
+            AgentMode::Coder => AgentMode::Terminator,
+            AgentMode::Terminator => AgentMode::Manager,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            AgentMode::Manager => "Mgr",
+            AgentMode::Browser => "Brow",
+            AgentMode::Coder => "Code",
+            AgentMode::Terminator => "Term",
+        }
+    }
 }
 
 impl App {
@@ -253,6 +320,9 @@ impl App {
             streaming_text: String::new(),
             streaming_phase: String::new(),
 
+            agent_mode: AgentMode::Manager,
+            pending_paste: None,
+
             messages: Vec::new(),
             scroll_offset: 0,
             auto_scroll: true,
@@ -286,10 +356,17 @@ impl App {
             skill_browser_installed: Vec::new(),
             skill_browser_scroll: 0,
             skill_browser_visible_rows: 15,
+            schedule_jobs: Vec::new(),
+            schedule_selected: 0,
+            schedule_scroll: 0,
+            schedule_input: String::new(),
             theme_picker_selected: 0,
             theme_picker_names: Vec::new(),
             theme_picker_saved_theme: Theme::default(),
             theme_picker_saved_name: String::new(),
+            toast_text: String::new(),
+            toast_expiry: None,
+            side_panel_scroll: 0,
         }
     }
 
@@ -299,6 +376,11 @@ impl App {
 
     pub fn spinner_char(&self) -> char {
         SPINNER_FRAMES[self.spinner_frame]
+    }
+
+    pub fn show_toast(&mut self, text: String) {
+        self.toast_text = text;
+        self.toast_expiry = Some(Instant::now() + Duration::from_secs(3));
     }
 
     pub fn add_system_message(&mut self, text: String) {

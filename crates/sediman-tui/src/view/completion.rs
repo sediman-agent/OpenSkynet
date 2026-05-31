@@ -39,13 +39,19 @@ pub fn render_completion_popup(buf: &mut CellBuffer, input_area: Rect, app: &App
     let title_display = truncate_str(title, tlen);
     buf.draw_str(popup_area.x + 1, popup_area.y, title_display, Style::new().fg(t.primary).add_modifier(TextAttributes::bold()));
 
+    let selected = app.completer.selected_index();
     let inner_x = popup_area.x + 1;
     let inner_y = popup_area.y + 1;
     for (i, cmd) in completions.iter().take(max_items).enumerate() {
         if inner_y + i as u16 >= popup_area.bottom() - 1 {
             break;
         }
+        let is_selected = selected == Some(i);
         let text = format!("  {}", cmd);
-        buf.draw_str(inner_x, inner_y + i as u16, &text, Style::new().fg(t.text).bg(t.background_panel));
+        if is_selected {
+            buf.draw_str(inner_x, inner_y + i as u16, &text, Style::new().fg(t.background).bg(t.primary).add_modifier(TextAttributes::bold()));
+        } else {
+            buf.draw_str(inner_x, inner_y + i as u16, &text, Style::new().fg(t.text).bg(t.background_panel));
+        }
     }
 }

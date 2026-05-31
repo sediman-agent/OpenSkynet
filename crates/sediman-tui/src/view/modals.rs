@@ -1,6 +1,6 @@
 use sediman_tui_core::renderer::{CellBuffer, Rect, Style, TextAttributes, display_width, truncate_str};
 use sediman_tui_core::renderer::Color;
-use crate::app::{App, ModalLineStyle};
+use crate::app::{App, ModalLineStyle, DoctorStatus};
 
 struct ModalFrame {
     modal: Rect,
@@ -72,7 +72,7 @@ fn fill_modal_bg(buf: &mut CellBuffer, modal: Rect, bg: Color, fg: Color) {
     }
 }
 
-pub fn render_help_modal(buf: &mut CellBuffer, area: Rect, app: &App) {
+pub fn render_help_modal(buf: &mut CellBuffer, area: Rect, app: &App, scroll: usize) {
     let t = &app.theme;
 
     let modal_w = (area.width as usize * 7 / 10).clamp(50, 80) as u16;
@@ -87,64 +87,46 @@ pub fn render_help_modal(buf: &mut CellBuffer, area: Rect, app: &App) {
     let categories: &[(&str, &[(&str, &str)])] = &[
         ("General", &[
             ("/help", "Show this help dialog"),
-            ("/exit", "Quit sediman"),
+            ("/exit", "Quit OpenSkynet"),
             ("/status", "Show connection & session status"),
             ("/clear", "Clear conversation history"),
             ("/reset", "Full reset \u{2014} clear everything"),
         ]),
         ("Agent", &[
-            ("/model <name>", "Switch AI model"),
-            ("/models", "List available models"),
+            ("/model", "Switch or search AI models"),
+            ("/provider", "Switch LLM provider"),
             ("/plan", "Toggle plan-only mode"),
             ("/compress", "Compress conversation context"),
-            ("/soul", "Show agent personality config"),
+            ("/soul", "Edit agent personality"),
         ]),
         ("Skills", &[
-            ("/skills", "List learned skills"),
-            ("/skills search <q>", "Search local skills"),
-            ("/skill <name>", "Run a specific skill"),
-            ("/run-skill <name>", "Alias for /skill"),
+            ("/skills", "List & search learned skills"),
+            ("/hub", "Browse, install & manage hub skills"),
             ("/record", "Start recording a new skill"),
             ("/stop", "Stop skill recording"),
-        ]),
-        ("Hub", &[
-            ("/hub browse", "Browse the skill hub"),
-            ("/hub search <q>", "Search hub for skills"),
-            ("/hub install <id>", "Install a hub skill"),
-            ("/hub info <id>", "Show skill details"),
-            ("/hub update <id>", "Update installed skill"),
-            ("/hub remove <id>", "Remove installed skill"),
-            ("/hub publish", "Publish skill to hub"),
         ]),
         ("Browser", &[
             ("/browser", "Toggle headless/headed mode"),
             ("/screenshot", "Capture browser screenshot"),
         ]),
         ("Sessions", &[
-            ("/sessions", "List saved sessions (/session)"),
-            ("/memory", "Show agent memory store"),
+            ("/sessions", "List & manage saved sessions"),
+            ("/memory", "View & edit agent memory"),
             ("/remember <text>", "Save to agent memory"),
-            ("/resume <id>", "Resume a saved session"),
         ]),
         ("Schedule", &[
-            ("/schedule", "List scheduled jobs"),
-            ("/schedule-add", "Add a recurring job"),
-            ("/schedule-remove", "Remove a scheduled job"),
-        ]),
-        ("Terminal", &[
-            ("/terminal", "Show terminal status"),
-            ("/color", "Cycle color theme"),
-            ("/rename <name>", "Rename current session"),
+            ("/schedule", "List & manage scheduled jobs"),
         ]),
         ("Tasks", &[
             ("/delegate <task>", "Spawn a sub-agent task"),
             ("/parallel <a|b>", "Run tasks in parallel"),
         ]),
         ("Utilities", &[
-            ("/usage", "Show token usage & cost"),
+            ("/themes", "Browse & apply color themes"),
+            ("/connect", "Connect a new provider"),
+            ("/terminal", "Show terminal status"),
             ("/doctor", "Run diagnostics check"),
             ("/export", "Export conversation to file"),
-            ("/btw", "Fun fact about sediman"),
         ]),
     ];
 
@@ -156,24 +138,33 @@ pub fn render_help_modal(buf: &mut CellBuffer, area: Rect, app: &App) {
     let inner_w = frame.inner_w;
     let mut y = frame.modal.y + 2;
     let max_y = frame.modal.bottom().saturating_sub(2);
+    let mut line_idx = 0usize;
 
     for (category, cmds) in categories {
         if y >= max_y { break; }
-        buf.draw_str(inner_x, y, category, cat_style);
-        y += 1;
-        for (cmd, desc) in *cmds {
-            if y >= max_y { break; }
-            let cmd_display = truncate_str(cmd, 22);
-            buf.draw_str(inner_x + 1, y, cmd_display, cmd_style);
-            let desc_x = inner_x + 24;
-            if desc_x < frame.modal.right() - 2 {
-                let max_desc = inner_w.saturating_sub(25);
-                let desc_display = truncate_str(desc, max_desc);
-                buf.draw_str(desc_x, y, desc_display, desc_style);
-            }
+        if line_idx >= scroll {
+            buf.draw_str(inner_x, y, category, cat_style);
             y += 1;
         }
-        y += 1;
+        line_idx += 1;
+        for (cmd, desc) in *cmds {
+            if y >= max_y { break; }
+            if line_idx >= scroll {
+                let cmd_display = truncate_str(cmd, 22);
+                buf.draw_str(inner_x + 1, y, cmd_display, cmd_style);
+                let desc_x = inner_x + 24;
+                if desc_x < frame.modal.right() - 2 {
+                    let max_desc = inner_w.saturating_sub(25);
+                    let desc_display = truncate_str(desc, max_desc);
+                    buf.draw_str(desc_x, y, desc_display, desc_style);
+                }
+                y += 1;
+            }
+            line_idx += 1;
+        }
+        if line_idx >= scroll {
+            y += 1;
+        }
     }
 }
 
@@ -865,4 +856,243 @@ pub fn render_theme_picker(buf: &mut CellBuffer, area: Rect, app: &App) {
     buf.draw_str(frame.modal.x + 2, hints_y,
         " \u{2191}\u{2193} navigate \u{2502} Enter select \u{2502} Esc cancel ",
         Style::new().fg(t.text_muted).bg(t.background));
+}
+
+pub fn render_schedule_browser(buf: &mut CellBuffer, area: Rect, app: &App) {
+    let t = &app.theme;
+    let modal_w = (area.width * 7 / 10).clamp(52, 72);
+    let content_rows = app.schedule_jobs.len().min(8);
+    let modal_h = (content_rows as u16 + 9).max(10).min(area.height.saturating_sub(2));
+    let frame = ModalFrame::new(buf, area, app, modal_w, modal_h);
+    let inner_w = frame.inner_w;
+
+    frame.draw_border(buf, Style::new().fg(t.primary), Style::new().fg(t.border));
+    frame.draw_title(buf, &format!(" Schedule ({}) ", app.schedule_jobs.len()), Style::new()
+        .fg(t.primary).bg(t.background).add_modifier(TextAttributes::bold()));
+    frame.draw_close_hint(buf, " Esc ", Style::new().fg(t.text_muted).bg(t.background));
+
+    let inner_x = frame.inner_x;
+    let mut y = frame.modal.y + 2;
+
+    // Input row
+    let input_bg = t.background_panel;
+    for sx in (frame.modal.x + 1)..(frame.modal.right() - 1) {
+        buf.put_char(sx, y, ' ', Style::new().bg(input_bg).fg(t.text));
+    }
+    buf.draw_str(inner_x, y, "\u{276f} ", Style::new().fg(t.primary).bg(input_bg));
+    if app.schedule_input.is_empty() {
+        buf.draw_str(inner_x + 2, y, "<cron> <task> to add...", Style::new().fg(t.text_muted).bg(input_bg));
+        buf.put_char(inner_x + 2, y, '\u{2588}', Style::new().fg(t.primary).bg(input_bg));
+    } else {
+        let max_input = inner_w.saturating_sub(4);
+        let display: String = app.schedule_input.chars().take(max_input).collect();
+        buf.draw_str(inner_x + 2, y, &display, Style::new().fg(t.text).bg(input_bg));
+        let cx = inner_x + 2 + display_width(&display);
+        if cx < frame.modal.right() - 2 {
+            buf.put_char(cx, y, '\u{2588}', Style::new().fg(t.primary).bg(input_bg));
+        }
+    }
+    y += 2;
+
+    let max_y = frame.modal.bottom().saturating_sub(3);
+
+    if app.schedule_jobs.is_empty() {
+        buf.draw_str(inner_x, y, "No scheduled jobs. Type above to add one.", Style::new().fg(t.text_muted).bg(t.background));
+    } else {
+        for (i, job) in app.schedule_jobs.iter().enumerate() {
+            if y >= max_y { break; }
+            let selected = i == app.schedule_selected;
+            let status_icon = if job.enabled { "\u{25cf}" } else { "\u{25cb}" };
+            let max_task = inner_w.saturating_sub(12);
+            let task_display = truncate_str(&job.task, max_task);
+
+            if selected {
+                for sx in (frame.modal.x + 1)..(frame.modal.right() - 1) {
+                    buf.put_char(sx, y, ' ', Style::new().bg(t.primary).fg(t.background_darker));
+                }
+                buf.draw_str(inner_x, y, &format!("{} {} {}", status_icon, task_display, job.cron_expr),
+                    Style::new().bg(t.primary).fg(t.background_darker).add_modifier(TextAttributes::bold()));
+            } else {
+                buf.draw_str(inner_x, y, &format!("{} {} {}", status_icon, task_display, job.cron_expr),
+                    Style::new().fg(if job.enabled { t.text } else { t.text_muted }).bg(t.background));
+            }
+
+            // Next run on second line
+            if y + 1 < max_y {
+                if let Some(ref next) = job.next_run {
+                    y += 1;
+                    buf.draw_str(inner_x + 2, y, &format!("next: {}", next),
+                        Style::new().fg(t.text_muted).bg(if selected && false { t.primary } else { t.background }));
+                }
+            }
+            y += 1;
+        }
+    }
+
+    let hints_sep_y = frame.modal.bottom().saturating_sub(3);
+    let hints_y = frame.modal.bottom().saturating_sub(2);
+    for sx in (frame.modal.x + 1)..(frame.modal.right() - 1) {
+        buf.put_char(sx, hints_sep_y, '\u{2500}', Style::new().fg(t.border_dim));
+    }
+    buf.draw_str(frame.modal.x + 2, hints_y,
+        " Enter toggle/add \u{2502} d/\u{232b} delete \u{2502} \u{2191}\u{2193} navigate \u{2502} Type to add ",
+        Style::new().fg(t.text_muted).bg(t.background));
+}
+
+pub fn render_doctor_modal(buf: &mut CellBuffer, area: Rect, app: &App) {
+    let t = &app.theme;
+
+    let (checks, cursor, scroll, installing, install_output) = match &app.active_modal {
+        Some(crate::app::AppModal::Doctor { checks, cursor, scroll, installing, install_output }) => {
+            (checks.clone(), *cursor, *scroll, *installing, install_output.clone())
+        }
+        _ => return,
+    };
+
+    let display_rows = doctor_display_rows(&checks);
+    let output_rows = if install_output.is_empty() { 0 } else { install_output.len().min(6) };
+    let modal_w = (area.width * 8 / 10).clamp(56, 76);
+    let modal_h = (display_rows as u16 + 7 + output_rows as u16)
+        .max(14u16)
+        .min(area.height.saturating_sub(2));
+    let frame = ModalFrame::new(buf, area, app, modal_w, modal_h);
+    let inner_w = frame.inner_w;
+
+    frame.draw_border(buf, Style::new().fg(t.primary), Style::new().fg(t.border));
+    frame.draw_title(buf, " Doctor ", Style::new()
+        .fg(t.primary).bg(t.background).add_modifier(TextAttributes::bold()));
+    frame.draw_close_hint(buf, " q to close ", Style::new().fg(t.text_muted).bg(t.background));
+
+    let inner_x = frame.inner_x;
+    let mut y = frame.modal.y + 2;
+
+    let scroll_us = scroll as usize;
+    let max_y = frame.modal.bottom().saturating_sub(3 + output_rows as u16);
+
+    let cat_style = Style::new().fg(t.accent).bg(t.background).add_modifier(TextAttributes::bold());
+    let name_style = Style::new().fg(t.text).bg(t.background);
+
+    let mut line_idx = 0usize;
+    let mut prev_cat = "";
+
+    for (ci, check) in checks.iter().enumerate() {
+        if line_idx >= scroll_us && check.category != prev_cat {
+            if y >= max_y { break; }
+            if !prev_cat.is_empty() {
+                y += 1;
+                line_idx += 1;
+                if line_idx < scroll_us || y >= max_y {
+                    prev_cat = check.category;
+                    continue;
+                }
+            }
+            buf.draw_str(inner_x, y, &format!("\u{2500} {} ", check.category), cat_style);
+            y += 1;
+            line_idx += 1;
+        }
+        prev_cat = check.category;
+
+        if y >= max_y { break; }
+        if line_idx < scroll_us {
+            line_idx += 1;
+            continue;
+        }
+
+        let selected = ci == cursor;
+        let (icon, icon_color) = match check.status {
+            DoctorStatus::Pass => ("\u{2713}", t.success),
+            DoctorStatus::Warn => ("\u{26a0}", t.warning),
+            DoctorStatus::Fail => ("\u{2717}", t.error),
+            DoctorStatus::Pending => ("\u{25cb}", t.text_muted),
+        };
+
+        let name_w: u16 = 20;
+        let name_display = truncate_str(check.name, name_w as usize);
+        let max_msg = inner_w.saturating_sub(name_w as usize + 6);
+        let msg = truncate_str(&check.message, max_msg);
+
+        if selected {
+            for sx in (frame.modal.x + 1)..(frame.modal.right() - 1) {
+                buf.put_char(sx, y, ' ', Style::new().bg(t.primary).fg(t.background_darker));
+            }
+            let marker = if check.install_cmd.is_some() { "\u{25b8}" } else { " " };
+            buf.draw_str(inner_x, y, &format!("{} ", marker),
+                Style::new().bg(t.primary).fg(t.background_darker));
+            buf.draw_str(inner_x + 2, y, icon,
+                Style::new().fg(icon_color).bg(t.primary).add_modifier(TextAttributes::bold()));
+            buf.draw_str(inner_x + 4, y, &format!("{:<width$}", name_display, width = name_w as usize),
+                Style::new().bg(t.primary).fg(t.background_darker).add_modifier(TextAttributes::bold()));
+            buf.draw_str(inner_x + 4 + name_w, y, msg,
+                Style::new().bg(t.primary).fg(t.background_darker));
+        } else {
+            buf.draw_str(inner_x, y, "  ",
+                Style::new().fg(t.text).bg(t.background));
+            buf.draw_str(inner_x + 2, y, icon,
+                Style::new().fg(icon_color).bg(t.background));
+            buf.draw_str(inner_x + 4, y, &format!("{:<width$}", name_display, width = name_w as usize),
+                name_style);
+            buf.draw_str(inner_x + 4 + name_w, y, msg,
+                Style::new().fg(t.text_muted).bg(t.background));
+        }
+        y += 1;
+        line_idx += 1;
+    }
+
+    if !install_output.is_empty() || installing {
+        if y < max_y { y = max_y; }
+        let sep_y = y;
+        for sx in (frame.modal.x + 1)..(frame.modal.right() - 1) {
+            buf.put_char(sx, sep_y, '\u{2500}', Style::new().fg(t.border_dim));
+        }
+        y += 1;
+
+        if installing {
+            buf.draw_str(inner_x, y, "\u{25cf} Running...", Style::new().fg(t.warning).bg(t.background));
+            y += 1;
+        }
+
+        for line in install_output.iter().rev().take(output_rows).rev() {
+            if y >= frame.modal.bottom().saturating_sub(2) { break; }
+            let max_line = inner_w.saturating_sub(2);
+            let display = truncate_str(line, max_line);
+            let line_style = if line.starts_with("error") || line.starts_with("failed") {
+                Style::new().fg(t.error).bg(t.background)
+            } else if line.starts_with("done") {
+                Style::new().fg(t.success).bg(t.background)
+            } else {
+                Style::new().fg(t.text_muted).bg(t.background)
+            };
+            buf.draw_str(inner_x, y, display, line_style);
+            y += 1;
+        }
+    }
+
+    let hints_sep_y = frame.modal.bottom().saturating_sub(3);
+    let hints_y = frame.modal.bottom().saturating_sub(2);
+    for sx in (frame.modal.x + 1)..(frame.modal.right() - 1) {
+        buf.put_char(sx, hints_sep_y, '\u{2500}', Style::new().fg(t.border_dim));
+    }
+    let hint = if installing {
+        " Installing... please wait "
+    } else {
+        " \u{24a3} install \u{2502} r re-check \u{2502} \u{2191}\u{2193} navigate \u{2502} q close "
+    };
+    buf.draw_str(frame.modal.x + 2, hints_y, hint,
+        Style::new().fg(t.text_muted).bg(t.background));
+}
+
+fn doctor_display_rows(checks: &[crate::app::DoctorCheck]) -> usize {
+    let mut rows = 0usize;
+    let mut prev_cat = "";
+    for check in checks {
+        if check.category != prev_cat {
+            if !prev_cat.is_empty() {
+                rows += 1;
+            }
+            rows += 1;
+            prev_cat = check.category;
+        }
+        rows += 1;
+    }
+    rows
 }

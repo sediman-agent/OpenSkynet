@@ -18,7 +18,7 @@ pub fn render_title_bar(buf: &mut CellBuffer, area: Rect, app: &App) {
         String::new()
     };
 
-    let logo = format!(" \u{25c6} sediman{}", spinner);
+    let logo = format!(" \u{25c6} OpenSkynet{}", spinner);
     buf.draw_str(area.x, area.y, &logo, Style::new()
         .fg(t.primary)
         .add_modifier(TextAttributes::bold()));

@@ -23,25 +23,25 @@ pub fn render_banner(buf: &mut CellBuffer, area: Rect, app: &App) {
     y += 2;
 
     let logo: [(&str, sediman_tui_core::renderer::Color); 5] = [
-        ("  _____ ______ _____ _____ __  __          _   _ ", gradient[0]),
-        (" / ____|  ____|  __ \\_   _|  \\/  |   /\\   | \\ | |", gradient[1]),
-        ("| (___ | |__  | |  | || | | \\  / |  /  \\  |  \\| |", gradient[2]),
-        (" \\___ \\|  __| | |  | || | | |\\/| | / /\\ \\ | . ` |", gradient[3]),
-        (" ____) | |____| |__| || |_| |  | |/ ____ \\| |\\  |", gradient[4]),
+        ("   ____                  _____ __                    __ ", gradient[0]),
+        ("  / __ \\____  ___  ____ / ___// /____  ______  ___  / /_", gradient[1]),
+        (" / / / / __ \\/ _ \\/ __ \\\\__ \\/ //_/ / / / __ \\/ _ \\/ __/", gradient[2]),
+        ("/ /_/ / /_/ /  __/ / / /__/ / ,< / /_/ / / / /  __/ /_ ", gradient[3]),
+        ("\\____/ .___/\\___/_/ /_/____/_/|_|\\__, /_/ /_/\\___/\\__/", gradient[4]),
     ];
 
     for (line, color) in &logo {
         if y >= area.bottom() { return; }
-        buf.draw_str(area.x + 2, y, line, Style::new().fg(*color).add_modifier(TextAttributes::bold()));
+        buf.draw_str(area.x + 1, y, line, Style::new().fg(*color).add_modifier(TextAttributes::bold()));
         y += 1;
     }
 
     if y >= area.bottom() { return; }
-    buf.draw_str(area.x + 2, y, "|_____/|______|_____/_____|_|  |_/_/    \\_\\_| \\_|", Style::new().fg(gradient[4]).add_modifier(TextAttributes::bold()));
+    buf.draw_str(area.x + 1, y, "    /_/                         /____/                 ", Style::new().fg(gradient[4]).add_modifier(TextAttributes::bold()));
     y += 2;
 
     if y >= area.bottom() { return; }
-    buf.draw_str(area.x + 4, y, "AI-Powered Browser Automation", Style::new().fg(t.accent).add_modifier(TextAttributes::italic()));
+    buf.draw_str(area.x + 4, y, "Your Terminator.", Style::new().fg(t.accent).add_modifier(TextAttributes::bold()));
     y += 1;
 
     if y >= area.bottom() { return; }

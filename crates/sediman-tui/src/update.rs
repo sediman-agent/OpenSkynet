@@ -7,11 +7,28 @@ use sediman_tui_core::event::AppEvent;
 
 use crate::app::{App, AppModal};
 use crate::commands::{
-    browser, connect, delegate, hub, memory, misc, model, plan, provider, record, schedule, sessions,
-    skills, soul, system, terminal, theming,
+    browser, connect, delegate, doctor, hub, memory, model, plan, provider, schedule, sessions,
+    skills, soul, system, theming,
 };
 
-const DEFAULT_SOUL: &str = "You are Sediman, a self-improving browser automation agent.
+fn send_desktop_notification(title: &str, body: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("osascript")
+            .arg("-e")
+            .arg(format!("display notification \"{}\" with title \"{}\"", body.replace('"', "\\\""), title.replace('"', "\\\"")))
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("notify-send")
+            .arg(title)
+            .arg(body)
+            .spawn();
+    }
+}
+
+const DEFAULT_SOUL: &str = "You are OpenSkynet, a self-improving browser automation agent.
 
 You are pragmatic, concise, and efficient. You complete browser tasks with minimal steps.
 
@@ -26,11 +43,16 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
         AppEvent::Key(key) => {
             use crossterm::event::{KeyCode, KeyModifiers};
 
-            // Clipboard: Ctrl+V paste
-            if key.code == KeyCode::Char('v') && key.modifiers.contains(KeyModifiers::CONTROL) && !key.modifiers.contains(KeyModifiers::SHIFT) {
+            // Clipboard: Ctrl+V or Cmd+V paste
+            if key.code == KeyCode::Char('v')
+                && !key.modifiers.contains(KeyModifiers::SHIFT)
+                && (key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::SUPER))
+            {
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                     if let Ok(text) = clipboard.get_text() {
-                        app.editor.insert_str(&text);
+                        let line_count = text.lines().count();
+                        app.pending_paste = Some(text);
+                        app.editor.insert_str(&format!("[paste {} lines]", line_count));
                     }
                 }
                 return;
@@ -302,7 +324,7 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                             let text = app.soul_editor_input.trim().to_string();
                             if !text.is_empty() {
                                 let _ = app.bridge.set_soul(&text).await;
-                                app.add_system_message("Personality updated.".into());
+                                app.show_toast("Personality updated.".into());
                             }
                             app.active_modal = None;
                             return;
@@ -333,7 +355,7 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                         .count();
 
                     match key.code {
-                        KeyCode::Esc | KeyCode::Char('q') => {
+                        KeyCode::Esc => {
                             app.skill_browser_filter.clear();
                             app.active_modal = None;
                             return;
@@ -475,6 +497,111 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                 }
             }
 
+            // ScheduleBrowser — interactive schedule management
+            if matches!(app.active_modal, Some(AppModal::ScheduleBrowser)) {
+                match key.code {
+                    KeyCode::Esc => {
+                        app.schedule_input.clear();
+                        app.active_modal = None;
+                        return;
+                    }
+                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.schedule_input.clear();
+                        app.active_modal = None;
+                        return;
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        if app.schedule_selected < app.schedule_jobs.len().saturating_sub(1) {
+                            app.schedule_selected += 1;
+                        }
+                        return;
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        if app.schedule_selected > 0 {
+                            app.schedule_selected -= 1;
+                        }
+                        return;
+                    }
+                    KeyCode::Enter => {
+                        if app.schedule_input.is_empty() {
+                            // Toggle enabled/disabled on selected job
+                            if let Some(job) = app.schedule_jobs.get(app.schedule_selected).cloned() {
+                                if job.enabled {
+                                    let _ = app.bridge.remove_schedule(&job.id).await;
+                                    app.add_system_message(format!("Paused job: {}", job.id));
+                                } else {
+                                    app.add_system_message("Job is paused. Press 'd' to delete.".into());
+                                }
+                            }
+                        } else {
+                            // Parse: <cron> <task>
+                            let input = app.schedule_input.trim().to_string();
+                            let parts: Vec<&str> = input.splitn(2, ' ').collect();
+                            if parts.len() >= 2 {
+                                match app.bridge.add_schedule(parts[0], parts[1]).await {
+                                    Ok(id) => {
+                                        app.add_system_message(format!("Scheduled: {}", id));
+                                        app.schedule_input.clear();
+                                        if let Ok(jobs) = app.bridge.list_schedules().await {
+                                            app.schedule_jobs = jobs;
+                                            app.schedule_selected = 0;
+                                        }
+                                    }
+                                    Err(e) => app.add_error_message(format!("Failed: {}", e)),
+                                }
+                            } else {
+                                app.add_error_message("Format: <cron> <task>".into());
+                            }
+                        }
+                        return;
+                    }
+                    KeyCode::Char('d') => {
+                        if app.schedule_input.is_empty() {
+                            if let Some(job) = app.schedule_jobs.get(app.schedule_selected).cloned() {
+                                match app.bridge.remove_schedule(&job.id).await {
+                                    Ok(_) => {
+                                        app.add_system_message(format!("Deleted: {}", job.task));
+                                        if app.schedule_selected > 0 { app.schedule_selected -= 1; }
+                                        if let Ok(jobs) = app.bridge.list_schedules().await {
+                                            app.schedule_jobs = jobs;
+                                        }
+                                    }
+                                    Err(e) => app.add_error_message(format!("Failed: {}", e)),
+                                }
+                            }
+                        } else {
+                            app.schedule_input.push('d');
+                        }
+                        return;
+                    }
+                    KeyCode::Backspace | KeyCode::Delete => {
+                        if app.schedule_input.is_empty() {
+                            // Delete selected job
+                            if let Some(job) = app.schedule_jobs.get(app.schedule_selected).cloned() {
+                                match app.bridge.remove_schedule(&job.id).await {
+                                    Ok(_) => {
+                                        app.add_system_message(format!("Deleted: {}", job.task));
+                                        if app.schedule_selected > 0 { app.schedule_selected -= 1; }
+                                        if let Ok(jobs) = app.bridge.list_schedules().await {
+                                            app.schedule_jobs = jobs;
+                                        }
+                                    }
+                                    Err(e) => app.add_error_message(format!("Failed: {}", e)),
+                                }
+                            }
+                        } else {
+                            app.schedule_input.pop();
+                        }
+                        return;
+                    }
+                    KeyCode::Char(c) => {
+                        app.schedule_input.push(c);
+                        return;
+                    }
+                    _ => return,
+                }
+            }
+
             // ThemePicker — interactive theme browser with live preview
             if matches!(app.active_modal, Some(AppModal::ThemePicker)) {
                 let count = app.theme_picker_names.len();
@@ -525,6 +652,144 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                 }
             }
 
+            // Doctor — interactive diagnostics with install
+            if matches!(app.active_modal, Some(AppModal::Doctor { .. })) {
+                let (installing, check_count) = match &app.active_modal {
+                    Some(AppModal::Doctor { installing, checks, .. }) => (*installing, checks.len()),
+                    _ => unreachable!(),
+                };
+                if installing {
+                    return;
+                }
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') => {
+                        app.active_modal = None;
+                        return;
+                    }
+                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.active_modal = None;
+                        return;
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        if let Some(AppModal::Doctor { cursor, .. }) = &mut app.active_modal {
+                            if *cursor < check_count.saturating_sub(1) {
+                                *cursor += 1;
+                            }
+                        }
+                        return;
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        if let Some(AppModal::Doctor { cursor, .. }) = &mut app.active_modal {
+                            if *cursor > 0 {
+                                *cursor -= 1;
+                            }
+                        }
+                        return;
+                    }
+                    KeyCode::PageDown => {
+                        if let Some(AppModal::Doctor { cursor, .. }) = &mut app.active_modal {
+                            *cursor = (*cursor + 5).min(check_count.saturating_sub(1));
+                        }
+                        return;
+                    }
+                    KeyCode::PageUp => {
+                        if let Some(AppModal::Doctor { cursor, .. }) = &mut app.active_modal {
+                            *cursor = cursor.saturating_sub(5);
+                        }
+                        return;
+                    }
+                    KeyCode::Char('r') => {
+                        let new_checks = {
+                            let socket = app.bridge_url().to_string();
+                            let provider = app.provider.clone();
+                            let bridge = sediman_tui_bridge::ApiClient::new(&socket);
+                            doctor::run_checks_for_recheck(&bridge, &provider).await
+                        };
+                        if let Some(AppModal::Doctor { checks, cursor, scroll, .. }) = &mut app.active_modal {
+                            *checks = new_checks;
+                            *cursor = 0;
+                            *scroll = 0;
+                        }
+                        return;
+                    }
+                    KeyCode::Enter => {
+                        let (check_idx, install_cmd) = match &app.active_modal {
+                            Some(AppModal::Doctor { checks, cursor, .. }) => {
+                                match checks.get(*cursor) {
+                                    Some(c) => (*cursor, c.install_cmd.clone()),
+                                    None => return,
+                                }
+                            }
+                            _ => return,
+                        };
+                        let cmd = match install_cmd {
+                            Some(c) => c,
+                            None => {
+                                app.show_toast("Nothing to install for this item".into());
+                                return;
+                            }
+                        };
+                        if let Some(AppModal::Doctor { installing, install_output, .. }) = &mut app.active_modal {
+                            *installing = true;
+                            install_output.clear();
+                        }
+                        let tx = event_tx.clone();
+                        let tx_err = tx.clone();
+                        let cmd_owned = cmd;
+                        tokio::spawn(async move {
+                            let _ = tx.send(AppEvent::DoctorInstallOutput(format!("$ {}", cmd_owned)));
+                            let mut child = match tokio::process::Command::new("sh")
+                                .arg("-c")
+                                .arg(&cmd_owned)
+                                .stdout(std::process::Stdio::piped())
+                                .stderr(std::process::Stdio::piped())
+                                .spawn()
+                            {
+                                Ok(c) => c,
+                                Err(e) => {
+                                    let _ = tx.send(AppEvent::DoctorInstallOutput(format!("error: {}", e)));
+                                    let _ = tx.send(AppEvent::DoctorInstallDone(check_idx, false));
+                                    return;
+                                }
+                            };
+
+                            if let Some(stdout) = child.stdout.take() {
+                                let tx = tx.clone();
+                                tokio::spawn(async move {
+                                    use tokio::io::AsyncBufReadExt;
+                                    let mut reader = tokio::io::BufReader::new(stdout).lines();
+                                    while let Ok(Some(line)) = reader.next_line().await {
+                                        let _ = tx.send(AppEvent::DoctorInstallOutput(format!("  {}", line)));
+                                    }
+                                });
+                            }
+                            if let Some(stderr) = child.stderr.take() {
+                                tokio::spawn(async move {
+                                    use tokio::io::AsyncBufReadExt;
+                                    let mut reader = tokio::io::BufReader::new(stderr).lines();
+                                    while let Ok(Some(line)) = reader.next_line().await {
+                                        let _ = tx_err.send(AppEvent::DoctorInstallOutput(format!("  {}", line)));
+                                    }
+                                });
+                            }
+
+                            let success = match child.wait().await {
+                                Ok(s) => s.success(),
+                                Err(_) => false,
+                            };
+                            if success {
+                                let _ = tx.send(AppEvent::DoctorInstallOutput("done ✓".into()));
+                            } else {
+                                let _ = tx.send(AppEvent::DoctorInstallOutput("failed ✗".into()));
+                            }
+                            let _ = tx.send(AppEvent::DoctorInstallDone(check_idx, success));
+                        });
+                        return;
+                    }
+                    _ => return,
+                }
+            }
+
             // Help / Info modal handling — vim-style navigation
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => {
@@ -536,26 +801,38 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                         return;
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
-                        if let Some(AppModal::Info { scroll, .. }) = &mut app.active_modal {
-                            *scroll = scroll.saturating_add(1);
+                        match &mut app.active_modal {
+                            Some(AppModal::Info { scroll, .. }) | Some(AppModal::Help { scroll }) => {
+                                *scroll = scroll.saturating_add(1);
+                            }
+                            _ => {}
                         }
                         return;
                     }
                     KeyCode::Up | KeyCode::Char('k') => {
-                        if let Some(AppModal::Info { scroll, .. }) = &mut app.active_modal {
-                            *scroll = scroll.saturating_sub(1);
+                        match &mut app.active_modal {
+                            Some(AppModal::Info { scroll, .. }) | Some(AppModal::Help { scroll }) => {
+                                *scroll = scroll.saturating_sub(1);
+                            }
+                            _ => {}
                         }
                         return;
                     }
                     KeyCode::PageDown => {
-                        if let Some(AppModal::Info { scroll, .. }) = &mut app.active_modal {
-                            *scroll = scroll.saturating_add(10);
+                        match &mut app.active_modal {
+                            Some(AppModal::Info { scroll, .. }) | Some(AppModal::Help { scroll }) => {
+                                *scroll = scroll.saturating_add(10);
+                            }
+                            _ => {}
                         }
                         return;
                     }
                     KeyCode::PageUp => {
-                        if let Some(AppModal::Info { scroll, .. }) = &mut app.active_modal {
-                            *scroll = scroll.saturating_sub(10);
+                        match &mut app.active_modal {
+                            Some(AppModal::Info { scroll, .. }) | Some(AppModal::Help { scroll }) => {
+                                *scroll = scroll.saturating_sub(10);
+                            }
+                            _ => {}
                         }
                         return;
                     }
@@ -574,6 +851,7 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                         app.agent_running = false;
                         app.append_step("-- Interrupted --".to_string());
                     } else {
+                        app.pending_paste = None;
                         app.editor.delete_line_by_head();
                     }
                 }
@@ -584,34 +862,47 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                         app.agent_running = false;
                         app.append_step("-- Cancelled --".to_string());
                     } else {
+                        app.pending_paste = None;
                         app.editor.delete_line_by_head();
                     }
                 }
                 // Ctrl+/ toggles help (same as OpenCode's ctrl+?)
                 KeyCode::Char('/') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    if matches!(app.active_modal, Some(AppModal::Help)) {
+                    if matches!(app.active_modal, Some(AppModal::Help { .. })) {
                         app.active_modal = None;
                     } else {
-                        app.active_modal = Some(AppModal::Help);
+                        app.active_modal = Some(AppModal::Help { scroll: 0 });
                     }
                 }
                 // Keep Ctrl+P as alias for help toggle
                 KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    if matches!(app.active_modal, Some(AppModal::Help)) {
+                    if matches!(app.active_modal, Some(AppModal::Help { .. })) {
                         app.active_modal = None;
                     } else {
-                        app.active_modal = Some(AppModal::Help);
+                        app.active_modal = Some(AppModal::Help { scroll: 0 });
                     }
                 }
                 KeyCode::Enter => {
                     // Ctrl+Enter or Shift+Enter → newline in editor
-                    // Plain Enter → submit
+                    // Plain Enter → submit (or accept completion if popup visible)
                     let has_modifier = key.modifiers.contains(KeyModifiers::SHIFT)
                         || key.modifiers.contains(KeyModifiers::CONTROL);
                     if has_modifier {
                         app.editor.input(key);
+                    } else if let Some(cmd) = app.completer.selected_text() {
+                        // Accept completion selection
+                        app.editor.delete_line_by_head();
+                        app.editor.insert_str(cmd);
+                        app.completer.complete("");
                     } else {
-                        let input = app.editor.submit();
+                        // If pending paste, replace placeholder with actual content before submit
+                        let input = if let Some(paste) = app.pending_paste.take() {
+                            app.editor.delete_line_by_head();
+                            app.editor.insert_str(&paste);
+                            app.editor.submit()
+                        } else {
+                            app.editor.submit()
+                        };
                         if !input.is_empty() {
                             if input.starts_with('/') {
                                 // Slash commands always work, even while agent is running
@@ -630,28 +921,41 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                 KeyCode::Tab => {
                     let prefix = app.editor.lines().join(" ").trim().to_string();
                     if prefix.starts_with('/') {
-                        app.completer.complete(&prefix);
-                        if let Some(cmd) = app.completer.next() {
+                        // Auto-complete slash commands
+                        if let Some(selected) = app.completer.selected_text() {
                             app.editor.delete_line_by_head();
-                            app.editor.insert_str(&cmd);
+                            app.editor.insert_str(selected);
+                            app.completer.complete("");
+                        } else {
+                            app.completer.complete(&prefix);
+                            app.completer.next();
                         }
-                    } else if let Some(cmd) = app.command_registry.find_fuzzy(&prefix) {
-                        app.editor.delete_line_by_head();
-                        app.editor.insert_str(cmd.name);
+                    } else {
+                        app.agent_mode = app.agent_mode.cycle();
                     }
                 }
                 KeyCode::Up => {
                     if key.modifiers.contains(KeyModifiers::SHIFT) {
                         scroll_up(app, 3);
                     } else {
-                        app.editor.history_up();
+                        let input = app.editor.lines().join(" ").trim().to_string();
+                        if input.starts_with('/') && !app.completer.filtered().is_empty() {
+                            app.completer.up();
+                        } else {
+                            app.editor.history_up();
+                        }
                     }
                 }
                 KeyCode::Down => {
                     if key.modifiers.contains(KeyModifiers::SHIFT) {
                         scroll_down(app, 3);
                     } else {
-                        app.editor.history_down();
+                        let input = app.editor.lines().join(" ").trim().to_string();
+                        if input.starts_with('/') && !app.completer.filtered().is_empty() {
+                            app.completer.down();
+                        } else {
+                            app.editor.history_down();
+                        }
                     }
                 }
                 KeyCode::PageUp => {
@@ -664,14 +968,50 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                     app.permission.cycle();
                     app.add_system_message(format!("Mode: {}", app.permission.current_label()));
                 }
-                _ => {
-                    app.editor.input(key);
-                    // Update completer on every key press when typing a slash command
-                    let current = app.editor.lines().join(" ").trim().to_string();
-                    if current.starts_with('/') {
-                        app.completer.complete(&current);
+                KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    if app.editor.is_searching() {
+                        let query = app.editor.search_query().to_string();
+                        if !query.is_empty() {
+                            let query_lower = query.to_lowercase();
+                            let current_pos = app.editor.history_pos().unwrap_or(app.editor.history().len());
+                            if let Some((i, _entry)) = app.editor.history().iter().enumerate().rev()
+                                .filter(|(i, _)| *i < current_pos)
+                                .find(|(_, entry)| entry.to_lowercase().contains(&query_lower))
+                            {
+                                app.editor.load_history_entry(i);
+                            }
+                        }
                     } else {
-                        app.completer.complete(""); // clears filtered list
+                        app.editor.start_history_search();
+                    }
+                }
+                _ => {
+                    if app.editor.is_searching() {
+                        match key.code {
+                            KeyCode::Char(c) => {
+                                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                                    app.editor.cancel_history_search();
+                                } else {
+                                    app.editor.history_search_char(c);
+                                }
+                            }
+                            KeyCode::Backspace => {
+                                app.editor.history_search_backspace();
+                            }
+                            KeyCode::Enter | KeyCode::Esc => {
+                                app.editor.accept_history_search();
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        app.pending_paste = None;
+                        app.editor.input(key);
+                        let current = app.editor.lines().join(" ").trim().to_string();
+                        if current.starts_with('/') {
+                            app.completer.complete(&current);
+                        } else {
+                            app.completer.complete("");
+                        }
                     }
                 }
             }
@@ -693,7 +1033,9 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
             app.pending_resize = Some((w, h));
         }
         AppEvent::Paste(text) => {
-            app.editor.insert_str(&text);
+            let line_count = text.lines().count();
+            app.pending_paste = Some(text);
+            app.editor.insert_str(&format!("[paste {} lines]", line_count));
         }
         AppEvent::Shutdown => {
             app.running = false;
@@ -705,6 +1047,10 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
             let skill_created = None;
             let scheduled_job = None;
             app.complete_agent_message(success, result_text, elapsed_secs, skill_created, scheduled_job);
+            if elapsed_secs >= 30 {
+                let status = if success { "Completed" } else { "Failed" };
+                send_desktop_notification("OpenSkynet", &format!("Task {} in {}s", status, elapsed_secs));
+            }
         }
         AppEvent::AgentError(err) => {
             app.agent_running = false;
@@ -718,6 +1064,30 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
         }
         AppEvent::StreamingToken(token, phase) => {
             app.append_streaming_token(&token, &phase);
+        }
+        AppEvent::DoctorInstallOutput(line) => {
+            if let Some(AppModal::Doctor { install_output, .. }) = &mut app.active_modal {
+                install_output.push(line);
+                if install_output.len() > 100 {
+                    let excess = install_output.len() - 100;
+                    install_output.drain(0..excess);
+                }
+            }
+        }
+        AppEvent::DoctorInstallDone(check_index, success) => {
+            if let Some(AppModal::Doctor { installing, install_output, .. }) = &mut app.active_modal {
+                *installing = false;
+                install_output.clear();
+            }
+            if success {
+                if let Some(AppModal::Doctor { checks, .. }) = &mut app.active_modal {
+                    if let Some(check) = checks.get_mut(check_index) {
+                        check.status = crate::app::DoctorStatus::Pass;
+                        check.message = "installed ✓".into();
+                        check.install_cmd = None;
+                    }
+                }
+            }
         }
     }
 }
@@ -889,38 +1259,7 @@ async fn handle_slash(app: &mut App, input: &str) {
             skills::handle_skills(app, args).await;
             refresh_sidebar(app).await;
         }
-        "/run-skill" => skills::handle_run_skill(app, args).await,
-        "/hub" => {
-            let (sub_cmd, sub_args) = parse_command(args);
-            match sub_cmd {
-                "browse" => hub::handle_hub_browse(app, sub_args).await,
-                "search" => hub::handle_hub_search(app, sub_args).await,
-                "install" => hub::handle_hub_install(app, sub_args).await,
-                "install-github" => hub::handle_hub_install_github(app, sub_args).await,
-                "info" => hub::handle_hub_info(app, sub_args).await,
-                "publish" => hub::handle_hub_publish(app, sub_args).await,
-                "update" => hub::handle_hub_update(app, sub_args).await,
-                "remove" => hub::handle_hub_remove(app, sub_args).await,
-                "check-update" => hub::handle_hub_check_update(app, sub_args).await,
-                _ => {
-                    app.active_modal = Some(AppModal::Info {
-                        title: "Hub".into(),
-                        lines: vec![
-                            crate::app::ModalLine::blank(),
-                            crate::app::ModalLine::muted("  /hub browse            Browse skills"),
-                            crate::app::ModalLine::muted("  /hub search <query>    Search skills"),
-                            crate::app::ModalLine::muted("  /hub install <name>    Install a skill"),
-                            crate::app::ModalLine::muted("  /hub info <name>       Show skill details"),
-                            crate::app::ModalLine::muted("  /hub update <name>     Update a skill"),
-                            crate::app::ModalLine::muted("  /hub remove <name>     Remove a skill"),
-                            crate::app::ModalLine::muted("  /hub check-update <n>  Check for updates"),
-                            crate::app::ModalLine::muted("  /hub publish <name>    Publish a skill"),
-                        ],
-                        scroll: 0,
-                    });
-                }
-            }
-        }
+        "/hub" => hub::handle_hub_browse(app, args).await,
         "/memory" => {
             memory::handle_memory(app, args).await;
             refresh_sidebar(app).await;
@@ -933,26 +1272,15 @@ async fn handle_slash(app: &mut App, input: &str) {
             schedule::handle_schedule(app, args).await;
             refresh_sidebar(app).await;
         }
-        "/schedule-add" => schedule::handle_schedule_add(app, args).await,
-        "/schedule-remove" => schedule::handle_schedule_remove(app, args).await,
         "/sessions" | "/session" => sessions::handle_sessions(app, args).await,
-        "/resume" => sessions::handle_resume(app, args).await,
         "/browser" => browser::handle_browser(app, args).await,
         "/screenshot" => browser::handle_screenshot(app, args).await,
-        "/record" => record::handle_record(app, args).await,
-        "/stop" => record::handle_stop(app, args).await,
         "/delegate" => delegate::handle_delegate(app, args).await,
         "/parallel" => delegate::handle_parallel(app, args).await,
-        "/terminal" => terminal::handle_terminal(app, args).await,
         "/plan" => plan::handle_plan(app, args).await,
         "/soul" => soul::handle_soul(app, args).await,
-        "/usage" => misc::handle_usage(app, args).await,
-        "/doctor" => misc::handle_doctor(app, args).await,
-        "/export" => misc::handle_export(app, args).await,
-        "/btw" => misc::handle_btw(app, args).await,
-        "/color" => misc::handle_color(app, args).await,
-        "/rename" => misc::handle_rename(app, args).await,
         "/themes" => theming::handle_themes(app, args).await,
+        "/doctor" => doctor::handle_doctor(app, args).await,
         _ => {
             app.add_system_message(format!("Unknown command: {}. Type /help", cmd_name));
         }
@@ -1213,16 +1541,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_handle_slash_hub_shows_all_subcommands() {
+    async fn test_handle_slash_hub_opens_browser() {
         let mut app = test_app();
         handle_slash(&mut app, "/hub").await;
-        if let Some(crate::app::AppModal::Info { lines, .. }) = &app.active_modal {
-            let text: String = lines.iter().map(|l| l.text.clone()).collect::<Vec<_>>().join(" ");
-
-            assert!(text.contains("/hub publish"));
-        } else {
-            panic!("Expected Info modal");
-        }
+        // /hub now opens the skill browser directly (or shows message if no connection)
+        assert!(app.active_modal.is_some() || app.messages.iter().any(|m| matches!(m, ChatMessage::Error { .. })));
     }
 
     #[tokio::test]
@@ -1289,54 +1612,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_handle_slash_color_valid() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/color red").await;
-        assert_eq!(app.session_color.as_deref(), Some("red"));
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_color_default_clears() {
-        let mut app = test_app();
-        app.session_color = Some("red".into());
-        handle_slash(&mut app, "/color default").await;
-        assert!(app.session_color.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_color_invalid() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/color magenta_fuchsia").await;
-        assert!(app.session_color.is_none());
-        let has_err = app.messages.iter().any(|m| matches!(m, ChatMessage::System { text, .. } if text.contains("Unknown color")));
-        assert!(has_err);
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_rename() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/rename my session").await;
-        assert_eq!(app.session_name.as_deref(), Some("my session"));
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_rename_truncates_to_30() {
-        let mut app = test_app();
-        let long_name = "a".repeat(50);
-        handle_slash(&mut app, &format!("/rename {}", long_name)).await;
-        assert_eq!(app.session_name.as_ref().unwrap().len(), 30);
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_rename_empty_shows_current() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/rename ").await;
-        assert!(app.session_name.is_none());
-        let has_unnamed = app.messages.iter().any(|m| matches!(m, ChatMessage::System { text, .. } if text.contains("(unnamed)")));
-        assert!(has_unnamed);
-    }
-
-    #[tokio::test]
     async fn test_handle_slash_browser_headless() {
         let mut app = test_app();
         app.headless = false;
@@ -1396,24 +1671,7 @@ mod tests {
     async fn test_handle_slash_hub_no_subcommand() {
         let mut app = test_app();
         handle_slash(&mut app, "/hub").await;
-        // /hub without subcommand now shows a modal instead of chat message
         assert!(app.active_modal.is_some());
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_btw_empty() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/btw").await;
-        let has_usage = app.messages.iter().any(|m| matches!(m, ChatMessage::System { text, .. } if text.contains("Usage")));
-        assert!(has_usage);
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_btw_with_question() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/btw what is 2+2").await;
-        let has_q = app.messages.iter().any(|m| matches!(m, ChatMessage::System { text, .. } if text.contains("Side question")));
-        assert!(has_q);
     }
 
     #[tokio::test]
@@ -1436,22 +1694,6 @@ mod tests {
         assert_ne!(was_plan, app.permission.is_plan_mode());
         handle_slash(&mut app, "/plan").await;
         assert_eq!(was_plan, app.permission.is_plan_mode());
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_terminal_empty_shows_status() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/terminal").await;
-        let has_status = app.messages.iter().any(|m| matches!(m, ChatMessage::System { text, .. } if text.contains("Terminal access")));
-        assert!(has_status);
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_terminal_invalid() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/terminal maybe").await;
-        let has_usage = app.messages.iter().any(|m| matches!(m, ChatMessage::System { text, .. } if text.contains("Usage")));
-        assert!(has_usage);
     }
 
     #[tokio::test]
@@ -1743,7 +1985,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_skill_browser_q_closes() {
+    async fn test_skill_browser_q_types_into_filter() {
         let mut app = test_app();
         app.skill_browser_skills = vec![
             sediman_tui_bridge::HubSkill {
@@ -1755,7 +1997,8 @@ mod tests {
         let tx = test_tx();
         let key = crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Char('q'), crossterm::event::KeyModifiers::NONE);
         handle_message(&mut app, AppEvent::Key(key), &tx).await;
-        assert!(app.active_modal.is_none());
+        assert!(app.active_modal.is_some());
+        assert_eq!(app.skill_browser_filter, "q");
     }
 
     #[tokio::test]
@@ -1884,70 +2127,6 @@ mod tests {
         assert!(has_uninstall);
     }
 
-    // ── /skills search and /hub new subcommand routing tests ──
-
-    #[tokio::test]
-    async fn test_handle_slash_hub_update_routing() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/hub update my-skill").await;
-        let has_msg = app.messages.iter().any(|m| matches!(m, ChatMessage::System { text, .. } if text.contains("Updating")));
-        assert!(has_msg);
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_hub_remove_routing() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/hub remove my-skill").await;
-        let has_remove = app.active_modal.is_some()
-            || app.messages.iter().any(|m| matches!(m, ChatMessage::System { text, .. } if text.contains("Removed")));
-        assert!(has_remove);
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_hub_check_update_routing() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/hub check-update my-skill").await;
-        let has_check = app.active_modal.is_some()
-            || app.messages.iter().any(|m| matches!(m, ChatMessage::System { text, .. } if text.contains("up to date") || text.contains("Update available")));
-        assert!(has_check);
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_hub_publish_routing() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/hub publish my-skill").await;
-        let has_msg = app.messages.iter().any(|m| matches!(m, ChatMessage::System { text, .. } if text.contains("Publishing") || text.contains("Connection")));
-        assert!(has_msg);
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_hub_update_empty() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/hub update").await;
-        let has_usage = app.messages.iter().any(|m| matches!(m, ChatMessage::System { text, .. } if text.contains("Usage")));
-        assert!(has_usage);
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_hub_remove_empty() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/hub remove").await;
-        let has_usage = app.messages.iter().any(|m| matches!(m, ChatMessage::System { text, .. } if text.contains("Usage")));
-        assert!(has_usage);
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_hub_check_update_empty() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/hub check-update").await;
-        let has_usage = app.messages.iter().any(|m| matches!(m, ChatMessage::System { text, .. } if text.contains("Usage")));
-        assert!(has_usage);
-    }
-
-    #[tokio::test]
-    async fn test_handle_slash_hub_publish_empty() {
-        let mut app = test_app();
-        handle_slash(&mut app, "/hub publish").await;
-        assert!(app.active_modal.is_some());
-    }
+    // ── /hub tests ──
 }
+

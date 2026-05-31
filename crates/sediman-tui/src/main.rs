@@ -1,7 +1,10 @@
 use std::panic;
 use std::time::Duration;
+use std::io::Write;
 
 use clap::Parser;
+use crossterm::{execute, event::{EnableBracketedPaste, DisableBracketedPaste, EnableMouseCapture, DisableMouseCapture}};
+use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 
 mod app;
 mod update;
@@ -15,7 +18,7 @@ mod gpu_app;
 mod config;
 
 #[derive(Parser, Debug)]
-#[command(name = "sediman-tui", about = "Sediman TUI — browser agent terminal frontend", version = "0.1.1")]
+#[command(name = "openskynet", about = "OpenSkynet — Your AI browser employee", version)]
 struct Args {
     #[arg(long, default_value = "openai")]
     provider: String,
@@ -92,7 +95,7 @@ async fn ensure_backend(
         .env("SEDIMAN_PYTHON_SOCKET", socket_path)
         .env("SEDIMAN_PROVIDER", provider)
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+        .stderr(std::process::Stdio::piped());
 
     if let Some(m) = model {
         child_cmd.env("SEDIMAN_MODEL", m);
@@ -110,6 +113,17 @@ async fn ensure_backend(
             return None;
         }
     };
+
+    if let Some(stderr) = child.stderr.take() {
+        use tokio::io::AsyncBufReadExt;
+        tokio::spawn(async move {
+            let reader = tokio::io::BufReader::new(stderr);
+            let mut lines = reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                eprintln!("[backend] {}", line);
+            }
+        });
+    }
 
     // Wait for the socket to appear (up to 15 seconds)
     for i in 0..30 {
@@ -155,12 +169,8 @@ async fn main() {
     let original_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
         crossterm::terminal::disable_raw_mode().ok();
-        use std::io::Write;
         let mut stdout = std::io::stdout();
-        let _ = stdout.write_all(b"\x1b[?1000l");
-        let _ = stdout.write_all(b"\x1b[?2004l");
-        let _ = stdout.write_all(b"\x1b[?25h");
-        let _ = stdout.write_all(b"\x1b[?1049l");
+        let _ = execute!(stdout, DisableMouseCapture, DisableBracketedPaste, crossterm::cursor::Show, LeaveAlternateScreen);
         let _ = stdout.flush();
         original_hook(info);
     }));
@@ -275,21 +285,14 @@ async fn main() {
 
     crossterm::terminal::enable_raw_mode().expect("Failed to enable raw mode");
     let mut stdout = std::io::stdout();
-    use std::io::Write;
-    let _ = stdout.write_all(b"\x1b[?1049h");
-    let _ = stdout.write_all(b"\x1b[?25l");
-    let _ = stdout.write_all(b"\x1b[?2004h");
-    let _ = stdout.write_all(b"\x1b[?1000h");
+    let _ = execute!(stdout, EnterAlternateScreen, crossterm::cursor::Hide, EnableBracketedPaste, EnableMouseCapture);
     let _ = stdout.flush();
 
     let result = app::run(app_state).await;
 
     crossterm::terminal::disable_raw_mode().ok();
-    let _ = std::io::Write::write_all(&mut stdout, b"\x1b[?1000l");
-    let _ = std::io::Write::write_all(&mut stdout, b"\x1b[?2004l");
-    let _ = std::io::Write::write_all(&mut stdout, b"\x1b[?25h");
-    let _ = std::io::Write::write_all(&mut stdout, b"\x1b[?1049l");
-    let _ = std::io::Write::flush(&mut stdout);
+    let _ = execute!(stdout, DisableMouseCapture, DisableBracketedPaste, crossterm::cursor::Show, LeaveAlternateScreen);
+    let _ = stdout.flush();
 
     // Clean up backend if we spawned it
     if let Some(mut child) = backend_child {

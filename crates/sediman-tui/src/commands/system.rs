@@ -1,7 +1,7 @@
 use crate::app::{App, AppModal, ModalLine};
 
 pub async fn handle_help(app: &mut App, _args: &str) {
-    app.active_modal = Some(AppModal::Help);
+    app.active_modal = Some(AppModal::Help { scroll: 0 });
 }
 
 pub async fn handle_clear(app: &mut App, _args: &str) {

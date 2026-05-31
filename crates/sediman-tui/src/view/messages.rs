@@ -209,7 +209,30 @@ pub fn render_messages(buf: &mut CellBuffer, area: Rect, app: &mut App) {
         let ix = area.right().saturating_sub(display_width(&indicator));
         let iy = area.bottom().saturating_sub(1);
         if iy > area.y && ix < area.right() {
-            buf.draw_str(ix, iy, &indicator, Style::new().fg(app.theme.text_muted));
+            buf.draw_str(ix, iy, &indicator, Style::new().fg(app.theme.border));
+        }
+    }
+
+    if total_lines > visible_height && area.height > 4 {
+        let track_x = area.right().saturating_sub(1);
+        let track_top = area.y + 1;
+        let track_bottom = area.bottom().saturating_sub(2);
+        let track_height = track_bottom.saturating_sub(track_top) as usize;
+        if track_height > 0 {
+            for ty in track_top..track_bottom {
+                if ty < area.bottom() {
+                    buf.put_char(track_x, ty, '\u{2502}', Style::new().fg(app.theme.border_dim));
+                }
+            }
+            let thumb_pos = if max_scroll > 0 {
+                ((scroll as f64 / max_scroll as f64) * (track_height as f64 - 1.0)) as u16
+            } else {
+                0
+            };
+            let thumb_y = track_top + thumb_pos;
+            if thumb_y < track_bottom {
+                buf.put_char(track_x, thumb_y, '\u{2588}', Style::new().fg(app.theme.primary));
+            }
         }
     }
 }

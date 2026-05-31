@@ -42,11 +42,14 @@ pub fn render_side_panel(buf: &mut CellBuffer, area: Rect, app: &App) {
     };
 
     for (i, (text, style)) in lines.iter().enumerate() {
-        let y = content_area.y + i as u16;
+        if i < app.side_panel_scroll {
+            continue;
+        }
+        let y = content_area.y + (i - app.side_panel_scroll) as u16;
         if y >= content_area.bottom() {
             break;
         }
-        buf.draw_str(content_area.x, y, text, *style);
+        buf.draw_str(content_area.x + 1, y, text, style.bg(t.background_panel));
     }
 }
 

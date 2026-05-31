@@ -8,6 +8,10 @@ pub struct TextEditor {
     history: Vec<String>,
     history_pos: Option<usize>,
     prompt: String,
+    undo_stack: Vec<(Vec<char>, usize)>,
+    redo_stack: Vec<(Vec<char>, usize)>,
+    draft: Option<String>,
+    history_search: Option<String>,
 }
 
 impl TextEditor {
@@ -18,6 +22,10 @@ impl TextEditor {
             history: Vec::new(),
             history_pos: None,
             prompt: String::new(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            draft: None,
+            history_search: None,
         }
     }
 
@@ -30,19 +38,138 @@ impl TextEditor {
         s.lines().map(|s| s.to_string()).collect()
     }
 
+    /// Calculate how many visual rows the editor content needs, accounting for wrapping.
+    /// `width` is the available inner width (excluding borders, badge, padding).
+    pub fn visual_lines(&self, width: usize) -> usize {
+        if self.buffer.is_empty() { return 1; }
+        if width == 0 { return 1; }
+
+        let prompt_len = self.prompt.chars().count();
+        let first_capacity = width.saturating_sub(prompt_len).saturating_sub(1);
+        let other_capacity = width.saturating_sub(1).max(1);
+
+        if first_capacity == 0 { return 1; }
+
+        let mut lines = 1;
+        let mut col = 0;
+        let mut capacity = first_capacity;
+
+        for &c in &self.buffer {
+            if c == '\n' {
+                lines += 1;
+                col = 0;
+                capacity = other_capacity;
+                continue;
+            }
+
+            let w = unicode_width::UnicodeWidthChar::width(c).unwrap_or(1).max(1);
+            col += w;
+            if col >= capacity {
+                lines += 1;
+                col = 0;
+                capacity = other_capacity;
+            }
+        }
+
+        lines.max(1)
+    }
+
     fn buffer_string(&self) -> String {
         self.buffer.iter().collect()
     }
 
+    fn save_undo(&mut self) {
+        self.undo_stack.push((self.buffer.clone(), self.cursor));
+        if self.undo_stack.len() > 100 {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+
+    pub fn undo(&mut self) -> bool {
+        if let Some((buf, cursor)) = self.undo_stack.pop() {
+            self.redo_stack.push((self.buffer.clone(), self.cursor));
+            self.buffer = buf;
+            self.cursor = cursor;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn redo(&mut self) -> bool {
+        if let Some((buf, cursor)) = self.redo_stack.pop() {
+            self.undo_stack.push((self.buffer.clone(), self.cursor));
+            self.buffer = buf;
+            self.cursor = cursor;
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn input(&mut self, key: KeyEvent) -> bool {
+        use crossterm::event::KeyModifiers;
+
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.modifiers.contains(KeyModifiers::SHIFT) {
+            match key.code {
+                KeyCode::Char('z') | KeyCode::Char('Z') => { self.redo(); return true; }
+                _ => {}
+            }
+        }
+
+        if key.modifiers.contains(KeyModifiers::CONTROL) && !key.modifiers.contains(KeyModifiers::ALT) {
+            match key.code {
+                KeyCode::Char('a') => { self.cursor = 0; return true; }
+                KeyCode::Char('e') => { self.cursor = self.buffer.len(); return true; }
+                KeyCode::Char('k') => {
+                    self.save_undo();
+                    self.buffer.drain(self.cursor..);
+                    return true;
+                }
+                KeyCode::Char('u') => {
+                    self.save_undo();
+                    self.buffer.drain(0..self.cursor);
+                    self.cursor = 0;
+                    return true;
+                }
+                KeyCode::Char('w') => {
+                    self.save_undo();
+                    self.delete_word_backward();
+                    return true;
+                }
+                KeyCode::Char('z') => { self.undo(); return true; }
+                KeyCode::Char('y') => { self.redo(); return true; }
+                KeyCode::Left => {
+                    self.move_word_left();
+                    return true;
+                }
+                KeyCode::Right => {
+                    self.move_word_right();
+                    return true;
+                }
+                _ => {}
+            }
+        }
+        if key.modifiers.contains(KeyModifiers::ALT) {
+            match key.code {
+                KeyCode::Backspace => { self.save_undo(); self.delete_word_backward(); return true; }
+                KeyCode::Left => { self.move_word_left(); return true; }
+                KeyCode::Right => { self.move_word_right(); return true; }
+                _ => {}
+            }
+        }
+
         match key.code {
             KeyCode::Char(c) => {
+                self.save_undo();
                 self.buffer.insert(self.cursor, c);
                 self.cursor += 1;
                 true
             }
             KeyCode::Backspace => {
                 if self.cursor > 0 {
+                    self.save_undo();
                     self.cursor -= 1;
                     self.buffer.remove(self.cursor);
                 }
@@ -50,6 +177,7 @@ impl TextEditor {
             }
             KeyCode::Delete => {
                 if self.cursor < self.buffer.len() {
+                    self.save_undo();
                     self.buffer.remove(self.cursor);
                 }
                 true
@@ -75,11 +203,13 @@ impl TextEditor {
                 true
             }
             KeyCode::Enter => {
+                self.save_undo();
                 self.buffer.insert(self.cursor, '\n');
                 self.cursor += 1;
                 true
             }
             KeyCode::Tab | KeyCode::BackTab => {
+                self.save_undo();
                 for _ in 0..2 {
                     self.buffer.insert(self.cursor, ' ');
                     self.cursor += 1;
@@ -106,12 +236,51 @@ impl TextEditor {
         self.buffer.clear();
         self.cursor = 0;
         self.history_pos = None;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.draft = None;
+        self.history_search = None;
         trimmed
+    }
+
+    fn move_word_left(&mut self) {
+        if self.cursor == 0 { return; }
+        let mut pos = self.cursor;
+        while pos > 0 && self.buffer[pos - 1].is_whitespace() {
+            pos -= 1;
+        }
+        while pos > 0 && !self.buffer[pos - 1].is_whitespace() {
+            pos -= 1;
+        }
+        self.cursor = pos;
+    }
+
+    fn move_word_right(&mut self) {
+        let len = self.buffer.len();
+        if self.cursor >= len { return; }
+        let mut pos = self.cursor;
+        while pos < len && !self.buffer[pos].is_whitespace() {
+            pos += 1;
+        }
+        while pos < len && self.buffer[pos].is_whitespace() {
+            pos += 1;
+        }
+        self.cursor = pos;
+    }
+
+    fn delete_word_backward(&mut self) {
+        if self.cursor == 0 { return; }
+        let old_cursor = self.cursor;
+        self.move_word_left();
+        self.buffer.drain(self.cursor..old_cursor);
     }
 
     pub fn history_up(&mut self) {
         if self.history.is_empty() {
             return;
+        }
+        if self.draft.is_none() && !self.buffer.is_empty() {
+            self.draft = Some(self.buffer.iter().collect());
         }
         let pos = self.history_pos.unwrap_or(self.history.len());
         if pos > 0 {
@@ -132,21 +301,103 @@ impl TextEditor {
             }
             _ => {
                 self.history_pos = None;
-                self.buffer.clear();
-                self.cursor = 0;
+                if let Some(draft) = self.draft.take() {
+                    self.buffer = draft.chars().collect();
+                    self.cursor = self.buffer.len();
+                } else {
+                    self.buffer.clear();
+                    self.cursor = 0;
+                }
             }
         }
     }
 
     pub fn delete_line_by_head(&mut self) {
+        self.save_undo();
         self.buffer.clear();
         self.cursor = 0;
     }
 
     pub fn insert_str(&mut self, s: &str) {
+        self.save_undo();
         for c in s.chars() {
             self.buffer.insert(self.cursor, c);
             self.cursor += 1;
+        }
+    }
+
+    pub fn start_history_search(&mut self) {
+        self.history_search = Some(String::new());
+    }
+
+    pub fn is_searching(&self) -> bool {
+        self.history_search.is_some()
+    }
+
+    pub fn search_query(&self) -> &str {
+        self.history_search.as_deref().unwrap_or("")
+    }
+
+    pub fn history_search_char(&mut self, c: char) {
+        if let Some(ref mut query) = self.history_search {
+            query.push(c);
+            let query_lower = query.to_lowercase();
+            for (i, entry) in self.history.iter().enumerate().rev() {
+                if entry.to_lowercase().contains(&query_lower) {
+                    self.buffer = entry.chars().collect();
+                    self.cursor = self.buffer.len();
+                    self.history_pos = Some(i);
+                    return;
+                }
+            }
+        }
+    }
+
+    pub fn history_search_backspace(&mut self) {
+        if let Some(ref mut query) = self.history_search {
+            query.pop();
+            if query.is_empty() {
+                self.buffer.clear();
+                self.cursor = 0;
+                self.history_pos = None;
+            } else {
+                let query_lower = query.to_lowercase();
+                for (i, entry) in self.history.iter().enumerate().rev() {
+                    if entry.to_lowercase().contains(&query_lower) {
+                        self.buffer = entry.chars().collect();
+                        self.cursor = self.buffer.len();
+                        self.history_pos = Some(i);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn accept_history_search(&mut self) {
+        self.history_search = None;
+    }
+
+    pub fn cancel_history_search(&mut self) {
+        self.buffer.clear();
+        self.cursor = 0;
+        self.history_pos = None;
+        self.history_search = None;
+    }
+
+    pub fn history(&self) -> &[String] {
+        &self.history
+    }
+
+    pub fn history_pos(&self) -> Option<usize> {
+        self.history_pos
+    }
+
+    pub fn load_history_entry(&mut self, index: usize) {
+        if index < self.history.len() {
+            self.buffer = self.history[index].chars().collect();
+            self.cursor = self.buffer.len();
+            self.history_pos = Some(index);
         }
     }
 
@@ -209,9 +460,18 @@ impl TextEditor {
                 } else {
                     buf.put_char(cx, y, c, text_style);
                 }
-                let w = unicode_width::UnicodeWidthChar::width(c).unwrap_or(1).max(1);
-                line_len += w;
-                cx += w as u16;
+                let w = unicode_width::UnicodeWidthChar::width(c).unwrap_or(1);
+                if w > 1 {
+                    for _ in 1..w {
+                        let skip_x = cx + 1;
+                        if let Some(cell) = buf.get_mut(skip_x, y) {
+                            cell.skip = true;
+                        }
+                        cx += 1;
+                    }
+                }
+                line_len += w.max(1);
+                cx += 1;
                 char_idx += 1;
             }
 
@@ -246,9 +506,9 @@ impl TextEditor {
     /// Render with theme colors (used by TUI input area).
     pub fn render_into(&self, buf: &mut CellBuffer, area: Rect, theme: &crate::styling::Theme) {
         let width = area.width as usize;
-        let prompt_style = Style::new().fg(theme.primary).bg(theme.background_panel);
+        let prompt_style = Style::new().fg(theme.primary).bg(theme.background);
         let cursor_style = Style::new().fg(theme.background).bg(theme.primary);
-        let text_style = Style::new().fg(theme.text).bg(theme.background_panel);
+        let text_style = Style::new().fg(theme.text).bg(theme.background);
 
         let prompt_len = self.prompt.chars().count();
         let usable = width.saturating_sub(prompt_len).saturating_sub(1);
@@ -301,9 +561,18 @@ impl TextEditor {
                 } else {
                     buf.put_char(cx, y, c, text_style);
                 }
-                let w = unicode_width::UnicodeWidthChar::width(c).unwrap_or(1).max(1);
-                line_len += w;
-                cx += w as u16;
+                let w = unicode_width::UnicodeWidthChar::width(c).unwrap_or(1);
+                if w > 1 {
+                    for _ in 1..w {
+                        let skip_x = cx + 1;
+                        if let Some(cell) = buf.get_mut(skip_x, y) {
+                            cell.skip = true;
+                        }
+                        cx += 1;
+                    }
+                }
+                line_len += w.max(1);
+                cx += 1;
                 char_idx += 1;
             }
 
@@ -487,7 +756,7 @@ mod tests {
         ed.history_down();
         assert_eq!(buf_str(&ed), "b");
         ed.history_down();
-        assert_eq!(buf_str(&ed), "");
+        assert_eq!(buf_str(&ed), "b");
     }
 
     #[test]

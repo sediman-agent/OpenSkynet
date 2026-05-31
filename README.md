@@ -7,112 +7,58 @@
 Teach it once. It repeats forever. 24/7.
 
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL%201.1-blue.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-green.svg)]()
-[![Discord](https://img.shields.io/discord/1376637192334123070?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/yFbZ58eJ)
-
-<a href="https://www.producthunt.com/products/sediman-agent?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-sediman-agent" target="_blank" rel="noopener noreferrer"><img alt="OpenSkynet - Teach it once. It repeats forever. AI browser automation. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1159366&amp;theme=light&amp;t=1780152148762"></a>
+[![Discord](https://img.shields.io/discord/1376637192334123070?style=flat-square&label=discord)](https://discord.gg/yFbZ58eJ)
 
 </div>
 
 ---
 
-<img width="1246" height="854" alt="Screenshot 2026-05-30 at 4 25 03 AM" src="https://github.com/user-attachments/assets/5ff49600-0002-42c5-b307-9ba4b0a1afef" />
+<img width="1246" height="854" alt="OpenSkynet TUI" src="https://github.com/user-attachments/assets/5ff49600-0002-42c5-b307-9ba4b0a1afef" />
 
 ---
 
-## Install
+### Install
 
-### From GitHub
-
-```bash
-# Install the latest from main
-uv tool install git+https://github.com/sediman-agent/OpenSkynet.git
-
-# Or a specific branch/tag
-uv tool install git+https://github.com/sediman-agent/OpenSkynet.git@feat/v1.0.3-hub-skill-browser
+```
+curl -fsSL https://raw.githubusercontent.com/sediman-agent/OpenSkynet/main/install | bash
 ```
 
-### From source
+Then set your API key and go:
 
-```bash
-git clone https://github.com/sediman-agent/OpenSkynet.git
-cd OpenSkynet
-uv tool install --force .
-
-# OR for development
-uv sync
-uv run sediman --help
+```
+export OPENAI_API_KEY=sk-...
+openskynet
 ```
 
-### Install script options
+### Agents
 
-```bash
-curl -fsSL https://get.sediman.ai | bash -s -- --branch feat/some-branch
-curl -fsSL https://get.sediman.ai | bash -s -- --from-source --force
-```
+Switch between agents with `Tab`.
 
-Then:
+- **Manager** — orchestrates tasks and delegates to other agents
+- **Browser** — browses the web, fills forms, clicks buttons
+- **Coder** — writes, edits, and debugs code
+- **Terminator** — autonomous execution, no confirmation needed
 
-```bash
-sediman init          # set your API key
-sediman run "..."     # headless one-shot
-sediman chat          # interactive CLI
-```
+### What it does
 
-### TUI (Rust terminal UI)
+- **Learn by showing** — watch your browser once, replay anytime
+- **Self-healing** — pages change? it patches itself automatically
+- **24/7 scheduling** — cron-based automation, runs while you sleep
+- **Skills hub** — browse and install community skills
+- **Persistent memory** — remembers preferences across sessions
 
-```bash
-bun run tui --provider openai --model gpt-4o
-OPENAI_API_KEY=sk-... bun run tui --provider openai --model gpt-4o
-```
+### Documentation
 
-| Command | Description |
-|---------|-------------|
-| `/provider` | Select LLM provider |
-| `/model` | Search or switch models |
-| `/memory` | View and edit agent memory |
-| `/skills` | List learned skills |
-| `/schedule` | List scheduled jobs |
-| `/help` | Show all commands |
+For configuration, providers, and advanced usage, see the [docs](https://github.com/sediman-agent/OpenSkynet/wiki).
 
----
+### Contributing
 
-## What It Does
-
-| | OpenSkynet | Browser Use | Scrapers | RPA Tools |
-|---|---|---|---|---|
-| Real browser (Playwright/Chromium) | Yes | Yes | No | Yes |
-| AI-powered | Yes | Yes | No | No |
-| **Learn by showing** | Yes | No | No | No |
-| **Self-healing** | Yes | No | No | No |
-| **24/7 scheduling** | Yes | No | Manual | Paid add-on |
-| Persistent memory | Yes | No | No | No |
-| Self-learning skills | Yes | No | No | No |
-| Self-hosted | Yes | Yes | N/A | Enterprise pricing |
-
-**Key features:**
-
-- **Learn by Showing** — watch your browser once, replay anytime
-- **Self-Healing** — pages change? OpenSkynet patches itself automatically
-- **Self-Learning** — after each task, saves reusable skills automatically
-- **24/7 Scheduling** — cron-based automation, runs while you sleep
-- **Skills Hub** — browse and install 470+ community skills
-- **Persistent Memory** — remembers preferences across sessions
-- **Parallel Subagents** — split complex tasks across multiple agents
-
----
-
-
-## License
-
-[LICENSE](LICENSE).
+PRs welcome. Fork, branch, submit.
 
 ---
 
 <div align="center">
 
-**If this project helps you, consider giving it a star.**
-
-[Report Bug](https://github.com/sediman-agent/OpenSkynet/issues) · [Request Feature](https://github.com/sediman-agent/OpenSkynet/issues) · [Join Discord](https://discord.gg/yFbZ58eJ)
+[Report Bug](https://github.com/sediman-agent/OpenSkynet/issues) · [Request Feature](https://github.com/sediman-agent/OpenSkynet/issues) · [Discord](https://discord.gg/yFbZ58eJ)
 
 </div>
