@@ -102,12 +102,14 @@ cat > "$INSTALL_DIR/bin/terminator" << 'WRAPPER'
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+export SEDIMAN_ROOT="$DIR"
 
 pkill -f 'sediman.rpc_server' 2>/dev/null || true
 pkill -f 'sediman-tui' 2>/dev/null || true
 rm -f /tmp/sediman-python.sock 2>/dev/null || true
 sleep 0.5
 
+cd "$DIR"
 exec "$DIR/target/release/sediman-tui" "$@"
 WRAPPER
 chmod +x "$INSTALL_DIR/bin/terminator"
