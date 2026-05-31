@@ -113,8 +113,9 @@ impl ApiClient {
                     if attempt > max_retries {
                         return Err(BridgeError::Connection(msg));
                     }
-                    // Exponential backoff: 100ms, 200ms, 400ms, 800ms...
-                    let delay = std::time::Duration::from_millis(100 * 2u64.pow(attempt - 1));
+                    // Exponential backoff: 100ms, 200ms, 400ms, 800ms... (capped)
+                    let exp = (attempt - 1).min(10);
+                    let delay = std::time::Duration::from_millis(100u64.saturating_mul(1u64 << exp));
                     tokio::time::sleep(delay).await;
                 }
                 Err(e) => return Err(e),
@@ -122,9 +123,9 @@ impl ApiClient {
         }
     }
 
-    /// Check if the backend socket exists and is connectable.
+    /// Check if the backend socket is connectable.
     pub async fn is_connected(&self) -> bool {
-        tokio::fs::metadata(&self.socket_path).await.is_ok()
+        tokio::net::UnixStream::connect(&self.socket_path).await.is_ok()
     }
 
     // ── public API methods ──────────────────────────────────────
@@ -288,6 +289,9 @@ impl ApiClient {
             .await?;
         match resp.get("data").and_then(|d| d.as_str()) {
             Some(hex_data) => {
+                if hex_data.len() % 2 != 0 {
+                    return Err(BridgeError::Api("hex data has odd length".into()));
+                }
                 let bytes: Result<Vec<u8>, _> = (0..hex_data.len())
                     .step_by(2)
                     .map(|i| u8::from_str_radix(&hex_data[i..i + 2], 16))

@@ -65,11 +65,19 @@ def _matches_paths(skill: dict[str, Any], working_dir: str | None = None) -> boo
 
 async def _capture_screenshot(browser_session) -> str | None:
     try:
-        page = browser_session.page
+        session = await browser_session.browser.create_session()
+        page = session.agent_current_page
+        if not page:
+            return None
         data = await page.screenshot()
-        path = Path(tempfile.mktemp(suffix=".png"))
-        path.write_bytes(data)
-        return str(path)
+        fd, tmp_path = tempfile.mkstemp(suffix=".png")
+        try:
+            import os
+            os.write(fd, data)
+        finally:
+            import os
+            os.close(fd)
+        return tmp_path
     except Exception as e:
         logger.warning("screenshot_capture_failed", error=str(e))
         return None
@@ -77,7 +85,10 @@ async def _capture_screenshot(browser_session) -> str | None:
 
 async def _capture_dom(browser_session) -> str | None:
     try:
-        page = browser_session.page
+        session = await browser_session.browser.create_session()
+        page = session.agent_current_page
+        if not page:
+            return None
         content = await page.content()
         if not content:
             return None
@@ -225,7 +236,8 @@ async def _execute_structured_steps(
     import asyncio
 
     results = []
-    page = browser_session.page
+    session = await browser_session.browser.create_session()
+    page = session.agent_current_page
 
     for i, step in enumerate(steps):
         action = step.get("action_type", "")

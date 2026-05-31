@@ -71,7 +71,11 @@ def _load_agent_state() -> dict[str, Any]:
 
 
 def _save_agent_state(data: dict[str, Any]) -> None:
-    pass
+    try:
+        _AGENT_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _AGENT_STATE_FILE.write_text(json.dumps(data))
+    except OSError:
+        pass
 
 
 @dataclass

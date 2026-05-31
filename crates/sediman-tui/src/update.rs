@@ -253,17 +253,13 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                             }
                             return;
                         }
-                        KeyCode::Char('d') => {
-                            if app.memory_editor_input.is_empty() {
-                                if let Some((target, content)) = app.memory_entries.get(app.memory_editor_index).cloned() {
-                                    let _ = app.bridge.memory_remove(&target, &content).await;
-                                    app.memory_entries.remove(app.memory_editor_index);
-                                    if app.memory_editor_index > 0 {
-                                        app.memory_editor_index -= 1;
-                                    }
+                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            if let Some((target, content)) = app.memory_entries.get(app.memory_editor_index).cloned() {
+                                let _ = app.bridge.memory_remove(&target, &content).await;
+                                app.memory_entries.remove(app.memory_editor_index);
+                                if app.memory_editor_index > 0 {
+                                    app.memory_editor_index -= 1;
                                 }
-                            } else {
-                                app.memory_editor_input.push('d');
                             }
                             return;
                         }
@@ -272,9 +268,7 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                             return;
                         }
                         KeyCode::Char(c) => {
-                            if c != 'd' || !app.memory_editor_input.is_empty() {
-                                app.memory_editor_input.push(c);
-                            }
+                            app.memory_editor_input.push(c);
                             return;
                         }
                         _ => return,

@@ -45,9 +45,14 @@ function getPooledConnection(): Promise<Socket> {
     }
 
     if (_pool.length >= MAX_POOL) {
-      const oldest = _pool[0]
-      oldest.socket.destroy()
-      _pool.splice(0, 1)
+      const freeIdx = _pool.findIndex(p => p.free)
+      if (freeIdx >= 0) {
+        _pool[freeIdx].socket.destroy()
+        _pool.splice(freeIdx, 1)
+      } else {
+        reject(new Error("Python connection pool exhausted"))
+        return
+      }
     }
 
     const sock = netConnect(getSocketPath())

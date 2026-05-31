@@ -45,8 +45,8 @@ export async function handleMemoryGet(): Promise<Record<string, unknown>> {
       user: userEntries.map(c => ({ content: c, created_at: null })),
     },
     usage: {
-      memory: { chars: memEntries.join("").length, limit: memLimit, pct: Math.round((memEntries.join("").length / memLimit) * 100) },
-      user: { chars: userEntries.join("").length, limit: userLimit, pct: Math.round((userEntries.join("").length / userLimit) * 100) },
+      memory: { chars: memEntries.join("\n§\n").length, limit: memLimit, pct: Math.round((memEntries.join("\n§\n").length / memLimit) * 100) },
+      user: { chars: userEntries.join("\n§\n").length, limit: userLimit, pct: Math.round((userEntries.join("\n§\n").length / userLimit) * 100) },
     },
   }
 }

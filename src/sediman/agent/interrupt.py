@@ -45,12 +45,12 @@ class InterruptSignal:
 
     def check(self) -> None:
         if self._event.is_set():
-            raise InterruptedError(self._reason)
+            raise AgentInterruptedError(self._reason)
 
     async def wait(self) -> None:
         await self._event.wait()
-        raise InterruptedError(self._reason)
+        raise AgentInterruptedError(self._reason)
 
 
-class InterruptedError(Exception):
+class AgentInterruptedError(Exception):
     pass

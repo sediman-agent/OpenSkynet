@@ -12,7 +12,7 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
 
-from sediman.agent.interrupt import InterruptedError, InterruptSignal
+from sediman.agent.interrupt import AgentInterruptedError, InterruptSignal
 from sediman.tui.commands import _SLASH_NAMES, handle_slash, handle_task
 from sediman.tui.display import cprint, print_banner
 from sediman.tui.logging import (
@@ -164,7 +164,7 @@ class SedimanTUI:
 
         if InterruptSignal.get().is_set():
             InterruptSignal.get().clear()
-            raise InterruptedError("Interrupted by user")
+            raise AgentInterruptedError("Interrupted by user")
 
         phase = event.phase or ""
 
@@ -443,7 +443,7 @@ class SedimanTUI:
                     await self._maybe_with_live(handle_slash(self, user_input))
                 except asyncio.CancelledError:
                     cprint("\n  \033[33m-- Interrupted --\033[0m\n")
-                except InterruptedError:
+                except AgentInterruptedError:
                     cprint("\n  \033[33m-- Interrupted --\033[0m\n")
             else:
                 if self._plan_mode:
@@ -461,7 +461,7 @@ class SedimanTUI:
                     await handle_task(self, user_input)
                 except asyncio.CancelledError:
                     cprint("\n  \033[33m-- Interrupted --\033[0m\n")
-                except InterruptedError:
+                except AgentInterruptedError:
                     cprint("\n  \033[33m-- Interrupted --\033[0m\n")
                 except Exception as e:
                     cprint(f"\n  \033[31mX Task failed: {e}\033[0m\n")

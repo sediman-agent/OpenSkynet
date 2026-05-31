@@ -20,7 +20,7 @@ from typing import Any, Callable
 
 import structlog
 
-from sediman.agent.interrupt import InterruptSignal
+from sediman.agent.interrupt import AgentInterruptedError, InterruptSignal
 
 _sentry_initialized = False
 
@@ -143,7 +143,7 @@ async def _shutdown() -> None:
     global _browser, _agent_loop
     if _browser:
         try:
-            await _browser.close()
+            await _browser.stop()
         except Exception:
             pass
         _browser = None
@@ -240,7 +240,7 @@ async def handle_agent_run(params: dict[str, Any], notify: NotifyFn | None = Non
 
     try:
         result: AgentResult = await agent.run(task)
-    except InterruptedError:
+    except AgentInterruptedError:
         return {
             "task": task,
             "result": "Task cancelled by user.",
@@ -961,7 +961,7 @@ async def dispatch_request(
     try:
         result = await handler(params, notify)
         return {"jsonrpc": "2.0", "id": req_id, "result": result}
-    except InterruptedError:
+    except AgentInterruptedError:
         return {
             "jsonrpc": "2.0",
             "id": req_id,

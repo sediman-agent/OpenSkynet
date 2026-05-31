@@ -31,15 +31,18 @@ export abstract class BaseStream<T> implements AsyncIterableIterator<T> {
     if (this.ws) return
     const url = this.wsUrl
 
-    this.connectPromise = new Promise((resolve) => {
+    this.connectPromise = new Promise<void>((resolve, reject) => {
+      let settled = false
       this.ws = new WebSocket(url)
 
-      this.ws.onopen = () => resolve()
+      this.ws.onopen = () => { settled = true; resolve() }
       this.ws.onmessage = (event: MessageEvent) => this.onMessage(event)
       this.ws.onerror = () => {
+        if (!settled) { settled = true; reject(new WebSocketError(`WebSocket connection error: ${url}`)) }
         this.emit("error", new WebSocketError(`WebSocket connection error: ${url}`))
       }
       this.ws.onclose = () => {
+        if (!settled) { settled = true; reject(new WebSocketError(`Connection closed before open: ${url}`)) }
         this.closed = true
         this.emit("close")
         this.resolveQueue?.()

@@ -129,11 +129,17 @@ class BrowserSession:
             if not self._browser:
                 return None
             session = await self._browser.create_session()
-            page = session.agent_current_page
-            if not page:
-                return None
-            screenshot_bytes = await page.screenshot()
-            return base64.b64encode(screenshot_bytes).decode("utf-8")
+            try:
+                page = session.agent_current_page
+                if not page:
+                    return None
+                screenshot_bytes = await page.screenshot()
+                return base64.b64encode(screenshot_bytes).decode("utf-8")
+            finally:
+                try:
+                    await session.close()
+                except Exception:
+                    pass
         except Exception as e:
             logger.debug("screenshot_failed", error=str(e))
             return None

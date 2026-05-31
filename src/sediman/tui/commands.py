@@ -6,7 +6,7 @@ import datetime
 import time
 from typing import TYPE_CHECKING
 
-from sediman.agent.interrupt import InterruptedError
+from sediman.agent.interrupt import AgentInterruptedError
 from sediman.tui.display import _rich, cprint, relative_time
 
 if TYPE_CHECKING:
@@ -150,7 +150,7 @@ async def handle_task(tui: SedimanTUI, task: str) -> None:
         start = time.monotonic()
         try:
             result = await agent.run(task)
-        except InterruptedError:
+        except AgentInterruptedError:
             cprint("\n  \033[33m-- Interrupted --\033[0m\n")
             return
         except Exception as e:

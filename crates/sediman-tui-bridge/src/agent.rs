@@ -228,16 +228,14 @@ impl TaskStream {
             let mut line = String::new();
 
             loop {
-                let read_result = tokio::time::timeout(
-                    std::time::Duration::from_secs(120),
-                    buf_reader.read_line(&mut line),
-                ).await;
-
                 tokio::select! {
                     _ = &mut cancel_rx => {
                         break;
                     }
-                    result = async { read_result } => {
+                    result = tokio::time::timeout(
+                        std::time::Duration::from_secs(120),
+                        buf_reader.read_line(&mut line),
+                    ) => {
                         match result {
                             Ok(Ok(0)) => break,
                             Ok(Ok(_)) => {
