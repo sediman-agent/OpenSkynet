@@ -56,7 +56,8 @@ def hash_str(s: str, length: int = 6) -> str:
 
 def generate_ground_truth(template: str, variant: str) -> dict[str, str]:
     """Deterministic ground truth data."""
-    h_val = hash(f"{template}:{variant}:evil_v2")
+    import hashlib
+    h_val = int(hashlib.md5(f"{template}:{variant}:evil_v2".encode()).hexdigest(), 16)
     rng = random.Random(h_val)
 
     builders = {
