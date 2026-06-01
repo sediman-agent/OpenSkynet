@@ -91,89 +91,101 @@ async fn ensure_backend(
         return None;
     }
 
-    // Try to find sediman CLI first (works with uv tool install),
-    // then fall back to uv run / python (works in dev / from source).
-    let (cmd, args) = if which_exists("sediman").await {
-        ("sediman", vec!["rpc-server"])
-    } else if which_exists("uv").await {
-        ("uv", vec!["run", "python", "-m", "sediman.rpc_server"])
-    } else if which_exists("python3").await {
-        ("python3", vec!["-m", "sediman.rpc_server"])
-    } else if which_exists("python").await {
-        ("python", vec!["-m", "sediman.rpc_server"])
-    } else {
+    // Candidate backends to try in order
+    let candidates: Vec<(&str, Vec<&str>)> = {
+        let mut c = Vec::new();
+        if which_exists("sediman").await {
+            c.push(("sediman", vec!["rpc-server"]));
+        }
+        if which_exists("uv").await {
+            c.push(("uv", vec!["run", "python", "-m", "sediman.rpc_server"]));
+        }
+        if which_exists("python3").await {
+            c.push(("python3", vec!["-m", "sediman.rpc_server"]));
+        }
+        if which_exists("python").await {
+            c.push(("python", vec!["-m", "sediman.rpc_server"]));
+        }
+        c
+    };
+
+    if candidates.is_empty() {
         eprintln!("Error: Cannot find Python or uv to start the backend.");
         eprintln!("  Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh");
         return None;
-    };
-
-    eprintln!("Starting backend: {} {}", cmd, args.join(" "));
-
-    let mut child_cmd = tokio::process::Command::new(cmd);
-    child_cmd
-        .args(&args)
-        .env("SEDIMAN_PYTHON_SOCKET", socket_path)
-        .env("SEDIMAN_PROVIDER", provider)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped());
+    }
 
     let root = std::env::var("SEDIMAN_ROOT").ok().map(PathBuf::from)
         .or_else(find_project_root)
         .unwrap_or_else(default_install_root);
     eprintln!("  Backend root: {}", root.display());
-    child_cmd.current_dir(&root);
 
-    if let Some(m) = model {
-        child_cmd.env("SEDIMAN_MODEL", m);
-    }
-    if let Some(url) = base_url {
-        child_cmd.env("SEDIMAN_BASE_URL", url);
-    }
+    for (cmd, args) in &candidates {
+        eprintln!("Starting backend: {} {}", cmd, args.join(" "));
 
-    let child = child_cmd.spawn();
+        let mut child_cmd = tokio::process::Command::new(cmd);
+        child_cmd
+            .args(args)
+            .env("SEDIMAN_PYTHON_SOCKET", socket_path)
+            .env("SEDIMAN_PROVIDER", provider)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .current_dir(&root);
 
-    let mut child = match child {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Error: Failed to start backend: {}", e);
-            return None;
+        if let Some(m) = model {
+            child_cmd.env("SEDIMAN_MODEL", m);
         }
-    };
+        if let Some(url) = base_url {
+            child_cmd.env("SEDIMAN_BASE_URL", url);
+        }
 
-    if let Some(stderr) = child.stderr.take() {
-        use tokio::io::AsyncBufReadExt;
-        tokio::spawn(async move {
-            let reader = tokio::io::BufReader::new(stderr);
-            let mut lines = reader.lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                eprintln!("[backend] {}", line);
+        let mut child = match child_cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("  Failed to start: {}", e);
+                continue;
             }
-        });
-    }
+        };
 
-    // Wait for the socket to appear (up to 15 seconds)
-    for i in 0..30 {
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        if tokio::fs::metadata(socket_path).await.is_ok() {
-            eprintln!("  Backend ready ({})", socket_path);
-            return Some(child);
+        if let Some(stderr) = child.stderr.take() {
+            use tokio::io::AsyncBufReadExt;
+            tokio::spawn(async move {
+                let reader = tokio::io::BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    eprintln!("[backend] {}", line);
+                }
+            });
         }
-        // Check if process died
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                eprintln!("Error: Backend process exited: {}", status);
-                return None;
+
+        // Wait for the socket to appear (up to 5 seconds per candidate)
+        let mut died = false;
+        for i in 0..10 {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            if tokio::fs::metadata(socket_path).await.is_ok() {
+                eprintln!("  Backend ready ({})", socket_path);
+                return Some(child);
             }
-            Ok(None) => {} // still running
-            Err(_) => {}
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    eprintln!("  Backend exited: {} — trying next...", status);
+                    died = true;
+                    break;
+                }
+                Ok(None) => {}
+                Err(_) => {}
+            }
+            if i == 2 {
+                eprintln!("  Waiting for backend...");
+            }
         }
-        if i == 4 {
-            eprintln!("  Waiting for backend...");
+
+        if !died {
+            let _ = child.kill().await;
         }
     }
 
-    eprintln!("Error: Backend did not start within 15 seconds.");
-    let _ = child.kill().await;
+    eprintln!("Error: All backend candidates failed.");
     None
 }
 

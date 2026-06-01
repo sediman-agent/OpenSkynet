@@ -112,12 +112,22 @@ ensure_uv_in_path() {
 }
 
 install_sediman() {
+    local latest_version
+    latest_version="$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/pyproject.toml" 2>/dev/null | grep '^version = "' | head -1 | sed -E 's/version = "([^"]+)"/\1/' || true)"
+
     if command_exists sediman && [ "$FORCE" != "true" ]; then
         local current_version
-        current_version="$(sediman --version 2>/dev/null | head -1 || true)"
+        current_version="$(sediman --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
         info "Sediman already installed: $current_version"
-        info "Use --force to reinstall, or 'sediman --version' to check."
-        return 0
+
+        if [ -n "$latest_version" ] && [ -n "$current_version" ] && [ "$current_version" != "$latest_version" ]; then
+            warn "Newer version available: $latest_version (you have $current_version)"
+            info "Reinstalling..."
+            FORCE=true
+        else
+            info "Use --force to reinstall, or 'sediman --version' to check."
+            return 0
+        fi
     fi
 
     if [ "$FROM_SOURCE" = "true" ]; then
