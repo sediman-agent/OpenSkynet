@@ -71,14 +71,14 @@ class CodingAgent:
             try:
                 self._on_step(action, detail)
             except Exception:
-                pass
+                logger.debug("emit_step_callback_failed")
 
     def _emit_token(self, token: str, phase: str = "responding") -> None:
         if self._on_streaming_text:
             try:
                 self._on_streaming_text(token, phase)
             except Exception:
-                pass
+                logger.debug("emit_token_callback_failed")
 
     async def run(self, task: str) -> CodingResult:
         logger.info(

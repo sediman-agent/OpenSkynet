@@ -143,7 +143,7 @@ class OpenBrowserController(BrowserController):
             html_result = await self._client.html()
             text_preview = html_result.get("html", "")[:2000]
         except Exception:
-            pass
+            logger.debug("silent_error", _line=145)
 
         return PageSnapshot(
             url=url,
@@ -224,4 +224,4 @@ class OpenBrowserController(BrowserController):
             try:
                 self._on_step(action, detail)
             except Exception:
-                pass
+                logger.debug("silent_error", _line=226)

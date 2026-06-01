@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -40,6 +41,9 @@ MAX_ENTRIES_PER_TYPE = int(os.environ.get("SEDIMAN_MAX_ENTRIES_PER_TYPE", "50"))
 MAX_TASK_LENGTH = 10000
 MAX_NAME_LENGTH = 64
 MAX_CRON_FIELDS = 5
+SAFE_NAME_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
+CRON_FIELD_RE = re.compile(r"^\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.*)")
+FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 MAX_RESULT_CHARS = int(os.environ.get("SEDIMAN_MAX_RESULT_CHARS", "2000"))
 MAX_RESULTS_PER_JOB = int(os.environ.get("SEDIMAN_MAX_RESULTS_PER_JOB", "100"))
 MAX_RECORDING_SECONDS = int(os.environ.get("SEDIMAN_MAX_RECORDING_SECONDS", "300"))

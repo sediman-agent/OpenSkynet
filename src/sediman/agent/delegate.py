@@ -77,7 +77,7 @@ async def delegate_parallel(
                     try:
                         await context.close()
                     except Exception:
-                        pass
+                        logger.debug("context_close_failed")
 
     coros = [_run_with_semaphore(i, t) for i, t in enumerate(tasks)]
     await asyncio.gather(*coros)

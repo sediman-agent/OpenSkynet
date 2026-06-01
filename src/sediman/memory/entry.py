@@ -13,7 +13,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import structlog
+
 from sediman.memory.prompt import MemoryType
+
+logger = structlog.get_logger()
 
 _META_DIR = Path.home() / ".sediman" / "memory-meta"
 _META_DIR.mkdir(parents=True, exist_ok=True)
@@ -75,6 +79,7 @@ def load_entry_meta(entry_id: str) -> MemoryEntryMeta | None:
     try:
         return MemoryEntryMeta.from_dict(json.loads(path.read_text()))
     except Exception:
+        logger.debug("entry_meta_load_failed")
         return None
 
 
@@ -168,6 +173,7 @@ def _load_target_index(target: str) -> list[str]:
     try:
         return json.loads(path.read_text())
     except Exception:
+        logger.debug("target_index_load_failed")
         return []
 
 

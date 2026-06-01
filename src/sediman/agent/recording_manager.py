@@ -142,9 +142,9 @@ class RecordingManager:
                     )
                     loop.close()
                 except Exception:
-                    pass
+                    logger.debug("inject_action_marker_fallback_failed")
             except Exception:
-                pass
+                logger.debug("inject_action_marker_failed")
 
         return on_browser_step
 

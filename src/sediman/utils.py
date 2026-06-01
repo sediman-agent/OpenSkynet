@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import datetime
 
+import structlog
+
+logger = structlog.get_logger()
+
 
 def format_conversation_context(
     messages: list[dict[str, str]],
@@ -38,6 +42,7 @@ def relative_time(timestamp: str, now: datetime.datetime | None = None) -> str:
             return f"{days}d ago"
         return timestamp[:10]
     except Exception:
+        logger.debug("silent_error_return", _line=40)
         return timestamp
 
 

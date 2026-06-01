@@ -26,6 +26,7 @@ class OpenBrowserClient:
             resp = await self._client.get("/api/health")
             return resp.status_code == 200
         except Exception:
+            logger.debug("silent_error_return", _line=28)
             return False
 
     async def navigate(self, url: str) -> dict[str, Any]:
@@ -162,8 +163,10 @@ def _parse(resp: httpx.Response) -> dict[str, Any]:
             body = resp.json()
             return {"ok": False, "error": body.get("error", f"HTTP {resp.status_code}")}
         except Exception:
+            logger.debug("silent_error_return", _line=165)
             return {"ok": False, "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
     try:
         return resp.json()
     except Exception:
+        logger.debug("silent_error_return", _line=170)
         return {"ok": True, "raw": resp.text}

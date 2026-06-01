@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import structlog
+
 from sediman.agent.coding_agent.types import ProjectInfo
+
+logger = structlog.get_logger()
 
 
 def discover_project(root_dir: str | Path | None = None) -> ProjectInfo:
@@ -300,6 +304,7 @@ def _try_read_json(path: Path) -> dict | None:
         import json
         return json.loads(path.read_text())
     except Exception:
+        logger.debug("silent_error_return", _line=302)
         return None
 
 
@@ -312,6 +317,7 @@ def _try_read_toml(path: Path) -> dict | None:
             import tomli
             return tomli.loads(path.read_text())
         except Exception:
+            logger.debug("toml_parse_failed")
             return None
 
 
@@ -319,6 +325,7 @@ def _try_read_text(path: Path) -> str | None:
     try:
         return path.read_text()
     except Exception:
+        logger.debug("silent_error_return", _line=323)
         return None
 
 

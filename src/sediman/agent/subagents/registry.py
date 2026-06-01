@@ -4,19 +4,17 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-import re
 
 from sediman.agent.subagents.template import AgentTemplate, parse_agent_file, render_agent_file
-from sediman.config import AGENTS_DIR as USER_DIR
+from sediman.config import AGENTS_DIR as USER_DIR, SAFE_NAME_RE
 
 logger = structlog.get_logger()
 
 BUILTIN_DIR = Path(__file__).parent / "builtin"
-_SAFE_NAME_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
 
 
 def _validate_safe_name(name: str) -> None:
-    if not name or not _SAFE_NAME_RE.match(name) or len(name) > 64:
+    if not name or not SAFE_NAME_RE.match(name) or len(name) > 64:
         raise ValueError(f"Invalid agent name: {name!r}")
 
 

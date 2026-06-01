@@ -15,49 +15,21 @@ from pydantic import BaseModel, field_validator
 
 from sediman.agent.loop import StepEvent
 from sediman.browser.session import BrowserSession
+from sediman.config import MAX_TASK_LENGTH, MAX_NAME_LENGTH, MAX_CRON_FIELDS, SAFE_NAME_RE
 from sediman.llm.provider import create_provider, LLMProvider
+from sediman.sentry import init_sentry as _init_sentry
 
 logger = structlog.get_logger()
 
-_sentry_initialized = False
-
-
-def _init_sentry() -> None:
-    global _sentry_initialized
-    if _sentry_initialized:
-        return
-    dsn = os.environ.get("SENTRY_DSN", "").strip()
-    if not dsn:
-        return
-    try:
-        import sentry_sdk
-        sentry_sdk.init(
-            dsn=dsn,
-            environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
-            traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
-        )
-        _sentry_initialized = True
-        logger.info("sentry_initialized")
-    except ImportError:
-        pass
-    except Exception as e:
-        logger.warning("sentry_init_failed", error=str(e))
-
 
 def _capture_exception(exc: Exception) -> None:
-    if not _sentry_initialized:
-        return
     try:
         import sentry_sdk
         sentry_sdk.capture_exception(exc)
     except Exception:
-        pass
+        logger.debug("sentry_capture_failed")
 
 
-MAX_TASK_LENGTH = 10000
-MAX_NAME_LENGTH = 64
-MAX_CRON_FIELDS = 5
-_SAFE_NAME_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
 _CRON_FIELD_RE = re.compile(r"^[\d*/,\-a-zA-Z]+$")
 
 _scheduler: Any = None
@@ -232,7 +204,7 @@ async def _get_agent_loop() -> Any:
 
 
 def _validate_skill_name(name: str) -> str:
-    if not name or not _SAFE_NAME_RE.match(name) or len(name) > MAX_NAME_LENGTH:
+    if not name or not SAFE_NAME_RE.match(name) or len(name) > MAX_NAME_LENGTH:
         raise HTTPException(status_code=400, detail={"code": "VALIDATION_ERROR", "message": f"Invalid skill name: {name!r}"})
     return name
 
@@ -294,7 +266,7 @@ class HubInstallRequest(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, v: str) -> str:
-        if not v or not _SAFE_NAME_RE.match(v) or len(v) > MAX_NAME_LENGTH:
+        if not v or not SAFE_NAME_RE.match(v) or len(v) > MAX_NAME_LENGTH:
             raise ValueError(f"Invalid skill name: {v!r}")
         return v
 
@@ -345,7 +317,7 @@ class RecordStartRequest(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, v: str) -> str:
-        if not v or not _SAFE_NAME_RE.match(v) or len(v) > MAX_NAME_LENGTH:
+        if not v or not SAFE_NAME_RE.match(v) or len(v) > MAX_NAME_LENGTH:
             raise ValueError(f"Invalid skill name: {v!r}")
         return v
 
@@ -895,7 +867,7 @@ async def ws_chat(websocket: WebSocket):
                         })
                     )
                 except Exception:
-                    pass
+                    logger.debug("silent_error", _line=897)
 
             original_on_step = agent.on_step
             agent.on_step = on_step_streaming

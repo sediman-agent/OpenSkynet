@@ -134,6 +134,7 @@ class SkillLearnerAgent:
                 lines.append("")
             return "\n".join(lines)
         except Exception:
+            logger.debug("silent_error_return", _line=136)
             return ""
 
     async def _refine_with_critique(

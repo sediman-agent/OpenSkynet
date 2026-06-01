@@ -21,43 +21,18 @@ from typing import Any, Callable
 import structlog
 
 from sediman.agent.interrupt import AgentInterruptedError, InterruptSignal
-
-_sentry_initialized = False
-
-
-def _init_sentry() -> None:
-    global _sentry_initialized
-    if _sentry_initialized:
-        return
-    dsn = os.environ.get("SENTRY_DSN", "").strip()
-    if not dsn:
-        return
-    try:
-        import sentry_sdk
-        sentry_sdk.init(
-            dsn=dsn,
-            environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
-            traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
-            profiles_sample_rate=float(os.environ.get("SENTRY_PROFILES_SAMPLE_RATE", "0.05")),
-        )
-        _sentry_initialized = True
-        logger.info("sentry_initialized", environment=os.environ.get("SENTRY_ENVIRONMENT", "production"))
-    except ImportError:
-        logger.debug("sentry_sdk_not_installed")
-    except Exception as e:
-        logger.warning("sentry_init_failed", error=str(e))
+from sediman.sentry import init_sentry as _init_sentry
 
 
 def _capture_exception(exc: Exception) -> None:
-    if not _sentry_initialized:
-        return
     try:
         import sentry_sdk
         sentry_sdk.capture_exception(exc)
     except Exception:
-        pass
+        logger.debug("sentry_capture_failed")
 from sediman.agent.loop import AgentLoop, AgentResult, StepEvent
 from sediman.browser.session import BrowserSession
+from sediman.config import MAX_TASK_LENGTH
 from sediman.llm.provider import create_provider, LLMProvider
 
 logger = structlog.get_logger()
@@ -65,7 +40,6 @@ logger = structlog.get_logger()
 # Global cron scheduler — started in serve(), used by schedule.add/remove for hot-reload
 _cron_scheduler: Any = None
 SOCKET = os.environ.get("SEDIMAN_PYTHON_SOCKET", "/tmp/sediman-python.sock")
-MAX_TASK_LENGTH = 10000
 
 # Lazy-initialized shared state (mirrors api/app.py pattern)
 _browser: BrowserSession | None = None
@@ -151,19 +125,19 @@ async def _shutdown() -> None:
     try:
         await stop_listeners()
     except Exception:
-        pass
+        logger.debug("silent_error", _line=153)
     for _name in list(_INTEGRATION_REGISTRY_NAMES):
         inst = get_integration(_name)
         if inst and hasattr(inst, "close"):
             try:
                 await inst.close()
             except Exception:
-                pass
+                logger.debug("silent_error", _line=160)
     if _browser:
         try:
             await _browser.stop()
         except Exception:
-            pass
+            logger.debug("silent_error", _line=165)
         _browser = None
     _agent_loop = None
 
@@ -239,7 +213,7 @@ async def handle_agent_run(params: dict[str, Any], notify: NotifyFn | None = Non
                     "step": event.step,
                 })
             except Exception:
-                pass
+                logger.debug("silent_error", _line=241)
             if original_on_step:
                 original_on_step(event)
 
@@ -247,7 +221,7 @@ async def handle_agent_run(params: dict[str, Any], notify: NotifyFn | None = Non
             try:
                 notify("chat.streaming", {"token": token, "phase": phase})
             except Exception:
-                pass
+                logger.debug("silent_error", _line=249)
 
         agent.on_step = stepping
         agent.on_streaming_text = on_streaming_token
@@ -1050,7 +1024,7 @@ async def handle_connection(
         try:
             await writer.drain()
         except Exception:
-            pass
+            logger.debug("silent_error", _line=1052)
 
     def _schedule_flush() -> None:
         nonlocal _drain_task
@@ -1063,7 +1037,7 @@ async def handle_connection(
             writer.write(msg.encode())
             await writer.drain()
         except Exception:
-            pass
+            logger.debug("silent_error", _line=1065)
 
     def _sync_notify(method: str, params: dict[str, Any]) -> None:
         try:
@@ -1071,7 +1045,7 @@ async def handle_connection(
             writer.write(msg)
             _schedule_flush()
         except Exception:
-            pass
+            logger.debug("silent_error", _line=1073)
 
     async def read_cancel() -> None:
         """Background task: read additional lines for cancel while agent.run is active."""
@@ -1088,9 +1062,9 @@ async def handle_connection(
                 except json.JSONDecodeError:
                     pass
                 except Exception:
-                    pass
+                    logger.debug("silent_error", _line=1090)
         except Exception:
-            pass
+            logger.debug("silent_error", _line=1092)
 
     try:
         while True:
@@ -1134,7 +1108,7 @@ async def handle_connection(
             writer.close()
             await writer.wait_closed()
         except Exception:
-            pass
+            logger.debug("silent_error", _line=1136)
 
 
 # ── Server ─────────────────────────────────────────────────────────

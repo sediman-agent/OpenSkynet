@@ -96,7 +96,7 @@ class BrowserController:
             try:
                 return self._page_provider()
             except Exception:
-                pass
+                logger.debug("silent_error", _line=98)
         return self._own_page
 
     @_page.setter
@@ -109,6 +109,7 @@ class BrowserController:
             try:
                 return self._page_provider() is not None
             except Exception:
+                logger.debug("silent_error_return", _line=111)
                 return False
         return self._started and self._own_page is not None
 
@@ -204,7 +205,7 @@ class BrowserController:
                 if tag in ("a", "button") and text.lower().strip() not in ("cancel", "close", "dismiss"):
                     await self._page.wait_for_load_state("domcontentloaded", timeout=3000)
             except Exception:
-                pass
+                logger.debug("silent_error", _line=207)
             self._emit_step("click", f"[ref_id={ref_id}] {tag} '{text}'")
             return f"Clicked element [ref_id={ref_id}] ({tag}: '{text}')"
         except Exception as e:
@@ -394,7 +395,7 @@ class BrowserController:
             try:
                 await self._page.wait_for_load_state("networkidle", timeout=3000)
             except Exception:
-                pass
+                logger.debug("silent_error", _line=397)
             self._emit_step("go_back", self._page.url)
             return f"Went back to {self._page.url}"
         except Exception as e:
@@ -408,7 +409,7 @@ class BrowserController:
             try:
                 await self._page.wait_for_load_state("networkidle", timeout=3000)
             except Exception:
-                pass
+                logger.debug("silent_error", _line=411)
             self._emit_step("go_forward", self._page.url)
             return f"Went forward to {self._page.url}"
         except Exception as e:
@@ -422,7 +423,7 @@ class BrowserController:
             try:
                 await self._page.wait_for_load_state("networkidle", timeout=3000)
             except Exception:
-                pass
+                logger.debug("silent_error", _line=425)
             self._emit_step("refresh", self._page.url)
             return f"Refreshed {self._page.url}"
         except Exception as e:
@@ -612,7 +613,7 @@ class BrowserController:
             try:
                 self._on_step(action, detail)
             except Exception:
-                pass
+                logger.debug("silent_error", _line=615)
 
 
 # ── JavaScript for snapshotting ─────────────────────────

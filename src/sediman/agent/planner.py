@@ -253,7 +253,7 @@ class TaskPlanner:
                     if validate_cron_expr(candidate):
                         return candidate
                 except Exception:
-                    pass
+                    logger.debug("cron_validation_failed")
         return None
 
     def _extract_schedule_task(self, task: str) -> str:

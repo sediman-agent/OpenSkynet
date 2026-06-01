@@ -299,7 +299,7 @@ class SystemOrchestrator:
             warnings = FailurePatternStore(self.config.failure_pattern_path).get_warnings(
                 issue.title + " " + issue.description)
         except Exception:
-            pass
+            logger.debug("failure_pattern_load_failed")
 
         wtp = wt or Path.cwd()
         if issue.failures == 0:
@@ -383,7 +383,7 @@ class SystemOrchestrator:
                 out, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
                 diff = out.decode(errors="replace")[:3000]
             except Exception:
-                pass
+                logger.debug("git_diff_read_failed")
         files = _extract_files(sr.actions_taken)
         prompt = f"""Review #{issue.id}: "{issue.title}"
 Summary: {sr.summary or 'none'}
@@ -444,6 +444,7 @@ ROOT CAUSE in 1-2 sentences. SPECIFIC fix needed."""
                                           parent_context={"issue_id": issue.id})
             return dr.summary
         except Exception:
+            logger.debug("diagnose_spawn_failed")
             return None
 
     # ── Phase 2.2: Scratchpad ──────────────────────────────────────────
@@ -537,6 +538,7 @@ JSON: [{{"title":"...", "depends_on":[]}}]"""
                 "terminal", {"command": "terminator"}, cwd=str(wt))
             return info.id if info else None
         except Exception:
+            logger.debug("checkpoint_failed")
             return None
 
     async def _rollback(self, cp_id, wt):
@@ -544,6 +546,7 @@ JSON: [{{"title":"...", "depends_on":[]}}]"""
             from sediman.agent.checkpoint import CheckpointManager
             return await CheckpointManager(enabled=True).revert(cp_id, str(wt))
         except Exception:
+            logger.debug("rollback_failed")
             return False
 
     # ── Phase 7: Red team + contracts ───────────────────────────────────
@@ -589,7 +592,7 @@ ONLY create test files. Never modify source."""
                     if cr.summary and "PASS" not in (cr.summary or "").upper():
                         logger.warning("terminator_contract_mismatch", issue=issue.id, dep=dep_id)
                 except Exception:
-                    pass
+                    logger.debug("contract_verify_failed")
 
     # ── Phase 5+6: Learn ───────────────────────────────────────────────
 

@@ -139,7 +139,7 @@ class BrowserSession:
                 try:
                     await session.close()
                 except Exception:
-                    pass
+                    logger.debug("silent_error", _line=141)
         except Exception as e:
             logger.debug("screenshot_failed", error=str(e))
             return None
@@ -199,7 +199,7 @@ def extract_result(raw_result: Any) -> str:
         if fr and isinstance(fr, str) and fr.strip():
             return fr
     except Exception:
-        pass
+        logger.debug("silent_error", _line=201)
 
     parts = []
     if hasattr(raw_result, "all_results"):
@@ -240,7 +240,7 @@ async def run_browser_task(
             try:
                 url = getattr(browser_state, "url", "") or ""
             except Exception:
-                pass
+                logger.debug("silent_error", _line=242)
             action_name = ""
             action_detail = ""
             try:

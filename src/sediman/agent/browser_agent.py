@@ -114,4 +114,5 @@ class BrowserSubagent:
             mgr = RecordingManager.get_instance()
             return mgr.create_on_step_callback(self._recording_name)
         except Exception:
+            logger.debug("silent_error_return", _line=116)
             return None

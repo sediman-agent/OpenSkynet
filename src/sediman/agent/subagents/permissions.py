@@ -34,6 +34,7 @@ async def check_permission(tool_name: str, arguments: dict[str, Any], rules: Per
             import asyncio
             return await _APPROVAL_CALLBACK(tool_name, arguments)
         except Exception:
+            logger.debug("silent_error_return", _line=36)
             return False
     return True
 

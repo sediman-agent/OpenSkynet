@@ -111,7 +111,7 @@ async def _create_conn() -> aiosqlite.Connection:
         try:
             await conn.execute(pragma)
         except Exception:
-            pass
+            logger.debug("silent_error", _line=113)
     return conn
 
 
@@ -127,14 +127,14 @@ async def acquire() -> aiosqlite.Connection:
                     try:
                         await conn.close()
                     except Exception:
-                        pass
+                        logger.debug("silent_error", _line=129)
                     continue
                 await conn.execute("SELECT 1")
             except Exception:
                 try:
                     await conn.close()
                 except Exception:
-                    pass
+                    logger.debug("silent_error", _line=136)
                 continue
             return conn
 
@@ -149,7 +149,7 @@ async def release(conn: aiosqlite.Connection) -> None:
             try:
                 await conn.close()
             except Exception:
-                pass
+                logger.debug("silent_error", _line=151)
 
 
 @asynccontextmanager

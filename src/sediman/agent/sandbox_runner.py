@@ -207,4 +207,5 @@ def shutil_which(cmd: str) -> str | None:
         import shutil
         return shutil.which(cmd)
     except Exception:
+        logger.debug("silent_error_return", _line=209)
         return None

@@ -255,6 +255,7 @@ class ProgressTracker:
                     return int(char) / 5.0
             return 0.5
         except Exception:
+            logger.debug("silent_error_return", _line=257)
             return 0.5
 
     def should_check_milestone(self) -> bool:

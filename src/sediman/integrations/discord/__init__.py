@@ -208,7 +208,7 @@ class DiscordIntegration(Integration):
                     try:
                         await self._client.close()
                     except Exception:
-                        pass
+                        logger.debug("silent_error", _line=210)
                     self._client = None
                 if attempt + 1 < max_retries:
                     delay = min(2 ** attempt, 60)
@@ -222,7 +222,7 @@ class DiscordIntegration(Integration):
                     try:
                         await self._client.close()
                     except Exception:
-                        pass
+                        logger.debug("silent_error", _line=224)
                     self._client = None
             break
 
@@ -231,11 +231,11 @@ class DiscordIntegration(Integration):
             try:
                 await self._client.close()
             except Exception:
-                pass
+                logger.debug("silent_error", _line=233)
             self._client = None
         if self._http:
             try:
                 await self._http.aclose()
             except Exception:
-                pass
+                logger.debug("silent_error", _line=239)
             self._http = None

@@ -64,7 +64,7 @@ class MemoryManager:
             try:
                 schemas.extend(self._external.get_tool_schemas())
             except Exception:
-                pass
+                logger.debug("external_tool_schemas_failed")
         return schemas
 
     def has_tool(self, name: str) -> bool:
@@ -119,7 +119,7 @@ class MemoryManager:
                 try:
                     await provider.on_pre_compress()
                 except Exception:
-                    pass
+                    logger.debug("provider_on_pre_compress_failed")
 
     async def on_memory_write(self, target: str, content: str) -> None:
         for provider in [self._builtin, self._external]:
@@ -127,7 +127,7 @@ class MemoryManager:
                 try:
                     await provider.on_memory_write(target, content)
                 except Exception:
-                    pass
+                    logger.debug("provider_on_memory_write_failed")
 
     async def on_turn_start(self) -> None:
         self._turn_count += 1
@@ -273,6 +273,7 @@ class MemoryManager:
             entry_id = MemoryEntryMeta.make_id(content)
             return load_entry_meta(entry_id)
         except Exception:
+            logger.debug("entry_meta_load_failed")
             return None
 
     def _parse_review_changes(self, text: str) -> list[dict[str, str]]:
@@ -317,7 +318,7 @@ class MemoryManager:
                 try:
                     await provider.on_session_end()
                 except Exception:
-                    pass
+                    logger.debug("provider_on_session_end_failed")
 
     # ── External provider management ─────────────────────────────
 
@@ -401,7 +402,7 @@ class MemoryManager:
             try:
                 self._store.record_access(entry)
             except Exception:
-                pass
+                logger.debug("record_access_failed")
 
     def _index_entry(self, content: str, target: str) -> None:
         try:

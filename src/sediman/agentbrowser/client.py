@@ -57,7 +57,7 @@ class AgentBrowserClient:
                         try:
                             self._on_notification(msg)
                         except Exception:
-                            pass
+                            logger.debug("notification_handler_failed")
             except Exception:
                 break
 
@@ -105,14 +105,14 @@ class AgentBrowserClient:
             loop = asyncio.get_event_loop()
             loop.create_task(self._drain_stdin(stdin))
         except Exception:
-            pass
+            logger.debug("send_notification_failed")
 
     @staticmethod
     async def _drain_stdin(stdin: asyncio.StreamWriter) -> None:
         try:
             await stdin.drain()
         except Exception:
-            pass
+            logger.debug("drain_stdin_failed")
 
     async def init(
         self,
@@ -161,7 +161,7 @@ class AgentBrowserClient:
         try:
             await self._send_request("agent.stop")
         except Exception:
-            pass
+            logger.debug("agent_stop_failed")
 
     async def get_history(self) -> list[dict[str, Any]]:
         response = await self._send_request("agent.getHistory")
@@ -176,7 +176,7 @@ class AgentBrowserClient:
         try:
             await self._send_request("agent.shutdown")
         except Exception:
-            pass
+            logger.debug("agent_shutdown_failed")
 
     @property
     def is_initialized(self) -> bool:

@@ -289,7 +289,7 @@ async def _execute_structured_steps(
                 try:
                     await page.wait_for_selector(wait_for, timeout=10000)
                 except Exception:
-                    pass
+                    logger.debug("silent_error", _line=291)
 
         except Exception as e:
             results.append(f"Error at step {i+1} ({action}): {str(e)[:100]}")
@@ -384,7 +384,7 @@ def _record_execution_metrics(engine: Any, name: str, result: str) -> None:
     try:
         engine.record_usage(name)
     except Exception:
-        pass
+        logger.debug("silent_error", _line=386)
 
 
 async def _execute_in_fork(

@@ -57,7 +57,7 @@ async def _close_integration(inst: Integration) -> None:
     try:
         await inst.close()
     except Exception:
-        pass
+        logger.debug("silent_error", _line=59)
 
 
 def _reload_integration(name: str, cfg: dict[str, Any]) -> None:
@@ -128,7 +128,7 @@ async def stop_listeners() -> None:
         try:
             await inst.close()
         except Exception:
-            pass
+            logger.debug("silent_error", _line=130)
 
 
 async def send_message(

@@ -74,7 +74,7 @@ async def run_monitor(
                     try:
                         await on_line(event)
                     except Exception:
-                        pass
+                        logger.debug("on_line_callback_failed")
 
                 if stop_re and stop_re.search(line):
                     logger.info(
@@ -102,7 +102,7 @@ async def run_monitor(
                 proc.kill()
                 await proc.wait()
             except Exception:
-                pass
+                logger.debug("monitor_kill_failed")
 
             return MonitorResult(
                 exit_code=proc.returncode,

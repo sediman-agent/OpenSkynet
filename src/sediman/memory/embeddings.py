@@ -279,6 +279,7 @@ class TfidfEmbeddingProvider(EmbeddingProvider):
                 row.extend([0.0] * (self._dim - len(row)))
             return row
         except Exception:
+            logger.debug("partial_refit_embed_failed")
             return [0.0] * self._dim
 
     @property

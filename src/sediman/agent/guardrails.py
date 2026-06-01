@@ -267,6 +267,7 @@ class ApprovalCallback:
         try:
             return await self._callback(action, details)
         except Exception:
+            logger.debug("silent_error_return", _line=269)
             return False
 
 

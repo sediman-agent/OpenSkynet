@@ -310,7 +310,7 @@ class OpenAICompatibleProvider(LLMProvider):
                     try:
                         on_token(delta.content)
                     except Exception:
-                        pass
+                        logger.debug("on_token_callback_failed")
 
             if delta and delta.tool_calls:
                 has_tool_calls = True
@@ -393,7 +393,7 @@ class OpenAICompatibleProvider(LLMProvider):
             try:
                 self._token_callback(total)
             except Exception:
-                pass
+                logger.debug("token_callback_failed")
 
         tool_calls = []
         if message.tool_calls:

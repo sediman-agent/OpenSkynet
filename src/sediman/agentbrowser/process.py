@@ -150,7 +150,7 @@ class AgentBrowserProcess:
                     raw = await asyncio.wait_for(self._process.stderr.read(), timeout=2.0)
                     stderr = raw.decode(errors="replace")[:500]
                 except Exception:
-                    pass
+                    logger.debug("stderr_read_failed")
                 logger.error("agent_browser_exited", code=self._process.returncode, stderr=stderr)
                 return False
 
@@ -163,6 +163,7 @@ class AgentBrowserProcess:
             except asyncio.TimeoutError:
                 continue
             except Exception:
+                logger.debug("wait_ready_line_read_failed")
                 return False
 
         return False

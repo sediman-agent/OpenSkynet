@@ -493,7 +493,7 @@ class AgentLoop:
                         page_url = snap.url
                         page_text = snap.text_preview or ""
                 except Exception:
-                    pass
+                    logger.debug("browser_snapshot_for_progress_failed")
 
                 report = self._progress.check_heuristics(
                     action=step.description,
@@ -689,9 +689,9 @@ class AgentLoop:
                     if page:
                         ctrl._own_page = page
                 except Exception:
-                    pass
+                    logger.debug("browser_page_extract_failed")
         except Exception:
-            pass
+            logger.debug("browser_obj_access_failed")
         set_default_browser_controller(ctrl)
         return ctrl
 
@@ -1283,6 +1283,7 @@ class AgentLoop:
                 from sediman.agent.recording_manager import RecordingManager
                 self._recording_manager = RecordingManager.get_instance()
             except Exception:
+                logger.debug("recording_manager_init_failed")
                 return None
         try:
             if self._recording_manager.is_recording():
@@ -1290,7 +1291,7 @@ class AgentLoop:
                 if recorder and recorder.session:
                     return recorder.session.name
         except Exception:
-            pass
+            logger.debug("recording_status_check_failed")
         return None
 
     async def _verify_skill(self, skill_name: str) -> bool:
@@ -1374,7 +1375,7 @@ class AgentLoop:
                     if mgr.is_recording():
                         await mgr.drain_active_events()
                 except Exception:
-                    pass
+                    logger.debug("drain_recording_events_failed")
 
             await asyncio.gather(_save_session_and_trajectory(), _drain_recording())
 
@@ -1510,7 +1511,7 @@ class AgentLoop:
         try:
             self.on_streaming_text(token, phase)
         except Exception:
-            pass
+            logger.debug("stream_text_callback_failed")
 
     async def _stream_text_async(self, text: str, phase: str = "responding") -> None:
         """Stream text token-by-token for smooth TUI rendering."""
@@ -1524,7 +1525,7 @@ class AgentLoop:
             try:
                 self.on_streaming_text(chunk, phase)
             except Exception:
-                pass
+                logger.debug("stream_text_async_callback_failed")
             if i > 0 and i % 18 == 0:
                 await asyncio.sleep(0)
 
@@ -1645,6 +1646,7 @@ Note: Continue from where we left off. Remember what was discussed above."""
             from sediman.memory.trajectories import TrajectoryDB
             return TrajectoryDB()
         except Exception:
+            logger.debug("trajectory_db_init_failed")
             return None
 
     async def _save_trajectory(self, state: AgentState, task: str) -> None:

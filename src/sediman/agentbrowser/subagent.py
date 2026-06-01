@@ -96,7 +96,7 @@ class AgentBrowserSubagent:
                         "content": (msg.get("content") or "")[:200],
                     })
         except Exception:
-            pass
+            logger.debug("history_fetch_failed")
 
         logger.info(
             "agent_browser_subagent_done",

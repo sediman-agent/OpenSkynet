@@ -132,7 +132,7 @@ class VectorStore:
                 sqlite_vec.load(conn)
                 conn.enable_load_extension(False)
             except Exception:
-                pass
+                logger.debug("sqlite_vec_load_failed")
 
         return conn
 
@@ -180,6 +180,7 @@ class VectorStore:
             data = json.loads(raw)
             self._legacy_entries = data.get("entries", [])
         except Exception:
+            logger.debug("legacy_load_failed")
             self._legacy_entries = []
         self._legacy_loaded = True
 
@@ -448,6 +449,7 @@ class VectorStore:
             finally:
                 conn.close()
         except Exception:
+            logger.debug("sql_find_exact_failed")
             return None
 
     # ── Legacy fallback ────────────────────────────────────────
@@ -588,7 +590,7 @@ class VectorStore:
                     conn.close()
                 return removed
             except Exception:
-                pass
+                logger.debug("remove_by_metadata_sql_failed")
 
         before = len(self._legacy_entries)
         self._legacy_entries = [
@@ -612,7 +614,7 @@ class VectorStore:
                     conn.close()
                 return
             except Exception:
-                pass
+                logger.debug("clear_sql_failed")
         self._legacy_entries.clear()
         self._legacy_dirty = True
         self._legacy_save()
@@ -631,7 +633,7 @@ class VectorStore:
                 finally:
                     conn.close()
             except Exception:
-                pass
+                logger.debug("count_sql_failed")
         return len(self._legacy_entries)
 
     @property
@@ -652,7 +654,7 @@ class VectorStore:
                 finally:
                     conn.close()
             except Exception:
-                pass
+                logger.debug("get_all_sql_failed")
         return [
             {"text": e["text"], "metadata": e.get("metadata", {}), "provider": e.get("provider", "unknown")}
             for e in self._legacy_entries
@@ -695,7 +697,7 @@ class VectorStore:
                         finally:
                             conn.close()
                     except Exception:
-                        pass
+                        logger.debug("async_rebuild_vector_update_failed")
         except Exception as e:
             logger.warning("vector_index_rebuild_failed", error=str(e))
 
@@ -722,7 +724,7 @@ class VectorStore:
                         finally:
                             conn.close()
                     except Exception:
-                        pass
+                        logger.debug("rebuild_vector_update_failed")
             logger.info("vector_index_rebuilt", entries=len(all_entries))
         except Exception as e:
             logger.warning("vector_index_rebuild_failed", error=str(e))

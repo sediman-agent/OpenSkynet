@@ -414,7 +414,7 @@ class ScreenRecorder:
         try:
             await self._page.evaluate(_REMOVE_OVERLAY_JS)
         except Exception:
-            pass
+            logger.debug("remove_overlay_failed")
 
     async def _capture_loop(self) -> None:
         interval = 1.0 / self.fps
@@ -448,7 +448,7 @@ class ScreenRecorder:
                         try:
                             self.on_frame(frame)
                         except Exception:
-                            pass
+                            logger.debug("on_frame_callback_failed")
 
                 elapsed = time.monotonic() - start
                 sleep_time = max(0.0, interval - elapsed)
@@ -470,14 +470,14 @@ class ScreenRecorder:
             try:
                 cursor = await self._page.evaluate(_GET_CURSOR_JS)
             except Exception:
-                pass
+                logger.debug("cursor_eval_failed")
 
             try:
                 await self._page.evaluate(
                     f"({_CURSOR_OVERLAY_JS})({cursor.get('x', 0)}, {cursor.get('y', 0)})"
                 )
             except Exception:
-                pass
+                logger.debug("cursor_overlay_failed")
 
             screenshot_bytes = await self._page.screenshot(type="jpeg", quality=60)
             screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
@@ -485,25 +485,25 @@ class ScreenRecorder:
             try:
                 await self._page.evaluate(_REMOVE_OVERLAY_JS)
             except Exception:
-                pass
+                logger.debug("remove_overlay_after_screenshot_failed")
 
             url = ""
             try:
                 url = self._page.url or ""
             except Exception:
-                pass
+                logger.debug("page_url_read_failed")
 
             title = ""
             try:
                 title = await self._page.title() or ""
             except Exception:
-                pass
+                logger.debug("page_title_read_failed")
 
             dom_summary: list[dict[str, str]] = []
             try:
                 dom_summary = await self._page.evaluate(_GET_ACCESSIBILITY_JS) or []
             except Exception:
-                pass
+                logger.debug("dom_summary_eval_failed")
 
             action = None
             action_detail = ""
@@ -539,6 +539,7 @@ class ScreenRecorder:
         try:
             raw_events = await self._page.evaluate(_DRAIN_EVENTS_JS)
         except Exception:
+            logger.debug("drain_page_events_eval_failed")
             return []
 
         if not raw_events or not isinstance(raw_events, list):
@@ -593,7 +594,7 @@ class ScreenRecorder:
             try:
                 current_url = self._page.url or ""
             except Exception:
-                pass
+                logger.debug("current_url_read_failed")
         for evt in events:
             if not evt.url and current_url:
                 evt.url = current_url
@@ -716,4 +717,5 @@ def draw_cursor_on_frame(screenshot_b64: str, cursor_x: int, cursor_y: int) -> s
     except ImportError:
         return screenshot_b64
     except Exception:
+        logger.debug("silent_error_return", _line=719)
         return screenshot_b64

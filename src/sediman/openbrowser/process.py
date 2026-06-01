@@ -99,7 +99,7 @@ class OpenBrowserProcess:
                 try:
                     stderr = (await self._process.stderr.read()).decode(errors="replace")[:500]
                 except Exception:
-                    pass
+                    logger.debug("silent_error", _line=101)
                 logger.error("openbrowser_exited", code=self._process.returncode, stderr=stderr)
                 return False
 
@@ -112,7 +112,7 @@ class OpenBrowserProcess:
                     if resp.status_code == 200:
                         return True
             except Exception:
-                pass
+                logger.debug("silent_error", _line=114)
 
             await asyncio.sleep(0.5)
 

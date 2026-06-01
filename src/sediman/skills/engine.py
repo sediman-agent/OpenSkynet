@@ -11,11 +11,10 @@ from typing import Any
 
 import structlog
 
+from sediman.config import SAFE_NAME_RE
 from sediman.skills.format import SkillData, load_skill
 
 logger = structlog.get_logger()
-
-_SAFE_NAME_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
 
 GLOBAL_SKILLS_DIR = Path.home() / ".sediman" / "skills"
 
@@ -23,7 +22,7 @@ _WATCH_INTERVAL = 5.0
 
 
 def _validate_safe_name(name: str) -> None:
-    if not name or not _SAFE_NAME_RE.match(name) or len(name) > 64:
+    if not name or not SAFE_NAME_RE.match(name) or len(name) > 64:
         raise ValueError(f"Invalid skill name: {name!r}")
 
 
@@ -286,7 +285,7 @@ class SkillEngine:
             from sediman.skills.hub import SkillLockFile
             SkillLockFile().remove(name)
         except Exception:
-            pass
+            logger.debug("silent_error", _line=288)
         return True
 
     def patch(self, name: str, updates: dict[str, Any]) -> dict[str, Any] | None:

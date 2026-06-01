@@ -74,7 +74,7 @@ def save_structured_memory(
                 source=source,
             )
         except Exception:
-            pass
+            logger.debug("structured_memory_meta_failed")
         logger.info("structured_memory_saved", type=memory_type.value, content_length=len(content))
 
 
@@ -85,7 +85,7 @@ def save_episodic(task: str, result: str, success: bool) -> None:
         from sediman.memory.entry import ensure_meta_for_entry
         ensure_meta_for_entry(entry, "memory", type="episodic", source="agent")
     except Exception:
-        pass
+        logger.debug("episodic_meta_failed")
 
 
 def save_procedural(skill_name: str, steps: list[str]) -> None:
@@ -95,7 +95,7 @@ def save_procedural(skill_name: str, steps: list[str]) -> None:
         from sediman.memory.entry import ensure_meta_for_entry
         ensure_meta_for_entry(entry, "memory", type="procedure", source="agent")
     except Exception:
-        pass
+        logger.debug("procedural_meta_failed")
 
 
 def get_relevant_context(query: str, limit: int = 5) -> list[str]:
@@ -104,7 +104,7 @@ def get_relevant_context(query: str, limit: int = 5) -> list[str]:
         mgr = MemoryManager()
         return mgr.get_relevant_context(query, limit=limit)
     except Exception:
-        pass
+        logger.debug("relevant_context_failed")
     all_entries = _store.get_all_entries()
     entries = all_entries.get("memory", [])
     query_lower = query.lower()

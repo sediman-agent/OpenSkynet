@@ -93,4 +93,5 @@ async def score_with_llm(content: str, llm: Any) -> float:
                 return int(char) / 5.0
         return 0.5
     except Exception:
+        logger.debug("llm_importance_score_failed")
         return 0.5

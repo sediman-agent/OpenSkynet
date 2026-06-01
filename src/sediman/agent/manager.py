@@ -634,7 +634,7 @@ class ManagerAgent:
             if context:
                 return "\n".join(f"- {c}" for c in context)[:400]
         except Exception:
-            pass
+            logger.debug("silent_error", _line=636)
         return None
 
     def _get_episodic_context(self, task: str) -> str | None:
@@ -647,7 +647,7 @@ class ManagerAgent:
             if context:
                 return "\n".join(f"- {c}" for c in context)[:400]
         except Exception:
-            pass
+            logger.debug("silent_error", _line=649)
         return None
 
     def _is_explicit_url_task(self, task: str) -> bool:
@@ -780,4 +780,5 @@ class ManagerAgent:
             )
             return (header + "\n".join(lines))[:1500]
         except Exception:
+            logger.debug("silent_error_return", _line=782)
             return None

@@ -174,7 +174,7 @@ class InlineVerifier:
             try:
                 self._on_progress(action, detail)
             except Exception:
-                pass
+                logger.debug("verifier_emit_callback_failed")
 
     @property
     def all_passed(self) -> bool:

@@ -390,7 +390,7 @@ class MemoryStore:
                 from sediman.memory.entry import classify_entry_type
                 entry_type_meta = classify_entry_type(new_entry)
             except Exception:
-                pass
+                logger.debug("classify_entry_type_failed")
             meta = ensure_meta_for_entry(new_entry, target, type=entry_type_meta, source="agent")
             append_change(MemoryChange(
                 action="replace",
