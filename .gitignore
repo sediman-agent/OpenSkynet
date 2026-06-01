@@ -47,6 +47,12 @@ node_modules/
 # Rust
 target/
 
+# Research paper (separate artifact)
+docs/paper/
+
+# Stray lockfiles in vendored skill content
+skills/**/bun.lock
+
 # Benchmark suite (not yet published - hidden)
 benchmarks/skill_generalization/mock_server/pages/
 benchmarks/skill_generalization/results/
