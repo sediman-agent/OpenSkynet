@@ -18,12 +18,6 @@ SUPPRESSED_LOGGERS = [
     "browser_use.tools",
     "browser_use.controller",
     "bubus",
-    "sediman",
-    "sediman.agent.loop",
-    "sediman.browser.session",
-    "sediman.memory.sessions",
-    "sediman.skills.engine",
-    "sediman.scheduler.cron",
 ]
 
 _db_initialized = False
