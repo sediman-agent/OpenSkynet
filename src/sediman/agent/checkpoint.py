@@ -14,6 +14,8 @@ from typing import Any
 
 import structlog
 
+from sediman.config import DATA_DIR
+
 logger = structlog.get_logger()
 
 _DANGEROUS_TOOLS = {"write_file", "patch", "terminal"}
@@ -43,7 +45,7 @@ class CheckpointManager:
         # Common fallback paths
         for p in (
             Path.home() / ".local" / "bin" / "sediman-sandbox",
-            Path.home() / ".sediman" / "sandbox" / "sediman-sandbox",
+            DATA_DIR / "sandbox" / "sediman-sandbox",
             Path("/usr/local/bin/sediman-sandbox"),
         ):
             if p.exists():

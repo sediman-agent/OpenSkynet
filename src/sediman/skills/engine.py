@@ -11,12 +11,12 @@ from typing import Any
 
 import structlog
 
-from sediman.config import SAFE_NAME_RE
+from sediman.config import SAFE_NAME_RE, SKILLS_DIR
 from sediman.skills.format import SkillData, load_skill
 
 logger = structlog.get_logger()
 
-GLOBAL_SKILLS_DIR = Path.home() / ".sediman" / "skills"
+GLOBAL_SKILLS_DIR = SKILLS_DIR
 
 _WATCH_INTERVAL = 5.0
 
@@ -28,7 +28,7 @@ def _validate_safe_name(name: str) -> None:
 
 def _get_project_skills_dir() -> Path | None:
     cwd = Path.cwd()
-    candidate = cwd / ".sediman" / "skills"
+    candidate = cwd / ".terminator" / "skills"
     if candidate.exists() and candidate.is_dir():
         return candidate
     return None

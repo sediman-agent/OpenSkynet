@@ -10,8 +10,9 @@ import structlog
 
 logger = structlog.get_logger()
 
-SESSION_DIR = Path.home() / ".sediman" / "sessions"
-DATA_DIR = Path.home() / ".sediman"
+from sediman.config import DATA_DIR, SESSIONS_DIR
+
+SESSION_DIR = SESSIONS_DIR
 
 
 class BrowserSession:

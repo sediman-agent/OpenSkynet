@@ -10,7 +10,9 @@ import structlog
 
 logger = structlog.get_logger()
 
-_PERMISSIONS_FILE = Path.home() / ".sediman" / "skill-permissions.json"
+from sediman.config import DATA_DIR
+
+_PERMISSIONS_FILE = DATA_DIR / "skill-permissions.json"
 
 AllowDecision = Literal["allow_once", "always_allow_skill", "always_allow_source", "deny", "skip"]
 

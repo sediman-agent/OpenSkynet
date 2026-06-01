@@ -7,9 +7,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
+from sediman.config import DATA_DIR
+
 logger = structlog.get_logger()
 
-DEFAULT_DATA_DIR = Path.home() / ".sediman"
+DEFAULT_DATA_DIR = DATA_DIR
 DB_NAME = "state.db"
 
 _SCHEMA = """

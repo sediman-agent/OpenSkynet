@@ -16,17 +16,18 @@ from pathlib import Path
 
 import structlog
 
+from sediman.config import DATA_DIR, MEMORY_DIR as CFG_MEMORY_DIR
 from sediman.memory.security import scan_content
 
 logger = structlog.get_logger()
 
-MEMORY_DIR = Path.home() / ".sediman" / "memories"
+MEMORY_DIR = CFG_MEMORY_DIR
 MEMORY_FILE = MEMORY_DIR / "MEMORY.md"
 USER_FILE = MEMORY_DIR / "USER.md"
 
-OLD_MEMORY_FILE = Path.home() / ".sediman" / "MEMORY.md"
-OLD_USER_FILE = Path.home() / ".sediman" / "USER.md"
-OLD_MEMORY_DB = Path.home() / ".sediman" / "memory.json"
+OLD_MEMORY_FILE = DATA_DIR / "MEMORY.md"
+OLD_USER_FILE = DATA_DIR / "USER.md"
+OLD_MEMORY_DB = DATA_DIR / "memory.json"
 
 MEMORY_LIMIT = 2200
 USER_LIMIT = 1375

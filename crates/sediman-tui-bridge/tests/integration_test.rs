@@ -52,7 +52,7 @@ async fn serve(
             let response = match method {
                 "system.status" => json_response(id, json!({"running":true,"uptime_secs":42,"browser_open":true,"tasks_completed":7})),
                 "skills.list" => json_response(id, json!([{"name":"test-skill","description":"A test skill","category":"browser","version":1}])),
-                "skills.get" => json_response(id, json!({"name":"test-skill","description":"A test skill","category":"browser","version":1,"steps":[{"description":"Go to site"}],"variables":[],"when_to_use":["testing"],"pitfalls":[],"verification":[]})),
+                "skills.get" => json_response(id, json!({"name":"test-skill","description":"A test skill","category":"browser","version":1,"steps":["Go to site"],"variables":[],"when_to_use":"testing","pitfalls":[],"verification":null})),
                 "skills.run" => json_response(id, json!({"task":"test-skill","result":"ok","success":true,"steps":[],"elapsed_secs":1})),
                 "hub.browse" => json_response(id, json!([{"name":"hub-skill","description":"From hub","category":"browser","author":"test","version":1,"trust":"community"}])),
                 "hub.search" => json_response(id, json!([{"name":"hub-skill","description":"From hub","category":"browser","author":"test","version":1,"trust":"community"}])),

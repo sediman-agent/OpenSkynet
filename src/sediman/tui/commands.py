@@ -1464,10 +1464,11 @@ async def cmd_doctor(tui: SedimanTUI, _args: str) -> None:
 async def cmd_checkpoint_list(tui: SedimanTUI, _args: str) -> None:
     """List all filesystem checkpoints."""
     import subprocess
-    from pathlib import Path
     from rich.table import Table
 
-    data_dir = Path.home() / ".sediman" / "sandbox" / "checkpoints"
+    from sediman.config import DATA_DIR
+
+    data_dir = DATA_DIR / "sandbox" / "checkpoints"
     if not data_dir.exists():
         cprint("  No checkpoints yet.")
         return

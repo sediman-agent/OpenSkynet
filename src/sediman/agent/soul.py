@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
-
-SOUL_FILE = Path.home() / ".sediman" / "SOUL.md"
+from sediman.config import SOUL_FILE
 
 DEFAULT_SOUL = """You are Sediman, a self-improving browser automation agent.
 

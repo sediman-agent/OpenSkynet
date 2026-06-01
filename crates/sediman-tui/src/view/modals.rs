@@ -678,7 +678,7 @@ pub fn render_skill_browser(buf: &mut CellBuffer, area: Rect, app: &mut App) {
     frame.draw_title(
         buf,
         &format!(
-            " Hub Skills ({}/{}) ",
+            " Skills ({}/{}) ",
             if query.is_empty() { app.skill_browser_skills.len() } else { filtered.len() },
             app.skill_browser_skills.len()
         ),
@@ -694,13 +694,14 @@ pub fn render_skill_browser(buf: &mut CellBuffer, area: Rect, app: &mut App) {
         buf.put_char(sx, y, ' ', Style::new().bg(input_bg).fg(t.text));
     }
     buf.draw_str(inner_x, y, "\u{276f} ", Style::new().fg(t.primary).bg(input_bg));
-    if app.skill_browser_filter.is_empty() {
+    if app.skill_browser_filter.is_empty() && !app.skill_browser_filter_active {
         buf.draw_str(
             inner_x + 2,
             y,
-            "Type to filter skills...",
+            "Press / to search...",
             Style::new().fg(t.text_muted).bg(input_bg),
         );
+    } else if app.skill_browser_filter.is_empty() && app.skill_browser_filter_active {
         buf.put_char(inner_x + 2, y, '\u{2588}', Style::new().fg(t.primary).bg(input_bg));
     } else {
         let max_input = inner_w.saturating_sub(4);
@@ -731,13 +732,13 @@ pub fn render_skill_browser(buf: &mut CellBuffer, area: Rect, app: &mut App) {
     } else {
         let scroll = app.skill_browser_scroll as usize;
         let visible_items: Vec<_> = filtered.iter().skip(scroll).collect();
-        for (row_idx, &(orig_idx, skill)) in visible_items.iter().enumerate() {
+        for (row_idx, &(_orig_idx, skill)) in visible_items.iter().enumerate() {
             let row_y = y + row_idx as u16;
             if row_y >= max_y {
                 break;
             }
-            let selected = *orig_idx == app.skill_browser_selected;
-            let is_installed = app.skill_browser_installed.contains(&skill.name);
+            let selected = scroll + row_idx == app.skill_browser_selected;
+            let is_installed = skill.installed;
             let badge_w = if is_installed { 13 } else { 0 };
             let max_name = inner_w.saturating_sub(6 + badge_w);
             let name_display: String = truncate_str(&skill.name, max_name).to_string();
@@ -787,7 +788,7 @@ pub fn render_skill_browser(buf: &mut CellBuffer, area: Rect, app: &mut App) {
     buf.draw_str(
         frame.modal.x + 2,
         hints_y,
-        " Enter install \u{2502} d uninstall \u{2502} i info \u{2502} \u{2191}\u{2193} navigate \u{2502} Type to filter ",
+        " Enter run/inst \u{2502} d uninstall \u{2502} i info \u{2502} j/k nav \u{2502} / search ",
         Style::new().fg(t.text_muted).bg(t.background),
     );
 }

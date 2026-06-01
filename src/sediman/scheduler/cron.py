@@ -13,9 +13,11 @@ from typing import Any, Generator
 
 import structlog
 
+from sediman.config import BROWSER_PROFILE_DIR, CRON_DIR
+
 logger = structlog.get_logger()
 
-JOBS_DIR = Path.home() / ".sediman" / "cron"
+JOBS_DIR = CRON_DIR
 RESULTS_FILE = JOBS_DIR / "results.jsonl"
 MAX_RESULT_CHARS = 2000
 MAX_RESULTS_PER_JOB = 100
@@ -245,7 +247,7 @@ class _CronResources:
             self.browser = BrowserSession(
                 headless=True,
                 stealth=True,
-                user_data_dir=str(Path.home() / ".sediman" / "browser-profile-cron"),
+                user_data_dir=str(BROWSER_PROFILE_DIR),
             )
             await self.browser.start()
             self._initialized = True
@@ -305,7 +307,7 @@ async def _execute_cron_job_inner(job: dict[str, Any]) -> str:
         browser = BrowserSession(
             headless=True,
             stealth=True,
-            user_data_dir=str(Path.home() / ".sediman" / "browser-profile-cron"),
+            user_data_dir=str(BROWSER_PROFILE_DIR),
         )
         await browser.start()
 

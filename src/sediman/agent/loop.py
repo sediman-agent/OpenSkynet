@@ -9,8 +9,6 @@ from typing import Any, Callable
 
 import structlog
 
-from pathlib import Path as _Path
-
 from sediman.agent.browser_agent import BrowserSubagent, BrowserResult
 from sediman.agent.compressor import ContextCompressor
 from sediman.agent.delegate import delegate_parallel
@@ -49,12 +47,13 @@ from sediman.browser.session import BrowserSession
 from sediman.llm.provider import LLMProvider
 from sediman.memory.manager import MemoryManager
 from sediman.agentbrowser.session import AgentBrowserSession
+from sediman.config import AGENT_STATE_FILE
 
 logger = structlog.get_logger()
 
 import re as _re
 
-_AGENT_STATE_FILE = Path.home() / ".sediman" / "agent_state.json"
+_AGENT_STATE_FILE = AGENT_STATE_FILE
 
 _SIMPLE_URL_RE = _re.compile(
     r'^(?:go\s+to|open|visit|browse|navigate\s+to)\s+https?://\S+$', _re.IGNORECASE

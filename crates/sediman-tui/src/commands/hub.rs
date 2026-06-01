@@ -178,15 +178,14 @@ pub async fn handle_hub_info(app: &mut App, args: &str) {
                 lines.push(ModalLine::blank());
                 lines.push(ModalLine::accent(format!("  Variables ({})", skill.variables.len())));
                 for v in &skill.variables {
-                    let default = v.default.as_deref().unwrap_or("");
-                    lines.push(ModalLine::normal(format!("    {} ({}): {}", v.name, v.description, default)));
+                    lines.push(ModalLine::normal(format!("    - {}", v)));
                 }
             }
             if !skill.steps.is_empty() {
                 lines.push(ModalLine::blank());
                 lines.push(ModalLine::accent(format!("  Steps ({})", skill.steps.len())));
                 for (i, step) in skill.steps.iter().enumerate() {
-                    lines.push(ModalLine::normal(format!("    {}. {}", i + 1, step.description)));
+                    lines.push(ModalLine::normal(format!("    {}. {}", i + 1, step)));
                 }
             }
             if !skill.warnings.is_empty() {

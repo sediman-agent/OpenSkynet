@@ -37,7 +37,7 @@ pub async fn handle_checkpoint(app: &mut App, _args: &str) {
 
     // Fallback: scan directory
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    let cp_dir = std::path::PathBuf::from(format!("{}/.sediman/sandbox/checkpoints", home));
+    let cp_dir = std::path::PathBuf::from(format!("{}/.terminator/sandbox/checkpoints", home));
 
     if !cp_dir.exists() {
         app.add_system_message("No checkpoints yet.".into());

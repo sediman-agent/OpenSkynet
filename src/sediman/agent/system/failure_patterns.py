@@ -22,7 +22,8 @@ class FailurePattern:
 
 class FailurePatternStore:
     def __init__(self, path=""):
-        self.path = Path(path) if path else Path.home() / ".sediman" / "failure_patterns.json"
+        from sediman.config import DATA_DIR
+        self.path = Path(path) if path else DATA_DIR / "failure_patterns.json"
         self._patterns: list[FailurePattern] = []
 
     def load(self):

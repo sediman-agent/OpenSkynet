@@ -47,7 +47,7 @@ pub async fn handle_export(app: &mut App, _args: &str) {
     }
 
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    let dir = format!("{}/.sediman", home);
+    let dir = format!("{}/.terminator", home);
     let _ = std::fs::create_dir_all(&dir);
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

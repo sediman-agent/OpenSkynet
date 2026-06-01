@@ -4,9 +4,6 @@ use sediman_tui_core::event::AppEvent;
 
 use crate::app::{App, AppModal, ModalLine};
 
-/// `/skills` — list all skills
-/// `/skills <name>` — show skill details
-/// `/skills search <query>` — search local skills
 pub async fn handle_skills(app: &mut App, args: &str) {
     let args = args.trim();
 
@@ -16,51 +13,85 @@ pub async fn handle_skills(app: &mut App, args: &str) {
         return;
     }
 
+    if args.starts_with("run ") {
+        let name = args.strip_prefix("run").unwrap_or("").trim();
+        if name.is_empty() {
+            app.add_system_message("Usage: /skills run <name>".into());
+            return;
+        }
+        handle_run_skill(app, name).await;
+        return;
+    }
+
+    if args.starts_with("info ") {
+        let name = args.strip_prefix("info").unwrap_or("").trim();
+        if name.is_empty() {
+            app.add_system_message("Usage: /skills info <name>".into());
+            return;
+        }
+        handle_skill_detail(app, name).await;
+        return;
+    }
+
     if !args.is_empty() && args != "list" {
         handle_skill_detail(app, args).await;
         return;
     }
 
-    match app.bridge.list_skills().await {
+    handle_skills_browse(app).await;
+}
+
+async fn handle_skills_browse(app: &mut App) {
+    match app.bridge.list_all_skills().await {
         Ok(skills) => {
             if skills.is_empty() {
                 app.active_modal = Some(AppModal::Info {
                     title: "Skills".into(),
                     lines: vec![
                         ModalLine::blank(),
-                        ModalLine::muted("  No skills saved yet."),
-                        ModalLine::muted("  Use /record <name> to start recording."),
+                        ModalLine::muted("  No skills available."),
+                        ModalLine::muted("  Check your connection to the backend."),
                     ],
                     scroll: 0,
                 });
                 return;
             }
-            let mut lines = vec![
-                ModalLine::heading(format!("  Skills ({})", skills.len())),
-                ModalLine::blank(),
-            ];
-            for s in &skills {
-                let cat = s.category.as_deref().unwrap_or("general");
-                lines.push(ModalLine::primary(format!("  {} v{}", s.name, s.version)));
-                lines.push(ModalLine::muted(format!("    {} [{}]", s.description, cat)));
-            }
-            lines.push(ModalLine::blank());
-            lines.push(ModalLine::muted("  /skills <name> for details \u{2502} /skills search <query>"));
-            app.active_modal = Some(AppModal::Info {
-                title: "Skills".into(),
-                lines,
-                scroll: 0,
-            });
+            app.skill_browser_skills = skills;
+            app.skill_browser_selected = 0;
+            app.skill_browser_filter.clear();
+            app.skill_browser_scroll = 0;
+            app.skill_browser_installed = app
+                .skill_browser_skills
+                .iter()
+                .filter(|s| s.installed)
+                .map(|s| s.name.clone())
+                .collect();
+            app.active_modal = Some(AppModal::SkillBrowser);
         }
         Err(e) => {
-            app.active_modal = Some(AppModal::Info {
-                title: "Skills".into(),
-                lines: vec![
-                    ModalLine::blank(),
-                    ModalLine::error(format!("  Failed to load skills: {}", e)),
-                ],
-                scroll: 0,
-            });
+            let err_str = e.to_string();
+            if err_str.contains("Connection failed") || err_str.contains("No such file") || err_str.contains("os error 2") {
+                app.active_modal = Some(AppModal::Info {
+                    title: "Skills Unavailable".into(),
+                    lines: vec![
+                        ModalLine::blank(),
+                        ModalLine::error("  Cannot load skills — backend not reachable.".to_string()),
+                        ModalLine::blank(),
+                        ModalLine::muted("  Make sure the sediman backend is running."),
+                        ModalLine::muted("  Run: sediman serve"),
+                    ],
+                    scroll: 0,
+                });
+            } else {
+                app.active_modal = Some(AppModal::Info {
+                    title: "Skills".into(),
+                    lines: vec![
+                        ModalLine::blank(),
+                        ModalLine::error(format!("  Failed to load skills: {}", e)),
+                    ],
+                    scroll: 0,
+                });
+            }
         }
     }
 }
@@ -68,7 +99,7 @@ pub async fn handle_skills(app: &mut App, args: &str) {
 async fn handle_skills_search(app: &mut App, query: &str) {
     if query.is_empty() {
         app.active_modal = Some(AppModal::Info {
-            title: "Skills \u{2014} Search".into(),
+            title: "Skills — Search".into(),
             lines: vec![
                 ModalLine::blank(),
                 ModalLine::muted("  Usage: /skills search <query>"),
@@ -81,7 +112,7 @@ async fn handle_skills_search(app: &mut App, query: &str) {
         Ok(results) => {
             if results.is_empty() {
                 app.active_modal = Some(AppModal::Info {
-                    title: format!("Skills \u{2014} Search: {}", query),
+                    title: format!("Skills — Search: {}", query),
                     lines: vec![
                         ModalLine::blank(),
                         ModalLine::muted("  No matches found."),
@@ -102,20 +133,20 @@ async fn handle_skills_search(app: &mut App, query: &str) {
                 } else if cat.is_empty() {
                     source.to_string()
                 } else {
-                    format!("{} \u{00b7} {}", cat, source)
+                    format!("{} · {}", cat, source)
                 };
                 lines.push(ModalLine::primary(format!("  {}", r.name)));
                 lines.push(ModalLine::muted(format!("    {} [{}]", r.description, meta)));
             }
             app.active_modal = Some(AppModal::Info {
-                title: format!("Skills \u{2014} Search: {}", query),
+                title: format!("Skills — Search: {}", query),
                 lines,
                 scroll: 0,
             });
         }
         Err(e) => {
             app.active_modal = Some(AppModal::Info {
-                title: "Skills \u{2014} Search".into(),
+                title: "Skills — Search".into(),
                 lines: vec![
                     ModalLine::blank(),
                     ModalLine::error(format!("  Search failed: {}", e)),
@@ -126,7 +157,7 @@ async fn handle_skills_search(app: &mut App, query: &str) {
     }
 }
 
-async fn handle_skill_detail(app: &mut App, name: &str) {
+pub async fn handle_skill_detail(app: &mut App, name: &str) {
     match app.bridge.get_skill(name).await {
         Ok(skill) => {
             let mut lines = vec![
@@ -139,15 +170,19 @@ async fn handle_skill_detail(app: &mut App, name: &str) {
             lines.push(ModalLine::blank());
             lines.push(ModalLine::accent(format!("  Steps ({})", skill.steps.len())));
             for (i, step) in skill.steps.iter().enumerate() {
-                let url = step.url.as_deref().unwrap_or("");
-                lines.push(ModalLine::normal(format!("    {}. {} {}", i + 1, step.description, url)));
+                lines.push(ModalLine::normal(format!("    {}. {}", i + 1, step)));
             }
-            if !skill.when_to_use.is_empty() {
+            if !skill.variables.is_empty() {
+                lines.push(ModalLine::blank());
+                lines.push(ModalLine::accent(format!("  Variables ({})", skill.variables.len())));
+                for v in &skill.variables {
+                    lines.push(ModalLine::normal(format!("    - {}", v)));
+                }
+            }
+            if let Some(ref w) = skill.when_to_use {
                 lines.push(ModalLine::blank());
                 lines.push(ModalLine::accent("  When to use"));
-                for w in &skill.when_to_use {
-                    lines.push(ModalLine::normal(format!("    - {}", w)));
-                }
+                lines.push(ModalLine::normal(format!("    {}", w)));
             }
             if !skill.pitfalls.is_empty() {
                 lines.push(ModalLine::blank());
@@ -155,6 +190,11 @@ async fn handle_skill_detail(app: &mut App, name: &str) {
                 for p in &skill.pitfalls {
                     lines.push(ModalLine::normal(format!("    - {}", p)));
                 }
+            }
+            if let Some(ref v) = skill.verification {
+                lines.push(ModalLine::blank());
+                lines.push(ModalLine::accent("  Verification"));
+                lines.push(ModalLine::normal(format!("    {}", v)));
             }
             app.active_modal = Some(AppModal::Info {
                 title: name.into(),
@@ -177,7 +217,7 @@ async fn handle_skill_detail(app: &mut App, name: &str) {
 
 pub async fn handle_run_skill(app: &mut App, args: &str) {
     if args.is_empty() {
-        app.add_system_message("Usage: /run-skill <name>".into());
+        app.add_system_message("Usage: /skills run <name>".into());
         return;
     }
     if app.agent_running {
@@ -202,8 +242,9 @@ pub async fn handle_run_skill(app: &mut App, args: &str) {
         let result = bridge.execute_skill(skill_name.as_str()).await;
         match result {
             Ok(agent_result) => {
+                let success = !agent_result.result.is_empty();
                 let _ = event_tx.send(AppEvent::AgentResult(
-                    agent_result.success,
+                    success,
                     agent_result.result.clone(),
                     agent_result.elapsed_secs,
                 ));
@@ -218,14 +259,7 @@ pub async fn handle_run_skill(app: &mut App, args: &str) {
 
 pub static CMD_SKILLS: Command = Command {
     name: "/skills",
-    aliases: &["/skill"],
-    description: "List skills or show details: /skills [name]",
-    category: CommandCategory::Skills,
-};
-
-pub static CMD_RUN_SKILL: Command = Command {
-    name: "/run-skill",
     aliases: &[],
-    description: "Execute a saved skill: /run-skill <name>",
+    description: "Browse, search & manage skills",
     category: CommandCategory::Skills,
 };

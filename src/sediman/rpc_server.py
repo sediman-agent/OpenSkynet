@@ -903,6 +903,42 @@ async def handle_skills_search(params: dict[str, Any], notify: NotifyFn | None =
         ]
 
 
+async def handle_skills_list_all(params: dict[str, Any], notify: NotifyFn | None = None) -> list[dict[str, Any]]:
+    from sediman.skills.engine import SkillEngine
+    from sediman.skills.hub import HubClient
+    engine = SkillEngine()
+    hub = HubClient()
+    installed_skills = engine.list_skills()
+    installed_names = {s.get("name", "") for s in installed_skills}
+    hub_skills = hub.browse(category=params.get("category"))
+    seen: set[str] = set(installed_names)
+    results: list[dict[str, Any]] = []
+    for s in installed_skills:
+        results.append({
+            "name": s.get("name", ""),
+            "description": s.get("description", ""),
+            "category": s.get("category"),
+            "version": s.get("version", 1),
+            "trust": "installed",
+            "scope": "installed",
+            "installed": True,
+        })
+    for s in hub_skills:
+        if s.name in seen:
+            continue
+        seen.add(s.name)
+        results.append({
+            "name": s.name,
+            "description": s.description,
+            "category": s.category,
+            "version": s.version,
+            "trust": s.trust,
+            "scope": "external",
+            "installed": False,
+        })
+    return results
+
+
 async def handle_hub_publish(params: dict[str, Any], notify: NotifyFn | None = None) -> dict[str, Any]:
     from sediman.skills.hub import HubClient
     from sediman.skills.engine import SkillEngine
@@ -936,6 +972,7 @@ HANDLERS: dict[str, Callable] = {
     "skills.create": handle_skills_create,
     "skills.delete": handle_skills_delete,
     "skills.search": handle_skills_search,
+    "skills.list_all": handle_skills_list_all,
     "hub.browse": handle_hub_browse,
     "hub.search": handle_hub_search,
     "hub.info": handle_hub_info,

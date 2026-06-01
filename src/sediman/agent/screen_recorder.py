@@ -14,7 +14,9 @@ import structlog
 
 logger = structlog.get_logger()
 
-_CAPTURE_DIR = Path.home() / ".sediman" / "recordings"
+from sediman.config import RECORDINGS_DIR
+
+_CAPTURE_DIR = RECORDINGS_DIR
 
 _MOUSE_TRACKER_JS = """
 (window.__sediman_cursor = {x: 0, y: 0, ts: 0});

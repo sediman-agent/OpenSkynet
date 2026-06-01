@@ -138,6 +138,10 @@ impl ApiClient {
         self.call("skills.list", serde_json::json!({})).await
     }
 
+    pub async fn list_all_skills(&self) -> BridgeResult<Vec<HubSkill>> {
+        self.call("skills.list_all", serde_json::json!({})).await
+    }
+
     pub async fn get_skill(&self, name: &str) -> BridgeResult<SkillDetail> {
         self.call("skills.get", serde_json::json!({"name": name})).await
     }

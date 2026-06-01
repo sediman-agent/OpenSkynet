@@ -1,5 +1,4 @@
 pub mod skills;
-pub mod hub;
 pub mod memory;
 pub mod model;
 pub mod provider;
@@ -32,9 +31,8 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     registry.register(&soul::CMD_SOUL);
     registry.register(&theming::CMD_THEMES);
     registry.register(&coder::CMD_CODER);
-    // Skills & Hub
+    // Skills
     registry.register(&skills::CMD_SKILLS);
-    registry.register(&hub::CMD_HUB);
     // Memory
     registry.register(&memory::CMD_MEMORY);
     registry.register(&memory::CMD_REMEMBER);
@@ -59,7 +57,7 @@ mod tests {
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);
         let all = registry.all();
-        assert_eq!(all.len(), 22);
+        assert_eq!(all.len(), 21);
     }
 
     #[test]
@@ -100,6 +98,7 @@ mod tests {
         assert!(registry.get("/schedule-add").is_none());
         assert!(registry.get("/schedule-remove").is_none());
         assert!(registry.get("/resume").is_none());
+        assert!(registry.get("/hub").is_none());
         assert!(registry.get("/hub browse").is_none());
         assert!(registry.get("/hub search").is_none());
         assert!(registry.get("/hub install").is_none());

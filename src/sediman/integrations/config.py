@@ -7,9 +7,9 @@ from typing import Any
 
 import structlog
 
-logger = structlog.get_logger()
+from sediman.config import INTEGRATIONS_CONFIG_PATH
 
-INTEGRATIONS_CONFIG_PATH = Path.home() / ".sediman" / "integrations.json"
+logger = structlog.get_logger()
 
 DISCORD_BOT_TOKEN_ENV = "DISCORD_BOT_TOKEN"
 TELEGRAM_BOT_TOKEN_ENV = "TELEGRAM_BOT_TOKEN"

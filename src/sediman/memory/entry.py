@@ -15,11 +15,12 @@ from typing import Any
 
 import structlog
 
+from sediman.config import DATA_DIR
 from sediman.memory.prompt import MemoryType
 
 logger = structlog.get_logger()
 
-_META_DIR = Path.home() / ".sediman" / "memory-meta"
+_META_DIR = DATA_DIR / "memory-meta"
 _META_DIR.mkdir(parents=True, exist_ok=True)
 
 

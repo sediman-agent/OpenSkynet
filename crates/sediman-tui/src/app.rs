@@ -155,6 +155,7 @@ pub struct App {
     pub skill_browser_installed: Vec<String>,
     pub skill_browser_scroll: u16,
     pub skill_browser_visible_rows: u16,
+    pub skill_browser_filter_active: bool,
     // Schedule browser state
     pub schedule_jobs: Vec<sediman_tui_bridge::CronJob>,
     pub schedule_selected: usize,
@@ -332,6 +333,7 @@ impl App {
             skill_browser_installed: Vec::new(),
             skill_browser_scroll: 0,
             skill_browser_visible_rows: 15,
+            skill_browser_filter_active: false,
             schedule_jobs: Vec::new(),
             schedule_selected: 0,
             schedule_scroll: 0,

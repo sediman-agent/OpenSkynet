@@ -29,8 +29,8 @@ pub async fn handle_screenshot(app: &mut App, _args: &str) {
     match app.bridge.get_screenshot().await {
         Ok(bytes) => {
             let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-            let path = format!("{}/.sediman/last_screenshot.png", home);
-            if let Err(e) = std::fs::create_dir_all(format!("{}/.sediman", home)) {
+            let path = format!("{}/.terminator/last_screenshot.png", home);
+            if let Err(e) = std::fs::create_dir_all(format!("{}/.terminator", home)) {
                 app.add_error_message(format!("Failed to create dir: {}", e));
                 return;
             }

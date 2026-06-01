@@ -9,6 +9,8 @@ from typing import Any
 
 import structlog
 
+from sediman.config import DATA_DIR
+
 logger = structlog.get_logger()
 
 
@@ -163,7 +165,7 @@ class FastEmbedProvider(EmbeddingProvider):
 
 
 class TfidfEmbeddingProvider(EmbeddingProvider):
-    _VOCAB_FILE = Path.home() / ".sediman" / "tfidf_vocab.json"
+    _VOCAB_FILE = DATA_DIR / "tfidf_vocab.json"
 
     def __init__(self):
         from sklearn.feature_extraction.text import TfidfVectorizer

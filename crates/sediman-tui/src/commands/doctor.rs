@@ -267,13 +267,13 @@ async fn check_system(bridge: &sediman_tui_bridge::ApiClient) -> Vec<DoctorCheck
     let mut result = Vec::new();
 
     let home = std::env::var("HOME").unwrap_or_default();
-    let config_dir = std::path::Path::new(&home).join(".sediman");
+    let config_dir = std::path::Path::new(&home).join(".terminator");
     if config_dir.exists() {
         result.push(DoctorCheck {
             category: "System",
             name: "Config directory",
             status: DoctorStatus::Pass,
-            message: "~/.sediman/".to_string(),
+            message: "~/.terminator/".to_string(),
             optional: false,
             install_cmd: None,
         });
@@ -282,9 +282,9 @@ async fn check_system(bridge: &sediman_tui_bridge::ApiClient) -> Vec<DoctorCheck
             category: "System",
             name: "Config directory",
             status: DoctorStatus::Warn,
-            message: "~/.sediman/ not found".into(),
+            message: "~/.terminator/ not found".into(),
             optional: false,
-            install_cmd: Some("mkdir -p ~/.sediman".into()),
+            install_cmd: Some("mkdir -p ~/.terminator".into()),
         });
     }
 
@@ -386,7 +386,7 @@ fn check_api_key(provider: &str) -> bool {
     if !provider.is_empty() {
         let home = std::env::var("HOME").unwrap_or_default();
         let auth_file = std::path::Path::new(&home)
-            .join(".sediman")
+            .join(".terminator")
             .join("auth.json");
         if let Ok(data) = std::fs::read_to_string(&auth_file) {
             if let Ok(map) = serde_json::from_str::<serde_json::Value>(&data) {

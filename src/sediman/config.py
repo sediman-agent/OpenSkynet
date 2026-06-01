@@ -9,7 +9,7 @@ def _get_data_dir() -> Path:
     env = os.environ.get("SEDIMAN_DATA_DIR")
     if env:
         return Path(env)
-    return Path.home() / ".sediman"
+    return Path.home() / ".terminator"
 
 
 DATA_DIR = _get_data_dir()

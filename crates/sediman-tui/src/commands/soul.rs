@@ -38,10 +38,10 @@ pub async fn handle_soul(app: &mut App, args: &str) {
     }
 }
 
-/// Read the current soul from ~/.sediman/SOUL.md, falling back to default.
+/// Read the current soul from ~/.terminator/SOUL.md, falling back to default.
 fn load_current_soul() -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    let soul_path = std::path::Path::new(&home).join(".sediman/SOUL.md");
+    let soul_path = std::path::Path::new(&home).join(".terminator/SOUL.md");
     if soul_path.exists() {
         std::fs::read_to_string(&soul_path).unwrap_or_else(|_| DEFAULT_SOUL.to_string())
     } else {

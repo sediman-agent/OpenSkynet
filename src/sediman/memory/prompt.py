@@ -8,6 +8,7 @@ from typing import Any
 
 import structlog
 
+from sediman.config import DATA_DIR as CFG_DATA_DIR
 from sediman.memory.store import MEMORY_LIMIT
 from sediman.memory.store import MemoryStore
 
@@ -15,7 +16,7 @@ logger = structlog.get_logger()
 
 _store = MemoryStore()
 
-DATA_DIR = Path.home() / ".sediman"
+DATA_DIR = CFG_DATA_DIR
 MEMORY_FILE = DATA_DIR / "MEMORY.md"
 USER_FILE = DATA_DIR / "USER.md"
 MEMORY_DB = DATA_DIR / "memory.json"

@@ -12,6 +12,8 @@ from pathlib import Path
 
 import structlog
 
+from sediman.config import DATA_DIR
+
 logger = structlog.get_logger()
 
 
@@ -48,7 +50,7 @@ class SandboxRunner:
                 return p
         for p in (
             Path.home() / ".local" / "bin" / "sediman-sandbox",
-            Path.home() / ".sediman" / "sandbox" / "sediman-sandbox",
+            DATA_DIR / "sandbox" / "sediman-sandbox",
             Path("/usr/local/bin/sediman-sandbox"),
         ):
             if p.exists():

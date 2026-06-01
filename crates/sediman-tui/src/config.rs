@@ -1,6 +1,6 @@
 //! Persistent configuration for the Sediman TUI.
 //!
-//! Saves/loads user preferences to `~/.sediman/tui.toml`.
+//! Saves/loads user preferences to `~/.terminator/tui.toml`.
 //! Theme, permission mode, side panel state, and session history survive restarts.
 
 use std::fs;
@@ -55,11 +55,11 @@ impl Default for TuiConfig {
 }
 
 impl TuiConfig {
-    /// Returns the config file path: `~/.sediman/tui.toml`
+    /// Returns the config file path: `~/.terminator/tui.toml`
     pub fn config_path() -> PathBuf {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".sediman")
+            .join(".terminator")
             .join("tui.toml")
     }
 
@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn test_config_path_is_under_home() {
         let path = TuiConfig::config_path();
-        assert!(path.to_str().unwrap().contains(".sediman"));
+        assert!(path.to_str().unwrap().contains(".terminator"));
         assert!(path.to_str().unwrap().contains("tui.toml"));
     }
 }

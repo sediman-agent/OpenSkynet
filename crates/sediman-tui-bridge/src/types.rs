@@ -91,17 +91,19 @@ mod tests {
     fn test_skill_detail_with_steps() {
         let json = r#"{
             "name":"detail-skill","description":"detailed","version":3,
-            "steps":[{"description":"Step 1"}],
-            "variables":[{"name":"url","description":"the URL"}],
-            "when_to_use":["for testing"],
+            "steps":["Step 1"],
+            "variables":["url"],
+            "when_to_use":"for testing",
             "pitfalls":["careful"],
-            "verification":["works"]
+            "verification":"check it works"
         }"#;
         let s: SkillDetail = serde_json::from_str(json).unwrap();
         assert_eq!(s.steps.len(), 1);
+        assert_eq!(s.steps[0], "Step 1");
         assert_eq!(s.variables.len(), 1);
-        assert_eq!(s.when_to_use[0], "for testing");
+        assert_eq!(s.when_to_use.as_deref(), Some("for testing"));
         assert_eq!(s.pitfalls[0], "careful");
+        assert_eq!(s.verification.as_deref(), Some("check it works"));
     }
 
     #[test]
@@ -131,10 +133,13 @@ mod tests {
             author: "community".into(),
             version: 1,
             trust: "trusted".into(),
+            installed: false,
+            scope: "external".into(),
         };
         let json = serde_json::to_string(&orig).unwrap();
         let restored: HubSkill = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.trust, "trusted");
+        assert!(!restored.installed);
     }
 
     #[test]
@@ -215,17 +220,18 @@ mod tests {
             version: 1,
             steps: vec![],
             variables: vec![],
-            when_to_use: vec![],
+            when_to_use: None,
             pitfalls: vec![],
-            verification: vec![],
+            verification: None,
+            structured_steps: vec![],
         };
         let json = serde_json::to_string(&orig).unwrap();
         let restored: SkillDetail = serde_json::from_str(&json).unwrap();
         assert!(restored.steps.is_empty());
         assert!(restored.variables.is_empty());
-        assert!(restored.when_to_use.is_empty());
+        assert!(restored.when_to_use.is_none());
         assert!(restored.pitfalls.is_empty());
-        assert!(restored.verification.is_empty());
+        assert!(restored.verification.is_none());
     }
 
     #[test]
@@ -258,6 +264,8 @@ mod tests {
             author: "dev".into(),
             version: 2,
             trust: "trusted".into(),
+            installed: true,
+            scope: "installed".into(),
         };
         let json = serde_json::to_string(&orig).unwrap();
         let restored: HubSkill = serde_json::from_str(&json).unwrap();
@@ -429,18 +437,8 @@ mod tests {
             author: "test-author".into(),
             version: 3,
             trust: "trusted".into(),
-            steps: vec![SkillStep {
-                description: "Navigate to page".into(),
-                action_type: Some("navigate".into()),
-                url: Some("https://example.com".into()),
-                selector: None,
-                text: None,
-            }],
-            variables: vec![SkillVariable {
-                name: "query".into(),
-                description: "Search query".into(),
-                default: Some("test".into()),
-            }],
+            steps: vec!["Navigate to page".into()],
+            variables: vec!["query".into()],
             warnings: vec!["May fail on slow connections".into()],
             license: Some("MIT".into()),
             schedule: Some("0 9 * * *".into()),
@@ -477,15 +475,15 @@ mod tests {
             "author":"community",
             "version":2,
             "trust":"community",
-            "steps":[{"description":"Go to Yahoo Finance","action_type":"navigate","url":"https://finance.yahoo.com"}],
-            "variables":[{"name":"ticker","description":"Stock ticker symbol","default":"AAPL"}],
+            "steps":["Go to Yahoo Finance"],
+            "variables":["ticker"],
             "warnings":["Rate limited to 5 req/min"],
             "license":"Apache-2.0",
             "schedule":"0 */4 * * *"
         }"#;
         let detail: HubSkillDetail = serde_json::from_str(json).unwrap();
-        assert_eq!(detail.steps[0].action_type.as_deref(), Some("navigate"));
-        assert_eq!(detail.variables[0].name, "ticker");
+        assert_eq!(detail.steps[0], "Go to Yahoo Finance");
+        assert_eq!(detail.variables[0], "ticker");
         assert_eq!(detail.warnings[0], "Rate limited to 5 req/min");
     }
 
@@ -597,12 +595,20 @@ pub struct SkillDetail {
     pub name: String,
     pub description: String,
     pub category: Option<String>,
+    #[serde(default)]
     pub version: i32,
-    pub steps: Vec<SkillStep>,
-    pub variables: Vec<SkillVariable>,
-    pub when_to_use: Vec<String>,
+    #[serde(default)]
+    pub steps: Vec<String>,
+    #[serde(default)]
+    pub variables: Vec<String>,
+    #[serde(default)]
+    pub when_to_use: Option<String>,
+    #[serde(default)]
     pub pitfalls: Vec<String>,
-    pub verification: Vec<String>,
+    #[serde(default)]
+    pub verification: Option<String>,
+    #[serde(default)]
+    pub structured_steps: Vec<SkillStep>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -646,6 +652,10 @@ pub struct HubSkill {
     pub version: i32,
     #[serde(default, deserialize_with = "null_to_default")]
     pub trust: String,
+    #[serde(default)]
+    pub installed: bool,
+    #[serde(default, deserialize_with = "null_to_default")]
+    pub scope: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -663,9 +673,9 @@ pub struct HubSkillDetail {
     #[serde(default, deserialize_with = "null_to_default")]
     pub trust: String,
     #[serde(default)]
-    pub steps: Vec<SkillStep>,
+    pub steps: Vec<String>,
     #[serde(default)]
-    pub variables: Vec<SkillVariable>,
+    pub variables: Vec<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
     #[serde(default)]

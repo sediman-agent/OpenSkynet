@@ -6,12 +6,11 @@ from typing import Any
 
 import structlog
 
+from sediman.config import CONTEXT_FILE, SOUL_FILE
+
 logger = structlog.get_logger()
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
-
-SOUL_FILE = Path.home() / ".sediman" / "SOUL.md"
-CONTEXT_FILE = Path.home() / ".sediman" / "CONTEXT.md"
 
 _template_cache: dict[str, str] = {}
 

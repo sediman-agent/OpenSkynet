@@ -117,8 +117,8 @@ class WorkflowConfig:
 
     @property
     def failure_pattern_path(self) -> str:
-        from pathlib import Path
-        return self.failure_pattern_file or str(Path.home() / ".sediman" / "failure_patterns.json")
+        from sediman.config import DATA_DIR
+        return self.failure_pattern_file or str(DATA_DIR / "failure_patterns.json")
 
 
 @dataclass

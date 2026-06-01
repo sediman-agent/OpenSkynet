@@ -112,8 +112,8 @@ pub fn load_theme(name: &str) -> Option<Theme> {
 
 pub fn custom_themes_dir() -> PathBuf {
     std::env::var("HOME").ok()
-        .map(|h| PathBuf::from(h).join(".sediman").join("themes"))
-        .unwrap_or_else(|| PathBuf::from(".sediman/themes"))
+        .map(|h| PathBuf::from(h).join(".terminator").join("themes"))
+        .unwrap_or_else(|| PathBuf::from(".terminator/themes"))
 }
 
 pub fn discover_custom_themes() -> Vec<(String, Theme)> {
