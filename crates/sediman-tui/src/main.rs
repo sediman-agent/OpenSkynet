@@ -87,12 +87,15 @@ async fn ensure_backend(
 
     if no_spawn {
         eprintln!("Warning: Backend not running at {} and --no-spawn set.", socket_path);
-        eprintln!("  Start it manually: uv run python -m sediman.rpc_server");
+        eprintln!("  Start it manually: sediman rpc-server");
         return None;
     }
 
-    // Try to find uv or python
-    let (cmd, args) = if which_exists("uv").await {
+    // Try to find sediman CLI first (works with uv tool install),
+    // then fall back to uv run / python (works in dev / from source).
+    let (cmd, args) = if which_exists("sediman").await {
+        ("sediman", vec!["rpc-server"])
+    } else if which_exists("uv").await {
         ("uv", vec!["run", "python", "-m", "sediman.rpc_server"])
     } else if which_exists("python3").await {
         ("python3", vec!["-m", "sediman.rpc_server"])

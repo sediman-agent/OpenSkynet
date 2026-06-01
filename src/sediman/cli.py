@@ -50,6 +50,14 @@ def main() -> None:
     pass
 
 
+@main.command(name="rpc-server")
+def rpc_server_cmd() -> None:
+    """Start the RPC backend server (used by the TUI)."""
+    from sediman.rpc_server import main as serve_main
+
+    serve_main()
+
+
 @main.command()
 @click.argument("task")
 @click.option("--model", default=None, help="LLM model to use")
