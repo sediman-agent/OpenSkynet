@@ -125,7 +125,7 @@ async def _handle_skill_manage(
                         success=False,
                         output=f"Skill rejected — security threats: {', '.join(threats)}",
                     )
-            except (ValueError, KeyError, OSError):
+            except (ValueError, KeyError, OSError, ImportError):
                 pass
 
             patched = engine.patch(name, updates)
