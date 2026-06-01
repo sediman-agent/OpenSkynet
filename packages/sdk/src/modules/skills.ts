@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync, unlinkSync, rmdirSync } from "fs"
+import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync, unlinkSync, rmdirSync, renameSync } from "fs"
 import { join, resolve } from "path"
 import { getDataDir } from "../config.js"
 
@@ -21,7 +21,9 @@ function skillPath(name: string): string {
 function atomicWrite(path: string, content: string): void {
   const dir = path.substring(0, path.lastIndexOf("/"))
   mkdirSync(dir, { recursive: true })
-  writeFileSync(path, content, "utf-8")
+  const tmp = path + ".tmp"
+  writeFileSync(tmp, content, "utf-8")
+  renameSync(tmp, path)
 }
 
 function loadSkill(dir: string): Record<string, unknown> | null {
