@@ -213,7 +213,7 @@ async def _handle_skill_manage(
             perms.set_decision(name, source, decision)
 
             install_msg = ""
-            if decision in ("allow_once", "always_allow_skill", "always_allow_source"):
+            if decision in ("always_allow_skill", "always_allow_source"):
                 from sediman.skills.engine import SkillEngine
                 from sediman.skills.hub import LocalSkillInstaller
 
