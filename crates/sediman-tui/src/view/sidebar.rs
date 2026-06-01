@@ -13,7 +13,11 @@ pub fn render_side_panel(buf: &mut CellBuffer, area: Rect, app: &App) {
     ];
 
     let current = app.side_panel_tab;
-    let content_area = Rect::new(area.x, area.y + 1, area.width, area.height - 1);
+    let content_area = Rect::new(area.x, area.y + 1, area.width, area.height.saturating_sub(1));
+
+    for sx in area.x..area.right() {
+        buf.put_char(sx, area.y, '\u{2500}', Style::new().fg(t.border));
+    }
 
     let mut x = area.x;
     for (label, tab) in tab_labels {
@@ -25,13 +29,8 @@ pub fn render_side_panel(buf: &mut CellBuffer, area: Rect, app: &App) {
             Style::new().fg(t.text_muted)
         };
         let full = format!("{}{}", sep, label);
-        buf.draw_str(x, area.y, &full, style);
+        buf.draw_str_clipped(area, x, area.y, &full, style);
         x += display_width(&full) + 1;
-    }
-
-    let sy = content_area.y;
-    for sx in content_area.x..content_area.right() {
-        buf.put_char(sx, sy.saturating_sub(1), '\u{2500}', Style::new().fg(t.border));
     }
 
     let lines: Vec<(String, Style)> = match current {
@@ -49,7 +48,7 @@ pub fn render_side_panel(buf: &mut CellBuffer, area: Rect, app: &App) {
         if y >= content_area.bottom() {
             break;
         }
-        buf.draw_str(content_area.x + 1, y, text, style.bg(t.background_panel));
+        buf.draw_str_clipped(content_area, content_area.x + 1, y, text, style.bg(t.background_panel));
     }
 }
 

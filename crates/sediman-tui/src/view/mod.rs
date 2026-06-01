@@ -19,9 +19,9 @@ pub fn render_into(buf: &mut CellBuffer, app: &mut App) {
     // Approximate inner width: total width minus borders(2) + badge(~8) + padding(2)
     let approx_inner = area.width.saturating_sub(12) as usize;
     let editor_lines = app.editor.visual_lines(approx_inner).max(1) as u16;
-    // Layout: separator(1) + top_border(1) + content(editor_lines) + bottom_border+hints(1)
     let needed = editor_lines + 3;
-    app.layout.input_lines = needed.clamp(5, 15); // min 5 rows, max 15 rows
+    let max_input = area.height.saturating_sub(3).max(3);
+    app.layout.input_lines = needed.clamp(3, 15).min(max_input);
 
     let show_side = app.show_side_panel;
     app.layout.show_side_panel = show_side;
@@ -65,14 +65,14 @@ pub fn render_into(buf: &mut CellBuffer, app: &mut App) {
         let t = &app.theme;
         let text = &app.toast_text;
         let tw = display_width(text) + 4;
-        let area = buf.area();
-        let tx = area.x + (area.width.saturating_sub(tw)) / 2;
-        let ty = area.bottom().saturating_sub(3);
+        let toast_area = buf.area();
+        let tx = toast_area.x + (toast_area.width.saturating_sub(tw)) / 2;
+        let ty = zones.status_bar.y.saturating_sub(1).max(zones.main.y);
         for sx in tx..tx + tw {
-            if sx < area.right() {
+            if sx < toast_area.right() {
                 buf.put_char(sx, ty, ' ', Style::new().bg(t.primary).fg(t.background));
             }
         }
-        buf.draw_str(tx + 2, ty, text, Style::new().bg(t.primary).fg(t.background).add_modifier(TextAttributes::bold()));
+        buf.draw_str_clipped(zones.main, tx + 2, ty, text, Style::new().bg(t.primary).fg(t.background).add_modifier(TextAttributes::bold()));
     }
 }

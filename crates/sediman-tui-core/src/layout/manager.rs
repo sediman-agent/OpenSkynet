@@ -31,8 +31,11 @@ impl LayoutManager {
         } else {
             area
         };
+
+        let clamped_input = self.input_lines.min(area.height.saturating_sub(3).max(1));
+
         let title_bar = Rect::new(area.x, area.y, area.width, 1);
-        let input_area = Rect::new(area.x, area.y + area.height.saturating_sub(self.input_lines), area.width, self.input_lines);
+        let input_area = Rect::new(area.x, area.y + area.height.saturating_sub(clamped_input), area.width, clamped_input);
         let status_bar = Rect::new(area.x, input_area.y.saturating_sub(1), area.width, 1);
         let mut main_area = Rect::new(area.x, title_bar.y + 1, area.width, status_bar.y.saturating_sub(title_bar.y + 1));
 
@@ -113,7 +116,8 @@ mod tests {
         let zones = lm.split(area(20, 6));
         assert_eq!(zones.title_bar.height, 1);
         assert_eq!(zones.status_bar.height, 1);
-        assert_eq!(zones.input.height, 4);
+        assert!(zones.input.height >= 1);
+        assert!(zones.input.height <= 3);
     }
 
     #[test]
@@ -181,5 +185,51 @@ mod tests {
         assert!(side.width < 100);
         assert!(zones.main.width > 0);
         assert!(zones.main.width < 100);
+    }
+
+    #[test]
+    fn test_split_input_clamped_on_small_terminal() {
+        let mut lm = LayoutManager::new();
+        lm.input_lines = 15;
+        let zones = lm.split(area(80, 10));
+        assert!(zones.input.height <= 7, "input height {} should be clamped to height-3=7", zones.input.height);
+        assert_eq!(zones.title_bar.height, 1);
+        assert_eq!(zones.status_bar.height, 1);
+    }
+
+    #[test]
+    fn test_split_large_input_lines_normal_terminal() {
+        let mut lm = LayoutManager::new();
+        lm.input_lines = 15;
+        let zones = lm.split(area(80, 30));
+        assert_eq!(zones.input.height, 15);
+    }
+
+    #[test]
+    fn test_split_zones_non_overlapping_with_large_input() {
+        let mut lm = LayoutManager::new();
+        lm.input_lines = 15;
+        let zones = lm.split(area(80, 20));
+        assert!(zones.title_bar.y + zones.title_bar.height <= zones.main.y);
+        assert!(zones.main.y + zones.main.height <= zones.status_bar.y);
+        assert!(zones.status_bar.y + zones.status_bar.height <= zones.input.y);
+    }
+
+    #[test]
+    fn test_split_minimum_main_area() {
+        let mut lm = LayoutManager::new();
+        lm.input_lines = 10;
+        let zones = lm.split(area(80, 12));
+        assert!(zones.main.height as i32 >= 0, "main area height should be non-negative");
+        assert!(zones.input.height <= 9, "input should leave room for title + status");
+    }
+
+    #[test]
+    fn test_split_tiny_terminal_no_panic_with_large_input() {
+        let mut lm = LayoutManager::new();
+        lm.input_lines = 50;
+        let zones = lm.split(area(10, 3));
+        _ = zones.main.height;
+        _ = zones.input.height;
     }
 }

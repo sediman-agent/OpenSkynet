@@ -1,5 +1,6 @@
 use sediman_tui_core::renderer::{CellBuffer, Color, Line, Rect, Style, TextAttributes, display_width};
 use sediman_tui_core::markdown;
+use unicode_width::UnicodeWidthChar;
 
 use crate::app::{App, ChatMessage};
 
@@ -194,7 +195,7 @@ pub fn render_messages(buf: &mut CellBuffer, area: Rect, app: &mut App) {
             y += 1;
             continue;
         }
-        buf.draw_str(area.x + 2, y, text, *style);
+        buf.draw_str_clipped(area, area.x + 2, y, text, *style);
         y += 1;
     }
 
@@ -242,17 +243,21 @@ fn truncate_end(s: &str, max_len: usize) -> String {
     if max_len < 4 {
         return s.chars().take(max_len).collect();
     }
-    if s.len() <= max_len {
+    if display_width(s) <= max_len as u16 {
         return s.to_string();
     }
-    let end = s.char_indices().take_while(|(i, _)| *i < max_len - 3).last();
-    match end {
-        Some((i, c)) => {
-            let cut = i + c.len_utf8();
-            format!("{}...", &s[..cut])
+    let mut result = String::new();
+    let mut width = 0usize;
+    for ch in s.chars() {
+        let cw = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if width + cw > max_len - 3 {
+            break;
         }
-        None => format!("{}...", &s[..max_len.saturating_sub(3)]),
+        result.push(ch);
+        width += cw;
     }
+    result.push_str("...");
+    result
 }
 
 /// Push a line, wrapping it into multiple lines if it exceeds max_width.
@@ -269,15 +274,25 @@ fn push_wrapped(lines: &mut Vec<(String, Style)>, text: &str, style: Style, max_
     }
 
     let chars: Vec<char> = text.chars().collect();
-    let inner_width = max_width.saturating_sub(2);
+    let inner_width = max_width.saturating_sub(4);
     let mut first = true;
     let mut pos = 0;
 
     while pos < chars.len() {
         let limit = if first { max_width } else { inner_width };
-        let mut end = (pos + limit).min(chars.len());
+        let mut end = pos;
+        let mut w = 0usize;
+        while end < chars.len() {
+            let cw = UnicodeWidthChar::width(chars[end]).unwrap_or(0);
+            if w + cw > limit { break; }
+            w += cw;
+            end += 1;
+        }
 
-        // Try to break at a space or punctuation
+        if end == pos {
+            end = pos + 1;
+        }
+
         if end < chars.len() {
             for i in (pos..end).rev() {
                 if chars[i] == ' ' || chars[i] == '-' || chars[i] == ',' || chars[i] == ')' {
@@ -483,5 +498,90 @@ mod tests {
     #[test]
     fn test_truncate_end_long() {
         assert_eq!(truncate_end("abcdefghijklmnopqrstuvwxyz", 10), "abcdefg...");
+    }
+
+    #[test]
+    fn test_truncate_end_multi_byte() {
+        let s = "a\u{00e9}b\u{00e9}c\u{00e9}d\u{00e9}e";
+        let result = truncate_end(s, 6);
+        assert!(result.ends_with("..."));
+        assert!(display_width(&result) <= 6, "truncated display width should be <= max_len, got {}", display_width(&result));
+    }
+
+    #[test]
+    fn test_truncate_end_wide_chars() {
+        let wide: String = "\u{4e00}\u{4e01}\u{4e02}\u{4e03}\u{4e04}".to_string();
+        let result = truncate_end(&wide, 6);
+        assert!(result.ends_with("..."));
+        assert!(display_width(&result) <= 6, "display width should be <= 6, got {}", display_width(&result));
+    }
+
+    #[test]
+    fn test_truncate_end_exact_width() {
+        assert_eq!(truncate_end("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_end_ascii_preserves_original() {
+        let s = "test string";
+        assert_eq!(truncate_end(s, 100), s);
+    }
+
+    #[test]
+    fn test_push_wrapped_wide_chars() {
+        let mut lines = Vec::new();
+        let wide: String = "\u{4e00}".repeat(10);
+        push_wrapped(&mut lines, &wide, Style::new(), 10);
+        for (i, (text, _)) in lines.iter().enumerate() {
+            let w = display_width(text) as usize;
+            assert!(w <= 10, "line {} display width {} exceeds max 10: {:?}", i, w, text);
+        }
+    }
+
+    #[test]
+    fn test_push_wrapped_mixed_width() {
+        let mut lines = Vec::new();
+        let mixed = "hello\u{4e00}\u{4e01}\u{4e02}world";
+        push_wrapped(&mut lines, mixed, Style::new(), 10);
+        for (i, (text, _)) in lines.iter().enumerate() {
+            let w = display_width(text) as usize;
+            assert!(w <= 10, "line {} display width {} exceeds max 10: {:?}", i, w, text);
+        }
+        assert!(lines.len() > 1, "should wrap into multiple lines");
+    }
+
+    #[test]
+    fn test_push_wrapped_continuation_indent() {
+        let mut lines = Vec::new();
+        let long = "a".repeat(100);
+        push_wrapped(&mut lines, &long, Style::new(), 10);
+        assert!(lines.len() > 1);
+        for (i, (text, _)) in lines.iter().enumerate() {
+            if i > 0 {
+                assert!(text.starts_with("    "), "continuation line should have 4-space indent");
+            }
+        }
+    }
+
+    #[test]
+    fn test_push_wrapped_no_wider_than_max() {
+        let mut lines = Vec::new();
+        let text = "the quick brown fox jumps over the lazy dog and keeps going";
+        push_wrapped(&mut lines, text, Style::new(), 20);
+        for (i, (line_text, _)) in lines.iter().enumerate() {
+            let w = display_width(line_text) as usize;
+            assert!(w <= 20, "line {} display width {} exceeds max 20: {:?}", i, w, line_text);
+        }
+    }
+
+    #[test]
+    fn test_push_wrapped_single_wide_char_at_boundary() {
+        let mut lines = Vec::new();
+        let text = format!("abc{}\u{4e00}", "x".repeat(5));
+        push_wrapped(&mut lines, &text, Style::new(), 8);
+        for (i, (line_text, _)) in lines.iter().enumerate() {
+            let w = display_width(line_text) as usize;
+            assert!(w <= 8, "line {} display width {} exceeds max 8: {:?}", i, w, line_text);
+        }
     }
 }

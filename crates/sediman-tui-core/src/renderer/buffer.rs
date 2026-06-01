@@ -349,6 +349,40 @@ impl CellBuffer {
         self.mark_dirty(y);
     }
 
+    pub fn draw_str_clipped(&mut self, clip: Rect, x: u16, y: u16, text: &str, style: super::Style) {
+        if y < clip.y || y >= clip.bottom() {
+            return;
+        }
+        let right = clip.right().min(self.area.width);
+        let mut cx = x;
+        for ch in text.chars() {
+            let w = char_width(ch);
+            if w == 0 { continue; }
+            if cx + w > right {
+                break;
+            }
+            if cx >= clip.x {
+                if let Some(i) = self.index(cx, y) {
+                    self.cells[i] = Cell::new(ch, style);
+                }
+                cx += 1;
+                for _ in 1..w {
+                    if cx < right {
+                        if let Some(i) = self.index(cx, y) {
+                            self.cells[i].skip = true;
+                        }
+                    }
+                    cx += 1;
+                }
+            } else {
+                cx += w;
+            }
+        }
+        if y < self.area.height {
+            self.mark_dirty(y);
+        }
+    }
+
     pub fn draw_wrapped_str(&mut self, rect: Rect, text: &str, style: super::Style) {
         let clamped = rect.clamp(self.area);
         let mut x = clamped.x;
@@ -933,5 +967,81 @@ mod tests {
         assert_eq!(buf.get(0, 0).unwrap().ch, 'a');
         assert_eq!(buf.get(1, 0).unwrap().ch, 'b');
         assert_eq!(buf.get(0, 1).unwrap().ch, '\u{4e00}');
+    }
+
+    #[test]
+    fn test_draw_str_clipped_within_clip() {
+        let mut buf = CellBuffer::new(20, 5);
+        let clip = Rect::new(0, 0, 10, 5);
+        buf.draw_str_clipped(clip, 0, 0, "hello", Style::new());
+        assert_eq!(buf.get(0, 0).unwrap().ch, 'h');
+        assert_eq!(buf.get(4, 0).unwrap().ch, 'o');
+    }
+
+    #[test]
+    fn test_draw_str_clipped_clips_at_clip_right() {
+        let mut buf = CellBuffer::new(20, 5);
+        let clip = Rect::new(0, 0, 5, 5);
+        buf.draw_str_clipped(clip, 0, 0, "hello world", Style::new());
+        assert_eq!(buf.get(4, 0).unwrap().ch, 'o');
+        assert!(buf.get(5, 0).unwrap().is_empty(), "char beyond clip rect should be empty");
+    }
+
+    #[test]
+    fn test_draw_str_clipped_y_outside_clip() {
+        let mut buf = CellBuffer::new(20, 5);
+        let clip = Rect::new(0, 0, 20, 2);
+        buf.draw_str_clipped(clip, 0, 3, "hello", Style::new());
+        assert!(buf.get(0, 3).unwrap().is_empty(), "nothing drawn when y >= clip.bottom()");
+    }
+
+    #[test]
+    fn test_draw_str_clipped_y_above_clip() {
+        let mut buf = CellBuffer::new(20, 10);
+        let clip = Rect::new(0, 5, 20, 5);
+        buf.draw_str_clipped(clip, 0, 2, "hello", Style::new());
+        assert!(buf.get(0, 2).unwrap().is_empty(), "nothing drawn when y < clip.y");
+    }
+
+    #[test]
+    fn test_draw_str_clipped_narrow_clip() {
+        let mut buf = CellBuffer::new(80, 24);
+        let clip = Rect::new(0, 0, 20, 24);
+        let long_text = "a".repeat(60);
+        buf.draw_str_clipped(clip, 0, 0, &long_text, Style::new());
+        for x in 0..20 {
+            assert_eq!(buf.get(x, 0).unwrap().ch, 'a', "char at {} should be 'a'", x);
+        }
+        assert!(buf.get(20, 0).unwrap().is_empty(), "char beyond clip should be empty");
+    }
+
+    #[test]
+    fn test_draw_str_clipped_offset_clip() {
+        let mut buf = CellBuffer::new(30, 5);
+        let clip = Rect::new(10, 0, 10, 5);
+        buf.draw_str_clipped(clip, 10, 0, "hello world", Style::new());
+        assert_eq!(buf.get(10, 0).unwrap().ch, 'h');
+        assert_eq!(buf.get(14, 0).unwrap().ch, 'o');
+        assert!(buf.get(15, 0).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_draw_str_clipped_wide_char_at_boundary() {
+        let mut buf = CellBuffer::new(20, 5);
+        let clip = Rect::new(0, 0, 3, 5);
+        buf.draw_str_clipped(clip, 0, 0, "ab\u{4e00}c", Style::new());
+        assert_eq!(buf.get(0, 0).unwrap().ch, 'a');
+        assert_eq!(buf.get(1, 0).unwrap().ch, 'b');
+        assert!(buf.get(2, 0).unwrap().is_empty(), "wide char (w=2) should not be written at cx=2 when right=3");
+    }
+
+    #[test]
+    fn test_draw_str_clipped_wide_char_fits_exactly() {
+        let mut buf = CellBuffer::new(20, 5);
+        let clip = Rect::new(0, 0, 4, 5);
+        buf.draw_str_clipped(clip, 0, 0, "ab\u{4e00}", Style::new());
+        assert_eq!(buf.get(0, 0).unwrap().ch, 'a');
+        assert_eq!(buf.get(1, 0).unwrap().ch, 'b');
+        assert_eq!(buf.get(2, 0).unwrap().ch, '\u{4e00}');
     }
 }
