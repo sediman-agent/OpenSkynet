@@ -50,6 +50,11 @@ func (s *linuxSandbox) Run(ctx context.Context, cmd api.Command, policy api.Poli
 		"--ro-bind", "/etc", "/etc",
 	}
 
+	// Allow network if policy permits
+	if policy.AllowNet {
+		args = append(args, "--share-net")
+	}
+
 	// Bind allowed dirs
 	for _, dir := range policy.AllowDirs {
 		abs, _ := filepath.Abs(dir)
@@ -61,12 +66,20 @@ func (s *linuxSandbox) Run(ctx context.Context, cmd api.Command, policy api.Poli
 		args = append(args, "--chdir", cmd.WorkingDir)
 	}
 
-	// Set env
+	// Base environment
+	args = append(args,
+		"--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+		"--setenv", "HOME", os.Getenv("HOME"),
+		"--setenv", "TMPDIR", "/tmp",
+	)
+
+	// Override/add user-provided env
 	for k, v := range cmd.Env {
 		args = append(args, "--setenv", k, v)
 	}
 
-	// Memory limit via cgroups (if configured)
+	// Memory limit note: actual enforcement requires cgroup setup.
+	// Setting the env var as a hint for the sandboxed process.
 	if policy.MaxMemoryMB > 0 {
 		memStr := fmt.Sprintf("%dM", policy.MaxMemoryMB)
 		args = append(args, "--setenv", "MEMORY_LIMIT", memStr)
@@ -83,11 +96,11 @@ func (s *linuxSandbox) Run(ctx context.Context, cmd api.Command, policy api.Poli
 	}
 
 	command := exec.CommandContext(ctx, args[0], args[1:]...)
-	
+
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout
 	command.Stderr = &stderr
-	
+
 	if len(cmd.Stdin) > 0 {
 		command.Stdin = bytes.NewReader(cmd.Stdin)
 	}
