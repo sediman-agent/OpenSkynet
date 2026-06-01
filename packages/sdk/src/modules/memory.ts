@@ -55,7 +55,8 @@ export async function handleMemoryAdd(params: { target: string; content: string 
   sanitize(params.content)
   const entries = parseEntries(params.target)
   const limit = getLimit(params.target)
-  if (entries.join("\n§\n").length + params.content.length > limit) {
+  const separator = entries.length > 0 ? "\n§\n" : ""
+  if (entries.join("\n§\n").length + separator.length + params.content.length > limit) {
     throw new Error(`Memory target '${params.target}' is full (limit: ${limit} chars)`)
   }
   if (entries.some(e => e.trim() === params.content.trim())) {

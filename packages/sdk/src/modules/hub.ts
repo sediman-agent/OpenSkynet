@@ -2,7 +2,7 @@
  * Hub module — browse, search, install skills from the central registry
  * and from arbitrary GitHub repos. Fully self-contained in TS.
  */
-import { mkdirSync, readdirSync, unlinkSync, rmdirSync, existsSync, readFileSync, writeFileSync } from "fs"
+import { mkdirSync, readdirSync, unlinkSync, rmdirSync, existsSync, readFileSync, writeFileSync, renameSync } from "fs"
 import { join, resolve } from "path"
 import { homedir } from "os"
 import { randomUUID } from "crypto"
@@ -30,8 +30,11 @@ function skillDirPath(name: string): string {
 }
 
 function atomicWrite(path: string, content: string): void {
-  mkdirSync(path.substring(0, path.lastIndexOf("/")), { recursive: true })
-  writeFileSync(path, content, "utf-8")
+  const dir = path.substring(0, path.lastIndexOf("/"))
+  mkdirSync(dir, { recursive: true })
+  const tmp = path + ".tmp"
+  writeFileSync(tmp, content, "utf-8")
+  renameSync(tmp, path)
 }
 
 function loadSkillFromDir(path: string): Record<string, unknown> | null {

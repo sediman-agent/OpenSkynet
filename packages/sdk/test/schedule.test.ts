@@ -46,6 +46,6 @@ describe("schedule module", () => {
 
     await handleScheduleRemove({ job_id })
     const { jobs: after } = await handleScheduleList()
-    expect(after.find((j: any) => j.job_id === job_id)).toBeUndefined()
+    expect(after.find((j: any) => j.id === job_id)).toBeUndefined()
   })
 })
