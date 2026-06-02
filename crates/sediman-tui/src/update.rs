@@ -7,8 +7,8 @@ use sediman_tui_core::event::AppEvent;
 
 use crate::app::{App, AppModal};
 use crate::commands::{
-    browser, coder, delegate, integration, memory, model, plan, provider, schedule, sessions,
-    skills, soul, system, theming,
+    browser, checkpoint, coder, delegate, doctor, integration, memory, model, plan, provider,
+    schedule, sessions, skills, soul, system, theming,
 };
 
 fn send_desktop_notification(title: &str, body: &str) {
@@ -291,6 +291,96 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                                 }
                             }
                             app.active_modal = None;
+                            return;
+                        }
+                        _ => return,
+                    }
+                }
+
+                // Doctor — navigate, install, re-check
+                if matches!(app.active_modal, Some(AppModal::Doctor { .. })) {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Char('q') => {
+                            app.active_modal = None;
+                            return;
+                        }
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.active_modal = None;
+                            return;
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            if let Some(AppModal::Doctor { ref mut cursor, .. }) = app.active_modal {
+                                if *cursor > 0 { *cursor -= 1; }
+                            }
+                            return;
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            if let Some(AppModal::Doctor { ref checks, ref mut cursor, .. }) = app.active_modal {
+                                if *cursor < checks.len().saturating_sub(1) { *cursor += 1; }
+                            }
+                            return;
+                        }
+                        KeyCode::Char('r') => {
+                            let checks = doctor::run_all_checks_sync(app).await;
+                            app.active_modal = Some(AppModal::Doctor {
+                                checks,
+                                cursor: 0,
+                                scroll: 0,
+                                installing: false,
+                                install_output: Vec::new(),
+                            });
+                            return;
+                        }
+                        KeyCode::Enter => {
+                            if let Some(AppModal::Doctor { ref checks, ref mut cursor, ref mut installing, ref mut install_output, .. }) = app.active_modal {
+                                if let Some(cmd) = checks.get(*cursor).and_then(|c| c.install_cmd.clone()) {
+                                    *installing = true;
+                                    install_output.clear();
+                                    install_output.push(format!("  Running: {}", cmd));
+                                    let install_cmd = cmd.clone();
+                                    let output_clone = install_output.clone();
+                                    std::mem::swap(install_output, &mut output_clone.clone());
+                                    match tokio::process::Command::new("sh")
+                                        .arg("-c")
+                                        .arg(&install_cmd)
+                                        .output()
+                                        .await
+                                    {
+                                        Ok(out) => {
+                                            let stdout = String::from_utf8_lossy(&out.stdout);
+                                            let stderr = String::from_utf8_lossy(&out.stderr);
+                                            if !stdout.is_empty() {
+                                                for line in stdout.lines().take(10) {
+                                                    install_output.push(format!("  {}", line));
+                                                }
+                                            }
+                                            if !stderr.is_empty() {
+                                                for line in stderr.lines().take(5) {
+                                                    install_output.push(format!("  {}", line));
+                                                }
+                                            }
+                                            if out.status.success() {
+                                                install_output.push("  ✓ Done — re-checking...".into());
+                                            } else {
+                                                install_output.push(format!("  ✗ Exit code: {}", out.status.code().unwrap_or(-1)));
+                                            }
+                                        }
+                                        Err(e) => {
+                                            install_output.push(format!("  ✗ Failed: {}", e));
+                                        }
+                                    }
+                                    let saved_cursor = *cursor;
+                                    let saved_output = std::mem::take(install_output);
+                                    let new_checks = doctor::run_all_checks_sync(app).await;
+                                    app.active_modal = Some(AppModal::Doctor {
+                                        checks: new_checks,
+                                        cursor: saved_cursor,
+                                        scroll: 0,
+                                        installing: false,
+                                        install_output: saved_output,
+                                    });
+                                }
+                            }
                             return;
                         }
                         _ => return,
@@ -1318,6 +1408,13 @@ async fn handle_slash(app: &mut App, input: &str) {
         "/themes" => theming::handle_themes(app, args).await,
         "/coder" => coder::handle_coder(app, args).await,
         "/connect" => integration::handle_connect(app, args).await,
+        "/doctor" => doctor::handle_doctor(app, args).await,
+        "/checkpoint" => checkpoint::handle_checkpoint(app, args).await,
+        "/checkpoint-create" => checkpoint::handle_checkpoint_create(app, args).await,
+        "/checkpoint-revert" => checkpoint::handle_checkpoint_revert(app, args).await,
+        "/rewind" => checkpoint::handle_rewind(app, args).await,
+        "/branch" => checkpoint::handle_branch(app, args).await,
+        "/branches" => checkpoint::handle_branches(app, args).await,
         _ => {
             app.add_system_message(format!("Unknown command: {}. Type /help", cmd_name));
         }

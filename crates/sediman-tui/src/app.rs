@@ -41,11 +41,35 @@ pub enum AppModal {
     SessionBrowser,
     ThemePicker,
     CoderPicker,
+    Doctor {
+        checks: Vec<DoctorCheck>,
+        cursor: usize,
+        scroll: u16,
+        installing: bool,
+        install_output: Vec<String>,
+    },
     Info {
         title: String,
         lines: Vec<ModalLine>,
         scroll: u16,
     },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DoctorStatus {
+    Pass,
+    Fail,
+    Warn,
+}
+
+#[derive(Clone, Debug)]
+pub struct DoctorCheck {
+    pub category: String,
+    pub name: String,
+    pub status: DoctorStatus,
+    pub message: String,
+    pub optional: bool,
+    pub install_cmd: Option<String>,
 }
 
 /// A line in an info modal, with optional styling.

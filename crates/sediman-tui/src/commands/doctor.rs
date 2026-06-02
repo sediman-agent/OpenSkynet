@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use sediman_tui_core::command::{Command, CommandCategory};
 
 use crate::app::{App, AppModal, DoctorCheck, DoctorStatus};
@@ -63,16 +62,16 @@ fn check_browser() -> Vec<DoctorCheck> {
     let chrome = find_chrome();
     match chrome {
         Some(path) => result.push(DoctorCheck {
-            category: "Browser",
-            name: "Chrome/Chromium",
+            category: "Browser".into(),
+            name: "Chrome/Chromium".into(),
             status: DoctorStatus::Pass,
             message: format!("installed ({})", path),
             optional: false,
             install_cmd: None,
         }),
         None => result.push(DoctorCheck {
-            category: "Browser",
-            name: "Chrome/Chromium",
+            category: "Browser".into(),
+            name: "Chrome/Chromium".into(),
             status: DoctorStatus::Fail,
             message: "not found".into(),
             optional: false,
@@ -82,16 +81,16 @@ fn check_browser() -> Vec<DoctorCheck> {
 
     match which("playwright") {
         Some(_) => result.push(DoctorCheck {
-            category: "Browser",
-            name: "Playwright",
+            category: "Browser".into(),
+            name: "Playwright".into(),
             status: DoctorStatus::Pass,
             message: "installed".into(),
             optional: false,
             install_cmd: None,
         }),
         None => result.push(DoctorCheck {
-            category: "Browser",
-            name: "Playwright",
+            category: "Browser".into(),
+            name: "Playwright".into(),
             status: DoctorStatus::Warn,
             message: "not found (bundled via Python)".into(),
             optional: true,
@@ -104,8 +103,8 @@ fn check_browser() -> Vec<DoctorCheck> {
         .join("ms-playwright");
     if pw_drivers.exists() {
         result.push(DoctorCheck {
-            category: "Browser",
-            name: "Playwright drivers",
+            category: "Browser".into(),
+            name: "Playwright drivers".into(),
             status: DoctorStatus::Pass,
             message: "installed".into(),
             optional: false,
@@ -113,8 +112,8 @@ fn check_browser() -> Vec<DoctorCheck> {
         });
     } else {
         result.push(DoctorCheck {
-            category: "Browser",
-            name: "Playwright drivers",
+            category: "Browser".into(),
+            name: "Playwright drivers".into(),
             status: DoctorStatus::Fail,
             message: "not installed".into(),
             optional: false,
@@ -130,8 +129,8 @@ async fn check_ai_llm(bridge: &sediman_tui_bridge::ApiClient, provider: &str) ->
 
     let has_key = check_api_key(provider);
     result.push(DoctorCheck {
-        category: "AI & LLM",
-        name: "API key",
+        category: "AI & LLM".into(),
+            name: "API key".into(),
         status: if has_key { DoctorStatus::Pass } else { DoctorStatus::Fail },
         message: if has_key {
             format!("configured ({})", provider)
@@ -144,16 +143,16 @@ async fn check_ai_llm(bridge: &sediman_tui_bridge::ApiClient, provider: &str) ->
 
     match bridge.status().await {
         Ok(status) => result.push(DoctorCheck {
-            category: "AI & LLM",
-            name: "Backend server",
+            category: "AI & LLM".into(),
+            name: "Backend server".into(),
             status: DoctorStatus::Pass,
             message: format!("ok (uptime {}s)", status.uptime_secs),
             optional: false,
             install_cmd: None,
         }),
         Err(_) => result.push(DoctorCheck {
-            category: "AI & LLM",
-            name: "Backend server",
+            category: "AI & LLM".into(),
+            name: "Backend server".into(),
             status: DoctorStatus::Fail,
             message: "not reachable".into(),
             optional: false,
@@ -182,8 +181,8 @@ fn check_tools() -> Vec<DoctorCheck> {
     for (name, optional, install) in tools {
         match which(name) {
             Some(path) => result.push(DoctorCheck {
-                category: "Tools",
-                name,
+                category: "Tools".into(),
+                name: name.to_string(),
                 status: DoctorStatus::Pass,
                 message: if path.len() < 50 {
                     format!("installed ({})", path)
@@ -194,8 +193,8 @@ fn check_tools() -> Vec<DoctorCheck> {
                 install_cmd: None,
             }),
             None => result.push(DoctorCheck {
-                category: "Tools",
-                name,
+                category: "Tools".into(),
+                name: name.to_string(),
                 status: if optional { DoctorStatus::Warn } else { DoctorStatus::Fail },
                 message: if optional { "not found (optional)".into() } else { "not found".into() },
                 optional,
@@ -219,8 +218,8 @@ fn check_python() -> Vec<DoctorCheck> {
                 || ver.starts_with("Python 3.12")
                 || ver.starts_with("Python 3.13");
             result.push(DoctorCheck {
-                category: "Python",
-                name: "Python 3.11+",
+                category: "Python".into(),
+                name: "Python 3.11+".into(),
                 status: if ok { DoctorStatus::Pass } else { DoctorStatus::Fail },
                 message: if ok { format!("installed ({})", ver) } else { format!("{} — need 3.11+", ver) },
                 optional: false,
@@ -228,8 +227,8 @@ fn check_python() -> Vec<DoctorCheck> {
             });
         }
         None => result.push(DoctorCheck {
-            category: "Python",
-            name: "Python 3.11+",
+            category: "Python".into(),
+            name: "Python 3.11+".into(),
             status: DoctorStatus::Fail,
             message: "not found".into(),
             optional: false,
@@ -243,16 +242,16 @@ fn check_python() -> Vec<DoctorCheck> {
         .output()
     {
         Ok(o) if o.status.success() => result.push(DoctorCheck {
-            category: "Python",
-            name: "sediman package",
+            category: "Python".into(),
+            name: "sediman package".into(),
             status: DoctorStatus::Pass,
             message: "installed".into(),
             optional: false,
             install_cmd: None,
         }),
         _ => result.push(DoctorCheck {
-            category: "Python",
-            name: "sediman package",
+            category: "Python".into(),
+            name: "sediman package".into(),
             status: DoctorStatus::Warn,
             message: "not importable".into(),
             optional: false,
@@ -270,8 +269,8 @@ async fn check_system(bridge: &sediman_tui_bridge::ApiClient) -> Vec<DoctorCheck
     let config_dir = std::path::Path::new(&home).join(".terminator");
     if config_dir.exists() {
         result.push(DoctorCheck {
-            category: "System",
-            name: "Config directory",
+            category: "System".into(),
+            name: "Config directory".into(),
             status: DoctorStatus::Pass,
             message: "~/.terminator/".to_string(),
             optional: false,
@@ -279,8 +278,8 @@ async fn check_system(bridge: &sediman_tui_bridge::ApiClient) -> Vec<DoctorCheck
         });
     } else {
         result.push(DoctorCheck {
-            category: "System",
-            name: "Config directory",
+            category: "System".into(),
+            name: "Config directory".into(),
             status: DoctorStatus::Warn,
             message: "~/.terminator/ not found".into(),
             optional: false,
@@ -290,8 +289,8 @@ async fn check_system(bridge: &sediman_tui_bridge::ApiClient) -> Vec<DoctorCheck
 
     let connected = bridge.is_connected().await;
     result.push(DoctorCheck {
-        category: "System",
-        name: "Unix socket",
+        category: "System".into(),
+            name: "Unix socket".into(),
         status: if connected { DoctorStatus::Pass } else { DoctorStatus::Fail },
         message: if connected { "connected".into() } else { "not connected".into() },
         optional: false,
@@ -302,8 +301,8 @@ async fn check_system(bridge: &sediman_tui_bridge::ApiClient) -> Vec<DoctorCheck
         Some(space) => {
             let gb = space as f64 / 1_000_000_000.0;
             result.push(DoctorCheck {
-                category: "System",
-                name: "Disk space",
+                category: "System".into(),
+                name: "Disk space".into(),
                 status: if gb > 1.0 { DoctorStatus::Pass } else { DoctorStatus::Warn },
                 message: format!("{:.1} GB available", gb),
                 optional: false,
@@ -311,8 +310,8 @@ async fn check_system(bridge: &sediman_tui_bridge::ApiClient) -> Vec<DoctorCheck
             });
         }
         None => result.push(DoctorCheck {
-            category: "System",
-            name: "Disk space",
+            category: "System".into(),
+            name: "Disk space".into(),
             status: DoctorStatus::Pass,
             message: "unknown".into(),
             optional: true,

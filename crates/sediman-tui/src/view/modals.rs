@@ -1072,3 +1072,106 @@ pub fn render_coder_picker(buf: &mut CellBuffer, area: Rect, app: &App) {
     }
 }
 
+pub fn render_doctor_modal(
+    buf: &mut CellBuffer,
+    area: Rect,
+    app: &App,
+    checks: &[crate::app::DoctorCheck],
+    cursor: usize,
+    scroll: u16,
+    installing: &bool,
+    install_output: &[String],
+) {
+    use crate::app::DoctorStatus;
+
+    let t = &app.theme;
+    let modal_w = (area.width * 8 / 10).clamp(52, 80);
+    let content_rows = checks.len().min(12);
+    let modal_h = (content_rows as u16 + 6).max(10).min(area.height.saturating_sub(2));
+    let frame = ModalFrame::new(buf, area, app, modal_w, modal_h);
+    let inner_w = frame.inner_w;
+    let inner_x = frame.inner_x;
+
+    frame.draw_border(buf, Style::new().fg(t.primary), Style::new().fg(t.border));
+    frame.draw_title(buf, " Doctor ", Style::new()
+        .fg(t.primary).bg(t.background).add_modifier(TextAttributes::bold()));
+    frame.draw_close_hint(buf, " Esc ", Style::new().fg(t.text_muted).bg(t.background));
+
+    let mut y = frame.modal.y + 2;
+
+    if *installing {
+        buf.draw_str(inner_x, y, " Installing...", Style::new().fg(t.primary));
+        y += 1;
+        for line in install_output.iter().take((modal_h as usize).saturating_sub(4)) {
+            if y < frame.modal.bottom() - 2 {
+                let truncated: String = line.chars().take(inner_w as usize).collect();
+                buf.draw_str(inner_x, y, &truncated, Style::new().fg(t.text));
+                y += 1;
+            }
+        }
+        return;
+    }
+
+    let mut prev_category = "";
+    let visible_start = scroll as usize;
+    let visible_end = (visible_start + content_rows).min(checks.len());
+    let mut row = 0;
+
+    for (i, check) in checks.iter().enumerate() {
+        if i < visible_start || i >= visible_end {
+            if i < visible_start && check.category != prev_category {
+                prev_category = &check.category;
+            }
+            continue;
+        }
+        if check.category != prev_category {
+            if row > 0 {
+                y += 1;
+            }
+            buf.draw_str(inner_x, y, &check.category, Style::new()
+                .fg(t.primary).add_modifier(TextAttributes::bold()));
+            y += 1;
+            prev_category = &check.category;
+        }
+
+        let (icon, fg) = match check.status {
+            DoctorStatus::Pass => ('\u{2713}', t.secondary),
+            DoctorStatus::Fail => ('\u{2717}', t.error),
+            DoctorStatus::Warn => ('\u{25cb}', t.text_muted),
+        };
+
+        let selected = i == cursor;
+        let bg = if selected { t.background_panel } else { t.background };
+        let row_fg = if selected { t.text } else { fg };
+
+        if selected {
+            for sx in inner_x..frame.modal.right() - 1 {
+                buf.put_char(sx, y, ' ', Style::new().bg(bg));
+            }
+            buf.put_char(inner_x, y, '\u{25b6}', Style::new().fg(t.primary).bg(bg));
+        }
+
+        let label_x = inner_x + 2;
+        buf.put_char(label_x, y, icon, Style::new().fg(row_fg).bg(bg));
+        let msg_x = label_x + 2;
+        let max_msg = inner_w.saturating_sub(4);
+        let display: String = check.message.chars().take(max_msg as usize).collect();
+        buf.draw_str(msg_x, y, &display, Style::new().fg(row_fg).bg(bg));
+
+        let install_cmd: Option<&str> = check.install_cmd.as_deref();
+        if selected && install_cmd.is_some() && check.status == DoctorStatus::Fail {
+            let hint_x = msg_x + display_width(&display) as u16 + 2;
+            if hint_x + 12 < frame.modal.right() {
+                buf.draw_str(hint_x, y, " \u{23ce} install", Style::new().fg(t.primary).bg(bg));
+            }
+        }
+
+        y += 1;
+        row += 1;
+    }
+
+    // Footer hints
+    let footer_y = frame.modal.bottom() - 2;
+    buf.draw_str(inner_x, footer_y, "Enter: install | r: re-check | \u{2191}\u{2193}: navigate", Style::new().fg(t.text_muted));
+}
+

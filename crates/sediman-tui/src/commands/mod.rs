@@ -2,6 +2,7 @@ pub mod skills;
 pub mod memory;
 pub mod model;
 pub mod provider;
+pub mod doctor;
 pub mod integration;
 pub mod schedule;
 pub mod sessions;
@@ -12,6 +13,7 @@ pub mod plan;
 pub mod soul;
 pub mod theming;
 pub mod coder;
+pub mod checkpoint;
 
 use sediman_tui_core::CommandRegistry;
 
@@ -45,8 +47,17 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     // Tasks
     registry.register(&delegate::CMD_DELEGATE);
     registry.register(&delegate::CMD_PARALLEL);
+    // Checkpoint
+    registry.register(&checkpoint::CMD_CHECKPOINT);
+    registry.register(&checkpoint::CMD_CHECKPOINT_CREATE);
+    registry.register(&checkpoint::CMD_CHECKPOINT_REVERT);
+    registry.register(&checkpoint::CMD_REWIND);
+    registry.register(&checkpoint::CMD_BRANCH);
+    registry.register(&checkpoint::CMD_BRANCHES);
     // Integrations
     registry.register(&integration::CMD_CONNECT);
+    // Utilities
+    registry.register(&doctor::CMD_DOCTOR);
 }
 
 #[cfg(test)]
@@ -58,7 +69,7 @@ mod tests {
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);
         let all = registry.all();
-        assert_eq!(all.len(), 22);
+        assert_eq!(all.len(), 29);
     }
 
     #[test]
@@ -91,7 +102,6 @@ mod tests {
         assert!(registry.get("/rename").is_none());
         assert!(registry.get("/export").is_none());
         assert!(registry.get("/usage").is_none());
-        assert!(registry.get("/doctor").is_none());
         assert!(registry.get("/record").is_none());
         assert!(registry.get("/stop").is_none());
         assert!(registry.get("/terminal").is_none());
@@ -99,13 +109,6 @@ mod tests {
         assert!(registry.get("/schedule-add").is_none());
         assert!(registry.get("/schedule-remove").is_none());
         assert!(registry.get("/resume").is_none());
-        assert!(registry.get("/hub").is_none());
-        assert!(registry.get("/hub browse").is_none());
-        assert!(registry.get("/hub search").is_none());
-        assert!(registry.get("/hub install").is_none());
-        assert!(registry.get("/hub update").is_none());
-        assert!(registry.get("/hub remove").is_none());
-        assert!(registry.get("/hub publish").is_none());
     }
 
     #[test]
