@@ -238,7 +238,7 @@ async def _handle_skill_manage(
             output=f"Unknown action '{action}'. Use: create, patch, list, view, delete, install_suggested, record_choice.",
         )
 
-    except (ValueError, KeyError, OSError, json.JSONDecodeError) as e:
+    except (ValueError, KeyError, OSError, json.JSONDecodeError, ImportError) as e:
         return ToolResult(success=False, output=f"Skill operation failed: {e}")
 
 
