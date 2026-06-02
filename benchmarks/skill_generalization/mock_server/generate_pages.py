@@ -688,7 +688,6 @@ function showLayer(n) {{
 
 // ===== PROGRESS RESET =====
 function resetProgress() {{
-    resetCount++;
     currentLayer = 0;
     resetCount = 0;
     consentChecked = false;
