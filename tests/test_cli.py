@@ -20,8 +20,9 @@ class TestMainGroup:
         assert "Sediman" in result.output
 
     def test_version(self, runner):
+        from sediman import __version__
         result = runner.invoke(main, ["--version"])
-        assert "0.1.5" in result.output
+        assert __version__ in result.output
 
 
 class TestSkillCommands:
