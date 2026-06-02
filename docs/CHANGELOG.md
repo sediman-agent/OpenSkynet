@@ -4,6 +4,14 @@ All notable changes to OpenSkynet will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.10] - 2026-06-02
+
+### Fixed
+
+- Replace all `.sediman` directory references with `.terminator` (docker-compose, uninstall script, worktrees, docs)
+- Installer now warns about legacy `~/.sediman/` and suggests migration
+- Uninstaller cleans up both `~/.terminator/` and legacy `~/.sediman/`
+
 ## [0.2.9] - 2026-06-02
 
 ### Fixed

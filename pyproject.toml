@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openskynet"
-version = "0.2.9"
+version = "0.2.10"
 description = "A self-improving browser agent that runs 24/7"
 readme = "README.md"
 license = {text = "BSL-1.1"}
