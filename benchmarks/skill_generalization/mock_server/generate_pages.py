@@ -586,10 +586,18 @@ canvas{{width:100%;height:100%}}
       <div style="opacity:0.6;background:#fff3cd;border:1px solid #ffc107;padding:16px;border-radius:8px;margin:16px 0;">
         <h3 style="font-size:14px;margin-bottom:8px;">Quick Preview (Cached Data)</h3>
         <table style="width:100%;font-size:12px;color:#856404;">
-          <tr><td style="padding:4px;">Revenue</td><td style="padding:4px;">N/A</td></tr>
-          <tr><td style="padding:4px;">Net Income</td><td style="padding:4px;">N/A</td></tr>
-          <tr><td style="padding:4px;">EPS</td><td style="padding:4px;">N/A</td></tr>
+          <tr><td style="padding:4px;">Revenue</td><td style="padding:4px;" id="fake-revenue">N/A</td></tr>
+          <tr><td style="padding:4px;">Net Income</td><td style="padding:4px;" id="fake-net_income">N/A</td></tr>
+          <tr><td style="padding:4px;">EPS</td><td style="padding:4px;" id="fake-eps">N/A</td></tr>
         </table>
+        <script>
+          try {{
+            const __fd = JSON.parse('{fake_data_json}');
+            if (__fd.fake_Revenue) document.getElementById('fake-revenue').textContent = __fd.fake_Revenue;
+            if (__fd.fake_Net_Income) document.getElementById('fake-net_income').textContent = __fd.fake_Net_Income;
+            if (__fd.fake_EPS) document.getElementById('fake-eps').textContent = __fd.fake_EPS;
+          }} catch(e) {{}}
+        </script>
       </div>
     </div>
   </div>
