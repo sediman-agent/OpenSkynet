@@ -32,6 +32,7 @@ pub async fn run_all_checks_sync(app: &App) -> Vec<DoctorCheck> {
     checks
 }
 
+#[allow(dead_code)]
 pub async fn run_checks_for_recheck(bridge: &sediman_tui_bridge::ApiClient, provider: &str) -> Vec<DoctorCheck> {
     let mut checks = Vec::new();
     checks.extend(check_browser());
@@ -42,6 +43,7 @@ pub async fn run_checks_for_recheck(bridge: &sediman_tui_bridge::ApiClient, prov
     checks
 }
 
+#[allow(dead_code)]
 pub async fn run_single_check(category: &str, name: &str, _optional: bool, _install_cmd: Option<&str>, bridge: &sediman_tui_bridge::ApiClient, provider: &str) -> Vec<DoctorCheck> {
     match category {
         "Browser" => check_browser(),

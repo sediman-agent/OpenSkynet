@@ -65,9 +65,11 @@ pub enum DoctorStatus {
 #[derive(Clone, Debug)]
 pub struct DoctorCheck {
     pub category: String,
+    #[allow(dead_code)]
     pub name: String,
     pub status: DoctorStatus,
     pub message: String,
+    #[allow(dead_code)]
     pub optional: bool,
     pub install_cmd: Option<String>,
 }

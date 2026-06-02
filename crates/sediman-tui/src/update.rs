@@ -338,8 +338,6 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                                     install_output.clear();
                                     install_output.push(format!("  Running: {}", cmd));
                                     let install_cmd = cmd.clone();
-                                    let output_clone = install_output.clone();
-                                    std::mem::swap(install_output, &mut output_clone.clone());
                                     match tokio::process::Command::new("sh")
                                         .arg("-c")
                                         .arg(&install_cmd)
@@ -2211,7 +2209,7 @@ mod tests {
         let down = crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Down, crossterm::event::KeyModifiers::NONE);
         assert_eq!(app.skill_browser_scroll, 0);
         for _ in 0..15 {
-            handle_message(&mut app, AppEvent::Key(down.clone()), &tx).await;
+            handle_message(&mut app, AppEvent::Key(down), &tx).await;
         }
         assert_eq!(app.skill_browser_selected, 15);
         assert!(app.skill_browser_scroll > 0, "scroll should have advanced past 0, got {}", app.skill_browser_scroll);
@@ -2230,7 +2228,7 @@ mod tests {
         let tx = test_tx();
         let up = crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Up, crossterm::event::KeyModifiers::NONE);
         for _ in 0..5 {
-            handle_message(&mut app, AppEvent::Key(up.clone()), &tx).await;
+            handle_message(&mut app, AppEvent::Key(up), &tx).await;
         }
         assert_eq!(app.skill_browser_selected, 15);
         assert!(app.skill_browser_scroll <= 15);
@@ -2286,7 +2284,7 @@ mod tests {
         let tx = test_tx();
         let pd = crossterm::event::KeyEvent::new(crossterm::event::KeyCode::PageDown, crossterm::event::KeyModifiers::NONE);
         for _ in 0..3 {
-            handle_message(&mut app, AppEvent::Key(pd.clone()), &tx).await;
+            handle_message(&mut app, AppEvent::Key(pd), &tx).await;
         }
         assert!(app.skill_browser_selected > 10, "selected should be past 10 after 3 page downs");
         assert!(app.skill_browser_scroll > 0, "PageDown should advance scroll after enough pages");

@@ -1079,11 +1079,11 @@ pub fn render_doctor_modal(
     checks: &[crate::app::DoctorCheck],
     cursor: usize,
     scroll: u16,
-    installing: &bool,
-    install_output: &[String],
+    install_state: (&bool, &[String]),
 ) {
     use crate::app::DoctorStatus;
 
+    let (installing, install_output) = install_state;
     let t = &app.theme;
     let modal_w = (area.width * 8 / 10).clamp(52, 80);
     let content_rows = checks.len().min(12);
@@ -1104,7 +1104,7 @@ pub fn render_doctor_modal(
         y += 1;
         for line in install_output.iter().take((modal_h as usize).saturating_sub(4)) {
             if y < frame.modal.bottom() - 2 {
-                let truncated: String = line.chars().take(inner_w as usize).collect();
+                let truncated: String = line.chars().take(inner_w).collect();
                 buf.draw_str(inner_x, y, &truncated, Style::new().fg(t.text));
                 y += 1;
             }
@@ -1155,12 +1155,12 @@ pub fn render_doctor_modal(
         buf.put_char(label_x, y, icon, Style::new().fg(row_fg).bg(bg));
         let msg_x = label_x + 2;
         let max_msg = inner_w.saturating_sub(4);
-        let display: String = check.message.chars().take(max_msg as usize).collect();
+        let display: String = check.message.chars().take(max_msg).collect();
         buf.draw_str(msg_x, y, &display, Style::new().fg(row_fg).bg(bg));
 
         let install_cmd: Option<&str> = check.install_cmd.as_deref();
         if selected && install_cmd.is_some() && check.status == DoctorStatus::Fail {
-            let hint_x = msg_x + display_width(&display) as u16 + 2;
+            let hint_x = msg_x + display_width(&display) + 2;
             if hint_x + 12 < frame.modal.right() {
                 buf.draw_str(hint_x, y, " \u{23ce} install", Style::new().fg(t.primary).bg(bg));
             }
