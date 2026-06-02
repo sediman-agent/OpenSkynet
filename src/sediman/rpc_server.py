@@ -869,7 +869,7 @@ async def handle_skills_search(params: dict[str, Any], notify: NotifyFn | None =
     try:
         from sediman.skills.search import SkillSearchEngine
         search_engine = SkillSearchEngine()
-        results = await search_engine.search(query, limit=limit)
+        results = await search_engine.search(query, k=limit)
         return [
             {
                 "name": r.name,
