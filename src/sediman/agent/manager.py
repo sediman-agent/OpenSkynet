@@ -504,10 +504,11 @@ class ManagerAgent:
         response_text = data.get("response")
 
         if strategy == Strategy.CONVERSATIONAL:
+            # Don't use a generic fallback - let the loop generate a proper response
             return ManagerPlan(
                 browser_task="",
                 strategy=Strategy.CONVERSATIONAL,
-                response=response_text or "I'm Sediman, your browser automation agent. How can I help you?",
+                response=response_text,  # Keep as None if not provided, loop will handle it
             )
 
         subtasks = data.get("subtasks")

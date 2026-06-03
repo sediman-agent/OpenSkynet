@@ -464,7 +464,12 @@ class AgentLoop:
         # ── Fast Path: Conversational (no browser) ──────────────
         if plan.strategy == Strategy.CONVERSATIONAL:
             self._emit(state, "Responding directly...", detail="No browser needed")
-            response_text = plan.response or "I'm Sediman. How can I help you?"
+            # If no response was provided, generate one dynamically instead of using a generic fallback
+            if not plan.response:
+                # Try to get a response from the LLM if we don't have one
+                response_text = await self._get_conversational_response(task, self._conversation)
+            else:
+                response_text = plan.response
             if not _planning_streamed or not plan.response:
                 await self._stream_text_async(response_text, phase="responding")
             self._conversation.append({"role": "user", "content": task})
@@ -1626,6 +1631,45 @@ class AgentLoop:
 
     def clear_conversation(self) -> None:
         self._conversation = []
+
+    async def _get_conversational_response(self, task: str, conversation: list[dict[str, str]]) -> str:
+        """Generate a conversational response when the plan doesn't provide one."""
+        import asyncio
+        try:
+            messages = [
+                {"role": "system", "content": "You are Sediman, a helpful browser automation agent. Respond conversationally and naturally to the user's message. Be concise and friendly. If the user asks about your capabilities, explain you can help with browser automation, web scraping, and web-based tasks."},
+                {"role": "user", "content": task},
+            ]
+            # Include recent conversation context for continuity
+            if conversation and len(conversation) > 0:
+                recent_convo = conversation[-6:]  # Last 3 exchanges
+                messages = [
+                    {"role": "system", "content": "You are Sediman, a helpful browser automation agent. Respond conversationally and naturally to the user's message. Be concise and friendly. If the user asks about your capabilities, explain you can help with browser automation, web scraping, and web-based tasks."},
+                ]
+                messages.extend(recent_convo)
+                messages.append({"role": "user", "content": task})
+
+            response = await asyncio.wait_for(
+                self.llm.chat(messages=messages, tools=[]),
+                timeout=10.0
+            )
+            return response.text or "I'm here to help! What can I assist you with today?"
+        except (asyncio.TimeoutError, Exception) as e:
+            logger.debug("conversational_response_failed", error=str(e))
+            # Provide contextual fallbacks based on the task
+            task_lower = task.lower()
+            if any(greeting in task_lower for greeting in ["hi", "hello", "hey", "greetings"]):
+                return "Hello! How can I help you today?"
+            elif any(q in task_lower for q in ["how are you", "how do you do"]):
+                return "I'm doing well, thanks for asking! I'm ready to help with any browser automation or web-based tasks you have."
+            elif any(q in task_lower for q in ["what can you do", "help me", "capabilities"]):
+                return "I can help with browser automation, web scraping, filling forms, clicking buttons, extracting data from websites, and more. Just tell me what you need!"
+            elif "thank" in task_lower:
+                return "You're welcome! Let me know if you need anything else."
+            else:
+                return f"I understand you're asking about: \"{task}\". Could you provide more details about what you'd like me to help you with?"
+
+
 
     async def compress_context(self) -> int:
         if not self._compressor.should_compress(self._conversation):
