@@ -11,6 +11,7 @@ from sediman.agent.tool_dispatch import ToolDefinition, ToolResult
 
 logger = structlog.get_logger()
 
+# TODO: Magic Number --> Set at the config file.
 _MAX_RETRIES = 3
 _RATE_LIMIT_BASE_DELAY = 1.0
 
@@ -20,8 +21,9 @@ class DiscordIntegration(Integration):
 
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
-        self._client = None
         self._http = None
+        self._listener = None
+        self._adapter = None
 
     async def _ensure_http(self):
         if self._http is None:
@@ -174,68 +176,38 @@ class DiscordIntegration(Integration):
 
     async def listen(self) -> None:
         """Start a background Discord bot that can process commands."""
+        from sediman.integrations.discord.listener import DiscordListener
+        from sediman.integrations.discord.adapter import DiscordAdapter
+
         token = self._config.get("token", "")
         if not token:
             return
-        try:
-            import discord
-        except ImportError:
-            logger.warning("discord.py not installed, listener unavailable")
-            return
 
-        intents = discord.Intents.default()
-        intents.message_content = True
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                self._client = discord.Client(intents=intents)
+        # Create listener
+        self._listener = DiscordListener(token, self._config)
 
-                @self._client.event
-                async def on_ready():
-                    logger.info("discord_bot_ready", user=str(self._client.user))
+        # Create adapter and link to listener
+        self._adapter = DiscordAdapter(None)  # Client will be set later
+        self._listener.set_adapter(self._adapter)
 
-                @self._client.event
-                async def on_message(message):
-                    if message.author.bot:
-                        return
-                    if message.content.startswith("!"):
-                        logger.info("discord_command_received", command=message.content, author=str(message.author))
-
-                await self._client.start(token)
-            except discord.ConnectionClosed as e:
-                logger.warning("discord_connection_closed", code=e.code, attempt=attempt + 1)
-                if self._client:
-                    try:
-                        await self._client.close()
-                    except Exception:
-                        logger.debug("silent_error", _line=210)
-                    self._client = None
-                if attempt + 1 < max_retries:
-                    delay = min(2 ** attempt, 60)
-                    logger.info("discord_reconnecting", delay=delay)
-                    await asyncio.sleep(delay)
-                    continue
-                logger.error("discord_max_retries_reached")
-            except Exception as e:
-                logger.error("discord_listener_error", error=str(e))
-                if self._client:
-                    try:
-                        await self._client.close()
-                    except Exception:
-                        logger.debug("silent_error", _line=224)
-                    self._client = None
-            break
+        # Start listener (runs indefinitely)
+        await self._listener.listen()
 
     async def close(self) -> None:
-        if self._client:
+        """Close the HTTP client and listener."""
+        if self._listener:
             try:
-                await self._client.close()
+                await self._listener.close()
             except Exception:
                 logger.debug("silent_error", _line=233)
-            self._client = None
+            self._listener = None
         if self._http:
             try:
                 await self._http.aclose()
             except Exception:
                 logger.debug("silent_error", _line=239)
             self._http = None
+
+    def get_adapter(self):
+        """Get the Discord adapter for Gateway system."""
+        return self._adapter

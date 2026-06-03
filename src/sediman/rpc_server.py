@@ -97,10 +97,13 @@ async def _get_agent_loop() -> AgentLoop:
         async with _agent_loop_lock:
             if _agent_loop is None:
                 from sediman.agent.tools import set_terminal_allowed
+                from sediman.memory.strategies.file_memory import FileMemoryStrategy
 
                 browser = await _get_browser()
                 llm = _get_llm()
-                _agent_loop = AgentLoop(llm_provider=llm, browser_session=browser)
+                memory = FileMemoryStrategy()
+                await memory.initialize()
+                _agent_loop = AgentLoop(llm_provider=llm, browser_session=browser, memory=memory)
                 if _llm_config.get("terminal"):
                     set_terminal_allowed(True)
     return _agent_loop
@@ -1166,8 +1169,59 @@ async def serve() -> None:
     _cron_scheduler.start()
     logger.info("cron_scheduler_started")
 
+    # Initialize GatewayRunner for integration message handling
+    from sediman.gateway.runner import GatewayRunner
+    from sediman.integrations import set_gateway_runner, set_gateway_config
+
+    gateway_runner = GatewayRunner()
+
+    # Set up message handler for GatewayRunner
+    async def gateway_message_handler(event):
+        """Handle messages from integrations via GatewayRunner."""
+        from sediman.agent.loop import AgentLoop, AgentResult
+        from sediman.gateway.events import MessageEvent
+
+        # Get LLM and browser
+        llm = _get_llm()
+        browser = await _get_browser()
+
+        # Create agent loop
+        agent = AgentLoop(llm_provider=llm, browser_session=browser)
+
+        # Extract task from event
+        task = event.text or ""
+
+        # Set context about event source
+        context_prefix = f"[Message from {event.platform} user {event.user_name}]: "
+        full_task = context_prefix + task
+
+        logger.info("gateway_running_agent", platform=event.platform, task=task[:100])
+
+        # Run agent
+        try:
+            result: AgentResult = await agent.run(full_task)
+            return result.result or "Task completed."
+        except Exception as e:
+            logger.error("gateway_agent_failed", platform=event.platform, error=str(e))
+            return f"Error: {str(e)}"
+
+    # Set message handler on GatewayRunner
+    # (We'll do this after adapters are registered)
+
+    # Set GatewayRunner in integrations module
+    set_gateway_runner(gateway_runner)
+    logger.info("gateway_runner_initialized")
+
     from sediman.integrations import setup_integrations, start_listeners
     setup_integrations()
+
+    # Now set the message handler after adapters are registered
+    gateway_runner.set_message_handler(gateway_message_handler)
+
+    # Start the GatewayRunner
+    await gateway_runner.start()
+    logger.info("gateway_runner_started")
+
     _INTEGRATION_REGISTRY_NAMES = list(_registry_names())
     await start_listeners()
 
@@ -1178,6 +1232,11 @@ async def serve() -> None:
         async with server:
             await server.serve_forever()
     finally:
+        # Stop GatewayRunner
+        try:
+            await gateway_runner.stop()
+        except Exception:
+            logger.debug("silent_error", _line=1185)
         await _shutdown()
         _cron_scheduler.stop()
         _cron_scheduler = None

@@ -16,6 +16,8 @@ class TelegramIntegration(Integration):
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
         self._http = None
+        self._listener = None
+        self._adapter = None
 
     async def _ensure_http(self):
         if self._http is None:
@@ -156,38 +158,39 @@ class TelegramIntegration(Integration):
             return ToolResult(success=False, output=f"Telegram read failed: {e}")
 
     async def listen(self) -> None:
-        """Start a background Telegram bot using long polling."""
-        import asyncio
+        """Start a background Telegram bot that can process commands."""
+        from sediman.integrations.telegram.listener import TelegramListener
+        from sediman.integrations.telegram.adapter import TelegramAdapter
+
         token = self._config.get("token", "")
         if not token:
             return
-        try:
-            from telegram import Bot, Update
-            from telegram.ext import Application, MessageHandler, filters
-            app = Application.builder().token(token).build()
 
-            async def handle_message(update: Update, context):
-                if not update.message or not update.message.text:
-                    return
-                text = update.message.text
-                chat_id = update.message.chat_id
-                user = update.message.from_user
-                if user and user.is_bot:
-                    return
-                logger.info("telegram_message_received", chat=chat_id, text=text[:100], user=str(user))
-                if text.startswith("/"):
-                    logger.info("telegram_command_received", command=text, chat=chat_id)
+        # Create listener
+        self._listener = TelegramListener(token, self._config)
 
-            app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-            logger.info("telegram_bot_started")
-            await app.initialize()
-            await app.start()
-            await app.updater.start_polling()
-            while True:
-                await asyncio.sleep(1)
-        except ImportError:
-            logger.warning("python-telegram-bot not installed, listener unavailable")
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logger.error("telegram_listener_error", error=str(e))
+        # Create adapter and link to listener
+        self._adapter = TelegramAdapter(None)  # Bot will be set later
+        self._listener.set_adapter(self._adapter)
+
+        # Start listener (runs indefinitely)
+        await self._listener.listen()
+
+    async def close(self) -> None:
+        """Close the HTTP client and listener."""
+        if self._listener:
+            try:
+                await self._listener.close()
+            except Exception:
+                logger.debug("silent_error", _line=193)
+            self._listener = None
+        if self._http:
+            try:
+                await self._http.aclose()
+            except Exception:
+                logger.debug("silent_error", _line=199)
+            self._http = None
+
+    def get_adapter(self):
+        """Get the Telegram adapter for Gateway system."""
+        return self._adapter

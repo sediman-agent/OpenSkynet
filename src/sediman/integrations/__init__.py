@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import structlog
 
@@ -9,14 +9,36 @@ from sediman.integrations.base import Integration
 from sediman.integrations.config import load_config, save_config
 from sediman.integrations.models import Channel, Message
 
+if TYPE_CHECKING:
+    from sediman.gateway.runner import GatewayRunner
+
 logger = structlog.get_logger()
 
 _registry: dict[str, Integration] = {}
 _listener_tasks: list[asyncio.Task] = []
+_gateway_runner: GatewayRunner | None = None
+_gateway_config: dict[str, Any] = {}
 
 
 def get_integration(name: str) -> Integration | None:
     return _registry.get(name)
+
+
+def set_gateway_runner(runner: Any) -> None:
+    """Set the GatewayRunner instance for integration message handling."""
+    global _gateway_runner
+    _gateway_runner = runner
+
+
+def get_gateway_runner() -> Any:
+    """Get the GatewayRunner instance."""
+    return _gateway_runner
+
+
+def set_gateway_config(config: dict[str, Any]) -> None:
+    """Set configuration for the Gateway system."""
+    global _gateway_config
+    _gateway_config = config
 
 
 def list_integrations() -> dict[str, dict[str, Any]]:
@@ -88,6 +110,7 @@ def _build_integration(name: str, cfg: dict[str, Any]) -> Integration | None:
 
 
 def setup_integrations() -> None:
+    """Initialize all enabled integrations and register their adapters with GatewayRunner."""
     config = load_config()
     for name, cfg in config.items():
         if cfg.get("enabled") and cfg.get("token"):
@@ -95,6 +118,36 @@ def setup_integrations() -> None:
             if inst:
                 _registry[name] = inst
                 logger.info("integration_enabled", name=name)
+
+                # Register adapter with GatewayRunner if available
+                if _gateway_runner and hasattr(inst, 'get_adapter'):
+                    adapter = inst.get_adapter()
+                    if adapter:
+                        # Set up whitelist for this platform
+                        platform_whitelist = cfg.get("whitelist", {})
+                        if platform_whitelist.get("enabled", False):
+                            allowed_users = set(platform_whitelist.get("users", []))
+                            _gateway_runner.set_allowed_users(name, allowed_users)
+                            logger.info(
+                                "integration_whitelist_enabled",
+                                name=name,
+                                users=len(allowed_users)
+                            )
+
+                            # For Discord, also set server whitelist
+                            if name == "discord":
+                                allowed_servers = set(platform_whitelist.get("servers", []))
+                                if allowed_servers:
+                                    _gateway_runner.set_allowed_servers(name, allowed_servers)
+                                    logger.info(
+                                        "integration_server_whitelist_enabled",
+                                        name=name,
+                                        servers=len(allowed_servers)
+                                    )
+
+                        # Register adapter
+                        _gateway_runner.register_adapter(adapter)
+                        logger.info("integration_adapter_registered", name=name)
 
 
 def setup_integration_tools() -> list[tuple[Any, Any]]:

@@ -21,11 +21,20 @@ def _default_config() -> dict[str, Any]:
             "enabled": False,
             "token": os.environ.get(DISCORD_BOT_TOKEN_ENV, ""),
             "channels": {},
+            "whitelist": {
+                "enabled": False,
+                "users": [],
+                "servers": [],
+            },
         },
         "telegram": {
             "enabled": False,
             "token": os.environ.get(TELEGRAM_BOT_TOKEN_ENV, ""),
             "chats": {},
+            "whitelist": {
+                "enabled": False,
+                "users": [],
+            },
         },
     }
 
@@ -43,6 +52,19 @@ def load_config() -> dict[str, Any]:
                             DISCORD_BOT_TOKEN_ENV if key == "discord" else TELEGRAM_BOT_TOKEN_ENV
                         )
                         default[key]["token"] = os.environ.get(env_key, "")
+                    # Ensure whitelist field exists
+                    if "whitelist" not in default[key]:
+                        default[key]["whitelist"] = {
+                            "enabled": False,
+                            "users": [],
+                            "servers": [] if key == "discord" else [],
+                        }
+                    else:
+                        # Ensure all whitelist keys exist
+                        if "users" not in default[key]["whitelist"]:
+                            default[key]["whitelist"]["users"] = []
+                        if key == "discord" and "servers" not in default[key]["whitelist"]:
+                            default[key]["whitelist"]["servers"] = []
             return default
         except (json.JSONDecodeError, OSError) as e:
             logger.warning("integrations_config_load_failed", error=str(e))

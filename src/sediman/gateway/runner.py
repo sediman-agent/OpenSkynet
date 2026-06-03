@@ -16,6 +16,7 @@ class GatewayRunner:
         self._adapters: dict[str, BaseAdapter] = {}
         self._running_agents: dict[str, Any] = {}
         self._allowed_users: dict[str, set[str]] = {}
+        self._allowed_servers: dict[str, set[str]] = {}
         self._home_channels: dict[str, str] = {}
 
     def register_adapter(self, adapter: BaseAdapter) -> None:
@@ -67,10 +68,40 @@ class GatewayRunner:
         return await self._run_agent(event)
 
     def _is_authorized(self, event: MessageEvent) -> bool:
+        """Check if the event is authorized based on whitelist configuration.
+
+        Checks:
+        1. If platform has no whitelist, allow all
+        2. If platform has whitelist, check if user is whitelisted
+        3. For Discord, also check if server is whitelisted
+
+        Returns:
+            True if authorized, False otherwise
+        """
         platform_users = self._allowed_users.get(event.platform)
         if platform_users is None:
+            # No whitelist configured for this platform - allow all
             return True
-        return event.user_id in platform_users
+
+        # Check user whitelist
+        if event.user_id in platform_users:
+            return True
+
+        # For Discord, check server whitelist
+        if event.platform == "discord" and event.raw:
+            server_id = event.raw.get("server_id")
+            platform_servers = self._allowed_servers.get(event.platform, set())
+            if server_id and server_id in platform_servers:
+                return True
+
+        # Not whitelisted
+        logger.warning(
+            "gateway_unauthorized",
+            platform=event.platform,
+            user_id=event.user_id,
+            server_id=event.raw.get("server_id") if event.raw else None,
+        )
+        return False
 
     async def _handle_command(self, event: MessageEvent) -> str | None:
         command = event.command
@@ -145,6 +176,15 @@ class GatewayRunner:
 
     def set_allowed_users(self, platform: str, user_ids: set[str]) -> None:
         self._allowed_users[platform] = user_ids
+
+    def set_allowed_servers(self, platform: str, server_ids: set[str]) -> None:
+        """Set allowed server IDs for a platform (Discord only).
+
+        Args:
+            platform: Platform name (e.g., "discord")
+            server_ids: Set of server/guild IDs that are allowed to use the bot
+        """
+        self._allowed_servers[platform] = server_ids
 
     def set_home_channel(self, platform: str, channel: str) -> None:
         self._home_channels[platform] = channel

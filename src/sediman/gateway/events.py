@@ -58,13 +58,19 @@ class MessageEvent:
         channel = message.channel
         chat_type = "group" if hasattr(channel, 'guild') and channel.guild else "private"
         text = message.content or ""
-        is_command = text.startswith("/")
+        is_command = text.startswith("/") or text.startswith("!")
         command = None
         command_args = None
         if is_command:
             parts = text.split(None, 1)
             command = parts[0].lower()
             command_args = parts[1] if len(parts) > 1 else None
+
+        # Extract server/guild ID for whitelist support
+        server_id = None
+        if hasattr(channel, 'guild') and channel.guild:
+            server_id = str(channel.guild.id)
+
         return cls(
             platform="discord",
             chat_id=str(channel.id),
@@ -73,7 +79,12 @@ class MessageEvent:
             user_name=message.author.name,
             text=text,
             thread_id=str(channel.id) if hasattr(channel, 'thread') else None,
-            raw={"content": text, "author": str(message.author), "channel": str(channel)},
+            raw={
+                "content": text,
+                "author": str(message.author),
+                "channel": str(channel),
+                "server_id": server_id,
+            },
             is_command=is_command,
             command=command,
             command_args=command_args,
