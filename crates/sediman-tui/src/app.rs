@@ -702,10 +702,14 @@ pub async fn run(
     let event_loop = EventLoop::new(30.0, event_tx.clone());
     let _handle = tokio::spawn(event_loop.run());
 
+    // Set up Ctrl+C handler for graceful shutdown
     let shutdown_tx = event_tx.clone();
+    let interrupt_flag = app.interrupt.flag().clone();
     tokio::spawn(async move {
         tokio::signal::ctrl_c().await.ok();
+        // Send shutdown event and set interrupt flag
         let _ = shutdown_tx.send(AppEvent::Shutdown);
+        interrupt_flag.store(true, std::sync::atomic::Ordering::SeqCst);
     });
 
     let mut stdout = std::io::stdout();
@@ -721,6 +725,11 @@ pub async fn run(
     let mut pending_resize: Option<(u16, u16)> = None;
 
     loop {
+        // Check if we should exit (from Ctrl+C or other reasons)
+        if !app.running {
+            break;
+        }
+
         if let Some((w, h)) = pending_resize.take() {
             width = w;
             height = h;
@@ -769,12 +778,9 @@ pub async fn run(
                 }
             }
         }
-
-        if !app.running {
-            break;
-        }
     }
 
+    // Restore terminal state before saving config
     AnsiWriter::show_cursor(&mut stdout);
 
     // Save config on exit
