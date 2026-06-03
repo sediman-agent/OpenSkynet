@@ -230,7 +230,7 @@ async def _handle_skill_manage(
             return ToolResult(
                 success=True,
                 output=f"Decision '{decision}' recorded for skill '{name}' from {source}. {install_msg}",
-                data={"decision": decision, "installed": decision != "deny" and decision != "skip"},
+                data={"decision": decision, "installed": ok},
             )
 
         return ToolResult(
