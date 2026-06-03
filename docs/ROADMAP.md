@@ -64,7 +64,7 @@ Features planned to close the gap with OpenCode / Claude Code and beyond.
 ### Architecture
 
 - [x] **Unix socket JSON-RPC bridge** — replaced HTTP + WebSocket with `/tmp/sediman.sock` (Unix domain socket). ~15x faster than localhost HTTP loopback
-- [x] **`@sediman/sdk` (TypeScript)** — typed client library wrapping the API surface. Dual-transport: Unix socket for local, HTTPS/WS for SaaS. Powers both the TUI and external consumers
+- [x] **sediman-tui-bridge (Rust)** — native Rust client library for Unix socket communication to Python backend. Powers the TUI with zero external dependencies
 - [x] **Python RPC server** — `rpc_server.py` replaces the FastAPI server for local usage. Same code, no HTTP overhead, single process
 
 ---
@@ -88,20 +88,11 @@ The TUI works but has a long way to go visually. Top priorities:
 - [ ] **Visual theme polish** — match OpenCode's color scheme and typography
 - [ ] **Help overlay** — rich categorized command list with search
 
-### TypeScript Migration (Python → TypeScript)
+### TypeScript Migration (Python → TypeScript) — Deprecated
 
-Incremental migration of the Python backend to TypeScript, module by module:
+TypeScript migration plans have been deprecated. The codebase will remain Python-focused for the backend with Rust for the TUI.
 
-- [ ] **RPC server** — move from `rpc_server.py` to `@sediman/rpc-server` (Bun/Node)
-- [ ] **Skill engine** — port SkillEngine to `@sediman/sdk/modules/skills`
-- [ ] **Scheduler** — port CronManager to `@sediman/sdk/modules/scheduler`
-- [ ] **Memory store** — port MemoryStore to `@sediman/sdk/modules/memory`
-- [ ] **Hub client** — port HubClient + GitHubInstaller to `@sediman/sdk/modules/hub`
-- [ ] **Sessions** — port session store to `@sediman/sdk/modules/sessions`
-- [ ] **Recording** — port RecordingManager + TraceToSkill to `@sediman/sdk/modules/recording`
-- [ ] **Agent loop** — port the core agent loop (longest lead time)
-- [ ] **Browser control** — port BrowserSession (Playwright → Playwright for TS)
-- [ ] **LLM provider** — port create_provider / OpenAICompatibleProvider
+- [x] **Removed TypeScript SDK** — `@sediman/sdk` was removed as it was not being used internally. The Rust TUI uses `sediman-tui-bridge` for efficient Unix socket communication.
 
 ### Missing commands (Python TUI parity)
 
@@ -230,9 +221,8 @@ The terminal tool currently runs commands locally. Add sandboxed execution envir
 1. ~~**File tools**~~ ✅ Done
 2. ~~**Rust TUI**~~ ✅ Working — needs polish
 3. ~~**Unix socket JSON-RPC**~~ ✅ Done
-4. ~~**`@sediman/sdk` (TypeScript)**~~ ✅ Done
-5. **TUI visual polish** — match OpenCode-level rendering
-6. **Missing slash commands** — Python TUI parity
+4. **TUI visual polish** — match OpenCode-level rendering
+5. **Missing slash commands** — Python TUI parity
 7. **Web extract** — unlocks research and data extraction
 8. **Session search tool** — low effort, high value (DB already exists)
 9. **Granular browser tools** — finer control, less context waste
