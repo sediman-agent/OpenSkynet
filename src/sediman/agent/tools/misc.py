@@ -325,30 +325,44 @@ async def _handle_todo(
 
 
 async def _handle_web_search(query: str, **kwargs: Any) -> ToolResult:
+    """Handle web search requests using unified search module.
+
+    Args:
+        query: Search query
+        **kwargs: Additional parameters
+
+    Returns:
+        ToolResult with web search results
+    """
     if not query or not query.strip():
         return ToolResult(success=False, output="query is required.")
 
     try:
-        from sediman.web.extract import web_extract
+        from sediman.search import search
 
-        encoded = __import__("urllib.parse", fromlist=["quote_plus"]).quote_plus(query.strip())
-        search_url = f"https://www.google.com/search?q={encoded}&hl=en"
+        # Use unified search module with web strategy
+        results = await search(query=query, strategy="web", **kwargs)
 
-        result = await web_extract(url=search_url, query=query)
-        content = result.get("content", "")
-        stats = result.get("stats", {})
-
-        if stats.get("method") == "failed" or not content.strip():
+        if not results:
             return ToolResult(
                 success=False,
                 output=f"Web search failed for: {query}",
                 data={"query": query, "delegated": False},
             )
 
+        # Get first (and usually only) result
+        result = results[0]
+        metadata = result.metadata or {}
+
         return ToolResult(
             success=True,
-            output=f"Search results for: {query}\n\n{content}",
-            data={"query": query, "url": search_url, "chars": len(content)},
+            output=f"Search results for: {query}\n\n{result.content}",
+            data={
+                "query": query,
+                "url": result.url,
+                "chars": metadata.get("chars", len(result.content)),
+                "method": metadata.get("method", "unknown"),
+            },
         )
     except Exception as e:
         logger.warning("web_search_failed", error=str(e))

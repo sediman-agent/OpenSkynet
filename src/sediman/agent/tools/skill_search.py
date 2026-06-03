@@ -1,3 +1,5 @@
+"""Skill search tool using unified search module."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -5,6 +7,7 @@ from typing import Any
 import structlog
 
 from sediman.agent.tool_dispatch import ToolResult
+from sediman.search import search
 
 logger = structlog.get_logger()
 
@@ -15,11 +18,21 @@ async def _handle_skill_search(
     k: int = 5,
     **kwargs: Any,
 ) -> ToolResult:
-    try:
-        from sediman.skills.search import SkillSearchEngine
+    """Handle skill search requests.
 
-        engine = SkillSearchEngine()
-        results = await engine.search(query=query, scope=scope, k=k)
+    Args:
+        query: Search query
+        scope: Search scope (all, external, internal)
+        k: Number of results to return
+        **kwargs: Additional parameters
+
+    Returns:
+        ToolResult with search results
+    """
+    try:
+        # Use unified search module
+        filters = {"scope": scope} if scope != "all" else None
+        results = await search(query=query, limit=k, filters=filters, **kwargs)
 
         if not results:
             return ToolResult(
@@ -30,12 +43,16 @@ async def _handle_skill_search(
 
         lines = [f"Found {len(results)} skill(s) for '{query}':\n"]
         for i, r in enumerate(results, 1):
-            scope_tag = "[internal]" if r.scope == "internal" else "[external]"
+            # Extract metadata
+            metadata = r.metadata or {}
+            source = metadata.get("source", "unknown")
+            scope_tag = "[internal]" if source == "local" else "[external]"
+
             lines.append(
-                f"  {i}. {scope_tag} {r.name} "
-                f"(score: {r.score:.2f}, source: {r.source})"
+                f"  {i}. {scope_tag} {r.title} "
+                f"(score: {r.score:.2f}, source: {source})"
             )
-            lines.append(f"     {r.description[:200]}")
+            lines.append(f"     {r.content[:200]}")
             lines.append("")
 
         return ToolResult(

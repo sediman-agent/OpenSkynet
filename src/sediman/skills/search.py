@@ -1,5 +1,13 @@
 """Skill search engine with pre-computed external embeddings and lazy internal indexing.
 
+.. deprecated::
+    This module has been moved to ``sediman.search``. Please use:
+
+    ``from sediman.search.strategies import SkillSearchStrategy``
+
+    The old ``SkillSearchEngine`` class is still available for backward compatibility
+    but will be removed in a future version.
+
 External skills (from repo skills/data/) have pre-computed embeddings stored in
 skill_embeddings.npz, committed alongside index.json. Loading is instant
 via numpy memory-mapping.
@@ -14,6 +22,7 @@ import json
 import math
 import sqlite3
 import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -23,6 +32,13 @@ import structlog
 from sediman.config import SKILLS_DIR
 
 logger = structlog.get_logger()
+
+# Emit deprecation warning
+warnings.warn(
+    "sediman.skills.search is deprecated. Use sediman.search.strategies.SkillSearchStrategy instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 def _project_root() -> Path:
@@ -579,3 +595,31 @@ class SkillSearchEngine:
         if overlap == 0:
             return 0.0
         return overlap / max(len(query_words), 1)
+
+
+# ── Backward Compatibility Wrapper ───────────────────────────────
+# Provide compatibility for code using the old interface
+
+# Import new search module for compatibility
+try:
+    from sediman.search.strategies import SkillSearchStrategy as _NewSkillSearchStrategy
+    from sediman.search import search as _new_search
+
+    # Create a factory function that returns the new strategy
+    def SkillSearchEngine() -> _NewSkillSearchStrategy:
+        """Backward compatibility wrapper for SkillSearchEngine.
+
+        .. deprecated::
+            Use ``SkillSearchStrategy`` from ``sediman.search.strategies`` instead.
+        """
+        warnings.warn(
+            "SkillSearchEngine is deprecated. Use SkillSearchStrategy from sediman.search.strategies instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return _NewSkillSearchStrategy()
+
+except ImportError:
+    # If new module isn't available, keep using this implementation
+    pass
+
