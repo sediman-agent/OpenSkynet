@@ -529,6 +529,26 @@ impl App {
             })
             .collect();
         models.sort_by(|a, b| {
+            // Prioritize providers with saved API keys
+            let a_has_key = self.available_providers
+                .iter()
+                .find(|p| p.name == a.provider)
+                .map(|p| p.has_key)
+                .unwrap_or(false);
+            let b_has_key = self.available_providers
+                .iter()
+                .find(|p| p.name == b.provider)
+                .map(|p| p.has_key)
+                .unwrap_or(false);
+
+            // Providers with saved API keys come first
+            match (b_has_key, a_has_key) {
+                (true, false) => return std::cmp::Ordering::Less,
+                (false, true) => return std::cmp::Ordering::Greater,
+                _ => {}
+            }
+
+            // Otherwise, sort by category, provider, and model name (original logic)
             let cat_a = self.available_providers.iter().find(|p| p.name == a.provider).map(|p| p.category.as_str()).unwrap_or("");
             let cat_b = self.available_providers.iter().find(|p| p.name == b.provider).map(|p| p.category.as_str()).unwrap_or("");
             cat_a.cmp(cat_b).then_with(|| a.provider.cmp(&b.provider)).then_with(|| b.name.cmp(&a.name))
