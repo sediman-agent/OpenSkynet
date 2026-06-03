@@ -45,6 +45,8 @@ pub fn render_into(buf: &mut CellBuffer, app: &mut App) {
             AppModal::ConnectPicker => modals::render_connect_picker(buf, zones.main, app),
             AppModal::ApiKeyPrompt => modals::render_api_key_prompt(buf, zones.main, app),
             AppModal::MemoryEditor => modals::render_memory_editor(buf, zones.main, app),
+            AppModal::MemoryMenu { .. } => modals::render_memory_menu(buf, zones.main, app),
+            AppModal::MemorySystemPicker { .. } => modals::render_memory_system_picker(buf, zones.main, app),
             AppModal::SoulEditor => modals::render_soul_editor(buf, zones.main, app),
             AppModal::SkillBrowser => modals::render_skill_browser(buf, zones.main, app),
             AppModal::ScheduleBrowser => modals::render_schedule_browser(buf, zones.main, app),

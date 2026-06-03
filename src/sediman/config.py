@@ -36,6 +36,10 @@ OLD_MEMORY_DB = DATA_DIR / "memory.json"
 MEMORY_LIMIT = int(os.environ.get("SEDIMAN_MEMORY_LIMIT", "2200"))
 USER_LIMIT = int(os.environ.get("SEDIMAN_USER_LIMIT", "1375"))
 MAX_STRUCTURED_BYTES = int(os.environ.get("SEDIMAN_MAX_STRUCTURED_BYTES", "50000"))
+
+# Memory system configuration: "file" (System 1) or "hy" (System 2)
+MEMORY_SYSTEM = os.environ.get("SEDIMAN_MEMORY_SYSTEM", "file")
+HY_MEMORY_DB = DATA_DIR / "hy_memory.db"
 MAX_ENTRIES_PER_TYPE = int(os.environ.get("SEDIMAN_MAX_ENTRIES_PER_TYPE", "50"))
 
 MAX_TASK_LENGTH = 10000

@@ -35,7 +35,15 @@ pub enum AppModal {
     ProviderPicker,
     ConnectPicker,
     ApiKeyPrompt,
+    #[allow(dead_code)]
     MemoryEditor,
+    MemoryMenu {
+        selected: usize,
+    },
+    MemorySystemPicker {
+        systems: Vec<String>,
+        selected: usize,
+    },
     SoulEditor,
     SkillBrowser,
     ScheduleBrowser,
@@ -608,6 +616,59 @@ impl App {
         } else if target_pos >= self.model_dialog_scroll + Self::MODEL_DIALOG_VISIBLE {
             self.model_dialog_scroll = target_pos - (Self::MODEL_DIALOG_VISIBLE - 1);
         }
+    }
+
+    /// Open the memory system picker modal.
+    pub fn open_memory_system_picker(&mut self) {
+        self.active_modal = Some(AppModal::MemorySystemPicker {
+            systems: vec!["file (default)".to_string(), "hy (system 2)".to_string()],
+            selected: 0,
+        });
+    }
+
+    /// Open the memory menu with multiple options.
+    pub fn open_memory_menu(&mut self) {
+        self.active_modal = Some(AppModal::MemoryMenu {
+            selected: 0,
+        });
+    }
+
+    /// Show memory statistics in an info modal.
+    pub fn show_memory_stats(&mut self, stats: serde_json::Value) {
+        let title = "Memory System Status".to_string();
+        let mut lines = vec![
+            ModalLine::normal(""),
+        ];
+
+        // Parse and display stats
+        if let Some(system) = stats.get("system").and_then(|s| s.as_str()) {
+            lines.push(ModalLine::accent(format!("  System: {}", system)));
+        }
+
+        if let Some(stats_obj) = stats.get("stats").and_then(|s| s.as_object()) {
+            if let Some(total) = stats_obj.get("total_records").and_then(|v| v.as_i64()) {
+                lines.push(ModalLine::normal(format!("  Total Records: {}", total)));
+            }
+
+            if let Some(by_layer) = stats_obj.get("by_layer").and_then(|v| v.as_object()) {
+                lines.push(ModalLine::normal(""));
+                lines.push(ModalLine::heading("  By Layer:"));
+                for (layer, count) in by_layer {
+                    if let Some(count) = count.as_i64() {
+                        lines.push(ModalLine::muted(format!("    {}: {}", layer, count)));
+                    }
+                }
+            }
+        }
+
+        lines.push(ModalLine::normal(""));
+        lines.push(ModalLine::muted("  Press ESC to close"));
+
+        self.active_modal = Some(AppModal::Info {
+            title,
+            lines,
+            scroll: 0,
+        });
     }
 }
 

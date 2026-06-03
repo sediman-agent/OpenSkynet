@@ -1,15 +1,18 @@
 use crate::app::{App, AppModal, ModalLine};
 
+#[allow(dead_code)]
 pub async fn handle_help(app: &mut App, _args: &str) {
     app.active_modal = Some(AppModal::Help { scroll: 0 });
 }
 
+#[allow(dead_code)]
 pub async fn handle_clear(app: &mut App, _args: &str) {
     app.messages.clear();
     app.step_log.clear();
     app.add_system_message("Conversation cleared.".into());
 }
 
+#[allow(dead_code)]
 pub async fn handle_reset(app: &mut App, _args: &str) {
     app.messages.clear();
     app.step_log.clear();
@@ -21,6 +24,7 @@ pub async fn handle_reset(app: &mut App, _args: &str) {
     app.add_system_message("Full reset done.".into());
 }
 
+#[allow(dead_code)]
 pub async fn handle_compress(app: &mut App, _args: &str) {
     app.add_system_message("Compressing conversation...".into());
     app.step_log.drain(..app.step_log.len().saturating_sub(50));
@@ -33,10 +37,12 @@ pub async fn handle_compress(app: &mut App, _args: &str) {
     app.add_system_message("Conversation compressed.".into());
 }
 
+#[allow(dead_code)]
 pub async fn handle_exit(app: &mut App, _args: &str) {
     app.running = false;
 }
 
+#[allow(dead_code)]
 pub async fn handle_status(app: &mut App, _args: &str) {
     let mut lines = Vec::new();
 

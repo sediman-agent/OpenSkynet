@@ -969,6 +969,81 @@ async def integration_status(name: str):
     return {
         "name": name,
         "enabled": config.get("enabled", False),
-        "configured": bool(config.get("token")),
+        "configured": bool(config.get("token")) or bool(config.get("app_id")),
         "connected": inst is not None and inst.enabled,
     }
+
+
+# =============================================================================
+# Webhook endpoints for WhatsApp and Lark integrations
+# =============================================================================
+
+
+@app.post("/integrations/whatsapp/webhook")
+async def whatsapp_webhook(request):
+    """Handle incoming WhatsApp webhook events."""
+    from sediman.integrations import get_integration
+    from sediman.config import INTEGRATIONS_CONFIG_PATH
+
+    try:
+        payload = await request.json()
+        integration = get_integration("whatsapp")
+        if integration and hasattr(integration, "_listener"):
+            await integration._listener.process_webhook(payload)
+            return {"status": "ok"}
+        raise HTTPException(status_code=503, detail="WhatsApp integration not available")
+    except Exception as e:
+        logger.error("whatsapp_webhook_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/integrations/whatsapp/webhook")
+async def whatsapp_webhook_verify(request):
+    """Verify WhatsApp webhook during setup."""
+    from sediman.integrations import get_integration
+
+    mode = request.query_params.get("hub.mode")
+    token = request.query_params.get("hub.verify_token")
+    challenge = request.query_params.get("hub.challenge")
+
+    integration = get_integration("whatsapp")
+    if integration and hasattr(integration, "_listener"):
+        result = integration._listener.verify_webhook(mode, token, challenge)
+        if result:
+            from fastapi.responses import Response
+            return Response(content=result, media_type="text/plain")
+    raise HTTPException(status_code=403, detail="Invalid verification token")
+
+
+@app.post("/integrations/lark/webhook")
+async def lark_webhook(request):
+    """Handle incoming Lark webhook events."""
+    from sediman.integrations import get_integration
+
+    try:
+        payload = await request.json()
+        integration = get_integration("lark")
+        if integration and hasattr(integration, "_listener"):
+            await integration._listener.process_webhook(payload)
+            return {"status": "ok"}
+        raise HTTPException(status_code=503, detail="Lark integration not available")
+    except Exception as e:
+        logger.error("lark_webhook_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/integrations/lark/webhook")
+async def lark_webhook_verify(request):
+    """Verify Lark webhook during setup."""
+    from sediman.integrations import get_integration
+
+    challenge = request.query_params.get("challenge")
+    token = request.query_params.get("token")
+
+    integration = get_integration("lark")
+    if integration and hasattr(integration, "_listener"):
+        result = integration._listener.verify_webhook(challenge, token)
+        if result:
+            from fastapi.responses import Response
+            return Response(content=result, media_type="text/plain")
+    raise HTTPException(status_code=403, detail="Invalid verification token")

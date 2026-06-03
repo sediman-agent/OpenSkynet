@@ -437,3 +437,40 @@ async def _run_scheduled_task(job: dict[str, Any]) -> None:
         logger.info("scheduled_task_complete", job_id=job["id"])
     except Exception as e:
         logger.error("scheduled_task_failed", job_id=job["id"], error=str(e), exc_info=True)
+
+
+def register_hy_memory_consolidation(interval_minutes: int = 30) -> str:
+    """Register System 2 Memory consolidation background job.
+
+    Args:
+        interval_minutes: Interval between consolidation runs (default 30 minutes)
+
+    Returns:
+        Job ID
+    """
+    from sediman.config import MEMORY_SYSTEM
+
+    # Only register if HyMemory is enabled
+    if MEMORY_SYSTEM != "hy":
+        logger.info("hy_memory_consolidation_skipped", reason=f"System is {MEMORY_SYSTEM}, not hy")
+        return ""
+
+    cron_expr = f"*/{interval_minutes} * * * *"
+
+    manager = CronManager()
+    job_id = manager.add_job(
+        cron_expr=cron_expr,
+        task="hy_memory_consolidation",
+        skill_name=None,
+        provider="openai",
+        notify=None,
+    )
+
+    logger.info(
+        "hy_memory_consolidation_registered",
+        job_id=job_id,
+        interval_minutes=interval_minutes,
+    )
+
+    return job_id
+

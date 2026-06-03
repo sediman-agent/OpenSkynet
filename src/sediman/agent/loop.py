@@ -47,7 +47,7 @@ from sediman.browser.session import BrowserSession
 from sediman.llm.provider import LLMProvider
 from sediman.memory.strategy import BaseMemoryStrategy
 from sediman.agentbrowser.session import AgentBrowserSession
-from sediman.config import AGENT_STATE_FILE
+from sediman.config import AGENT_STATE_FILE, MEMORY_SYSTEM
 
 logger = structlog.get_logger()
 
@@ -136,7 +136,15 @@ class AgentLoop:
         self._tool_registry: ToolRegistry | None = None
         self._max_iterations = max_iterations
         from sediman.memory.strategies.file_memory import FileMemoryStrategy
-        self._memory = memory or FileMemoryStrategy()
+
+        # Select memory strategy based on config
+        if memory is None:
+            if MEMORY_SYSTEM == "hy":
+                from sediman.memory.hy.strategy import HyMemoryStrategy
+                self._memory = HyMemoryStrategy(llm_provider=llm_provider)
+            else:
+                self._memory = FileMemoryStrategy()
+
         if isinstance(self._memory, FileMemoryStrategy):
             self._memory.set_llm(llm_provider)
         self._memory_initialized = False

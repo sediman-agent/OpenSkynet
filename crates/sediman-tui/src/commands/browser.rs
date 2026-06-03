@@ -25,6 +25,7 @@ pub async fn handle_browser(app: &mut App, args: &str) {
     }
 }
 
+#[allow(dead_code)]
 pub async fn handle_screenshot(app: &mut App, _args: &str) {
     match app.bridge.get_screenshot().await {
         Ok(bytes) => {

@@ -23,6 +23,7 @@ impl PermissionManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn cycle(&mut self) {
         if self.plan_mode {
             self.plan_mode = false;

@@ -60,6 +60,10 @@ dependencies = [
     "discord-py>=2.3.0",
     "python-telegram-bot>=21.0",
     "sentry-sdk>=2.0.0",
+    "slack-sdk>=3.42.0",
+    "pywa>=3.9.0",
+    "lark-oapi>=1.6.8",
+    "python-magic>=0.4.27",
 ]
 
 [project.scripts]

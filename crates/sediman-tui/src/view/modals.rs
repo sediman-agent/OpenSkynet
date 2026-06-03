@@ -1,6 +1,6 @@
 use sediman_tui_core::renderer::{CellBuffer, Rect, Style, TextAttributes, display_width, truncate_str};
 use sediman_tui_core::renderer::Color;
-use crate::app::{App, ModalLineStyle};
+use crate::app::{App, AppModal, ModalLineStyle};
 
 struct ModalFrame {
     modal: Rect,
@@ -114,14 +114,24 @@ pub fn render_help_modal(buf: &mut CellBuffer, area: Rect, app: &App, scroll: us
             ("/plan", "Toggle plan-only mode"),
             ("/compress", "Compress conversation context"),
             ("/soul", "Edit agent personality"),
+            ("/coder", "Set coder backend"),
         ]),
         ("Skills", &[
             ("/skills", "List & search learned skills"),
-            ("/hub", "Browse, install & manage hub skills"),
+            ("/skills run <name>", "Execute a skill"),
+            ("/skills search <q>", "Search hub skills"),
+        ]),
+        ("Integrations", &[
+            ("/connect", "Connect integration platforms"),
+            ("/connect discord <token>", "Configure Discord bot"),
+            ("/connect telegram <token>", "Configure Telegram bot"),
+            ("/connect slack <token>", "Configure Slack bot"),
+            ("/connect whatsapp <token>", "Configure WhatsApp bot"),
+            ("/connect lark <id> <secret>", "Configure Lark bot"),
+            ("/connect wechat <account>", "Configure WeChat bot"),
         ]),
         ("Browser", &[
             ("/browser", "Toggle headless/headed mode"),
-            ("/screenshot", "Capture browser screenshot"),
         ]),
         ("Sessions", &[
             ("/sessions", "List & manage saved sessions"),
@@ -135,9 +145,15 @@ pub fn render_help_modal(buf: &mut CellBuffer, area: Rect, app: &App, scroll: us
             ("/delegate <task>", "Spawn a sub-agent task"),
             ("/parallel <a|b>", "Run tasks in parallel"),
         ]),
+        ("Checkpoint", &[
+            ("/checkpoint", "List filesystem checkpoints"),
+            ("/checkpoint-create <dir>", "Create a checkpoint"),
+            ("/rewind <id>", "Revert to checkpoint"),
+            ("/branch <name>", "Create named branch"),
+        ]),
         ("Utilities", &[
             ("/themes", "Browse & apply color themes"),
-            ("/provider", "Connect provider & enter API key"),
+            ("/doctor", "Diagnose & install dependencies"),
         ]),
     ];
 
@@ -831,7 +847,7 @@ pub fn render_skill_browser(buf: &mut CellBuffer, area: Rect, app: &mut App) {
 
             if selected {
                 for sx in (frame.modal.x + 1)..(frame.modal.right() - 1) {
-                    buf.put_char(sx, row_y, ' ', Style::new().bg(t.primary).fg(t.background_darker));
+                    buf.put_char(sx, row_y, ' ', Style::new().bg(t.primary).fg(t.background));
                 }
                 buf.draw_str(
                     inner_x,
@@ -943,10 +959,10 @@ pub fn render_session_browser(buf: &mut CellBuffer, area: Rect, app: &App) {
 
             if selected {
                 for sx in (frame.modal.x + 1)..(frame.modal.right() - 1) {
-                    buf.put_char(sx, y, ' ', Style::new().bg(t.primary).fg(t.background_darker));
+                    buf.put_char(sx, y, ' ', Style::new().bg(t.primary).fg(t.background));
                 }
                 buf.draw_str(inner_x, y, &format!("\u{25b8} {} {}", id_str, task_display),
-                    Style::new().bg(t.primary).fg(t.background_darker).add_modifier(TextAttributes::bold()));
+                    Style::new().bg(t.primary).fg(t.background).add_modifier(TextAttributes::bold()));
             } else {
                 buf.draw_str(inner_x, y, &format!("  {} {}", id_str, task_display),
                     Style::new().fg(t.text).bg(t.background));
@@ -957,7 +973,7 @@ pub fn render_session_browser(buf: &mut CellBuffer, area: Rect, app: &App) {
                 y += 1;
                 let ts = truncate_str(&session.created_at, inner_w.saturating_sub(4));
                 let ts_style = if selected {
-                    Style::new().bg(t.primary).fg(t.background_darker)
+                    Style::new().bg(t.primary).fg(t.background)
                 } else {
                     Style::new().fg(t.text_muted).bg(t.background)
                 };
@@ -1082,10 +1098,10 @@ pub fn render_schedule_browser(buf: &mut CellBuffer, area: Rect, app: &App) {
 
             if selected {
                 for sx in (frame.modal.x + 1)..(frame.modal.right() - 1) {
-                    buf.put_char(sx, y, ' ', Style::new().bg(t.primary).fg(t.background_darker));
+                    buf.put_char(sx, y, ' ', Style::new().bg(t.primary).fg(t.background));
                 }
                 buf.draw_str(inner_x, y, &format!("{} {} {}", status_icon, task_display, job.cron_expr),
-                    Style::new().bg(t.primary).fg(t.background_darker).add_modifier(TextAttributes::bold()));
+                    Style::new().bg(t.primary).fg(t.background).add_modifier(TextAttributes::bold()));
             } else {
                 buf.draw_str(inner_x, y, &format!("{} {} {}", status_icon, task_display, job.cron_expr),
                     Style::new().fg(if job.enabled { t.text } else { t.text_muted }).bg(t.background));
@@ -1171,8 +1187,8 @@ pub fn render_doctor_modal(
     let (installing, install_output) = install_state;
     let t = &app.theme;
     let modal_w = (area.width * 8 / 10).clamp(52, 80);
-    let content_rows = checks.len().min(12);
-    let modal_h = (content_rows as u16 + 6).max(10).min(area.height.saturating_sub(2));
+    const CONTENT_ROWS: usize = 12;
+    let modal_h = ((CONTENT_ROWS + 6) as u16).max(10).min(area.height.saturating_sub(2));
     let frame = ModalFrame::new(buf, area, app, modal_w, modal_h);
     let inner_w = frame.inner_w;
     let inner_x = frame.inner_x;
@@ -1183,12 +1199,21 @@ pub fn render_doctor_modal(
     frame.draw_close_hint(buf, " Esc ", Style::new().fg(t.text_muted).bg(t.background));
 
     let mut y = frame.modal.y + 2;
+    let max_y = frame.modal.bottom() - 3; // Leave room for footer
 
     if *installing {
         buf.draw_str(inner_x, y, " Installing...", Style::new().fg(t.primary));
         y += 1;
-        for line in install_output.iter().take((modal_h as usize).saturating_sub(4)) {
-            if y < frame.modal.bottom() - 2 {
+
+        // Show install output with scrolling
+        let output_start = if install_output.len() > (max_y - y) as usize {
+            install_output.len() - (max_y - y) as usize + 1
+        } else {
+            0
+        };
+
+        for line in install_output.iter().skip(output_start).take((max_y - y) as usize) {
+            if y < max_y {
                 let truncated: String = line.chars().take(inner_w).collect();
                 buf.draw_str(inner_x, y, &truncated, Style::new().fg(t.text));
                 y += 1;
@@ -1199,7 +1224,7 @@ pub fn render_doctor_modal(
 
     let mut prev_category = "";
     let visible_start = scroll as usize;
-    let visible_end = (visible_start + content_rows).min(checks.len());
+    let visible_end = (visible_start + CONTENT_ROWS).min(checks.len());
     let mut row = 0;
 
     for (i, check) in checks.iter().enumerate() {
@@ -1209,14 +1234,24 @@ pub fn render_doctor_modal(
             }
             continue;
         }
+        if y >= max_y {
+            break;
+        }
         if check.category != prev_category {
             if row > 0 {
                 y += 1;
+            }
+            if y >= max_y {
+                break;
             }
             buf.draw_str(inner_x, y, &check.category, Style::new()
                 .fg(t.primary).add_modifier(TextAttributes::bold()));
             y += 1;
             prev_category = &check.category;
+        }
+
+        if y >= max_y {
+            break;
         }
 
         let (icon, fg) = match check.status {
@@ -1260,3 +1295,99 @@ pub fn render_doctor_modal(
     buf.draw_str(inner_x, footer_y, "Enter: install | r: re-check | \u{2191}\u{2193}: navigate", Style::new().fg(t.text_muted));
 }
 
+
+/// Render the memory system picker modal.
+pub fn render_memory_system_picker(buf: &mut CellBuffer, area: Rect, app: &App) {
+    let t = &app.theme;
+
+    if let Some(AppModal::MemorySystemPicker { ref systems, ref selected }) = app.active_modal {
+        const NUM_VISIBLE: usize = 5;
+        let visible = systems.len().min(NUM_VISIBLE);
+        let modal_w: u16 = 40;
+        let modal_h = (4u16 + visible as u16).min(area.height.saturating_sub(2));
+        let frame = ModalFrame::new(buf, area, app, modal_w, modal_h);
+        let inner_x = frame.inner_x;
+        let inner_w = frame.inner_w;
+
+        draw_rounded_border(buf, frame.modal, Style::new().fg(t.text_muted).bg(t.background));
+
+        buf.draw_str(inner_x, frame.modal.y + 1, "Select Memory System",
+            Style::new().fg(t.primary).bg(t.background).add_modifier(TextAttributes::bold()));
+
+        let list_start_y = frame.modal.y + 3;
+        let mut y = list_start_y;
+
+        for (i, system) in systems.iter().enumerate() {
+            if i >= *selected + NUM_VISIBLE || i < selected.saturating_sub(NUM_VISIBLE) {
+                continue;
+            }
+
+            let is_selected = i == *selected;
+            let bg = if is_selected { t.primary } else { t.background };
+            let fg = if is_selected { t.background } else { t.text };
+
+            buf.draw_str(inner_x, y, " ", Style::new().fg(t.text).bg(t.background));
+            buf.draw_str(inner_x + 1, y, system, Style::new().fg(fg).bg(bg).add_modifier(TextAttributes::bold()));
+            let padding = inner_w.saturating_sub(4 + system.len());
+            buf.draw_str(inner_x + 2 + system.len() as u16, y, &" ".repeat(padding),
+                Style::new().fg(t.text).bg(t.background));
+
+            y += 1;
+        }
+
+        // Footer hints
+        let footer_y = frame.modal.bottom() - 2;
+        buf.draw_str(inner_x, footer_y, "Enter: select | \u{2191}\u{2193}: navigate | Esc: cancel",
+            Style::new().fg(t.text_muted));
+    }
+}
+
+pub fn render_memory_menu(buf: &mut CellBuffer, area: Rect, app: &App) {
+    let t = &app.theme;
+
+    if let Some(AppModal::MemoryMenu { ref selected }) = app.active_modal {
+        const MENU_OPTIONS: &[&str] = &[
+            "View Memory Stats",
+            "Switch Memory System",
+            "Show Current System",
+        ];
+        const NUM_VISIBLE: usize = 5;
+        let visible = MENU_OPTIONS.len().min(NUM_VISIBLE);
+        let modal_w: u16 = 40;
+        let modal_h = (4u16 + visible as u16).min(area.height.saturating_sub(2));
+        let frame = ModalFrame::new(buf, area, app, modal_w, modal_h);
+        let inner_x = frame.inner_x;
+        let inner_w = frame.inner_w;
+
+        draw_rounded_border(buf, frame.modal, Style::new().fg(t.text_muted).bg(t.background));
+
+        buf.draw_str(inner_x, frame.modal.y + 1, "Memory",
+            Style::new().fg(t.primary).bg(t.background).add_modifier(TextAttributes::bold()));
+
+        let list_start_y = frame.modal.y + 3;
+        let mut y = list_start_y;
+
+        for (i, option) in MENU_OPTIONS.iter().enumerate() {
+            if i >= *selected + NUM_VISIBLE || i < selected.saturating_sub(NUM_VISIBLE) {
+                continue;
+            }
+
+            let is_selected = i == *selected;
+            let bg = if is_selected { t.primary } else { t.background };
+            let fg = if is_selected { t.background } else { t.text };
+
+            buf.draw_str(inner_x, y, " ", Style::new().fg(t.text).bg(t.background));
+            buf.draw_str(inner_x + 1, y, option, Style::new().fg(fg).bg(bg).add_modifier(TextAttributes::bold()));
+            let padding = inner_w.saturating_sub(4 + option.len());
+            buf.draw_str(inner_x + 2 + option.len() as u16, y, &" ".repeat(padding),
+                Style::new().fg(t.text).bg(t.background));
+
+            y += 1;
+        }
+
+        // Footer hints
+        let footer_y = frame.modal.bottom() - 2;
+        buf.draw_str(inner_x, footer_y, "Enter: select | \u{2191}\u{2193}: navigate | Esc: cancel",
+            Style::new().fg(t.text_muted));
+    }
+}

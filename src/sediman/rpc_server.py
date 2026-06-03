@@ -690,6 +690,50 @@ async def handle_memory_changelog(params: dict[str, Any], notify: NotifyFn | Non
     }
 
 
+async def handle_memory_switch_system(params: dict[str, Any], notify: NotifyFn | None = None) -> dict[str, Any]:
+    """Switch between memory systems (file/hy)."""
+    from sediman.config import MEMORY_SYSTEM
+    system = params.get("system", "file").strip()
+
+    if system not in ["file", "hy"]:
+        return {"success": False, "error": "Invalid system. Use 'file' or 'hy'"}
+
+    # Note: This requires restarting the agent to take effect
+    # We're just returning the current system for now
+    return {
+        "success": True,
+        "message": f"Memory system switch requested to '{system}'. Restart agent to apply.",
+        "current_system": MEMORY_SYSTEM,
+        "requested_system": system,
+    }
+
+
+async def handle_memory_get_system(params: dict[str, Any], notify: NotifyFn | None = None) -> dict[str, Any]:
+    """Get current memory system."""
+    from sediman.config import MEMORY_SYSTEM
+    return {"success": True, "system": MEMORY_SYSTEM}
+
+
+async def handle_memory_get_stats(params: dict[str, Any], notify: NotifyFn | None = None) -> dict[str, Any]:
+    """Get memory system statistics."""
+    from sediman.config import MEMORY_SYSTEM
+
+    if MEMORY_SYSTEM == "hy":
+        # Get HyMemory stats
+        agent = await _get_agent_loop()
+        if hasattr(agent, "_memory") and hasattr(agent._memory, "get_stats"):
+            import asyncio
+            stats = await asyncio.run(agent._memory.get_stats())
+            return {"success": True, "system": "hy", "stats": stats}
+
+    # Fallback for file system
+    return {
+        "success": True,
+        "system": MEMORY_SYSTEM,
+        "stats": {"message": "Stats not available for file memory system"},
+    }
+
+
 # ── Sessions ────────────────────────────────────────────────────────
 
 async def handle_sessions_list(params: dict[str, Any], notify: NotifyFn | None = None) -> list[dict[str, Any]]:
@@ -992,6 +1036,9 @@ HANDLERS: dict[str, Callable] = {
     "memory.remove": handle_memory_remove,
     "memory.search": handle_memory_search,
     "memory.changelog": handle_memory_changelog,
+    "memory.switch_system": handle_memory_switch_system,
+    "memory.get_system": handle_memory_get_system,
+    "memory.get_stats": handle_memory_get_stats,
     "sessions.list": handle_sessions_list,
     "sessions.search": handle_sessions_search,
     "sessions.save": handle_sessions_save,

@@ -79,4 +79,20 @@ impl ApiClient {
     pub async fn remember(&self, text: &str) -> BridgeResult<()> {
         self.memory_add("memory", text).await
     }
+
+    pub async fn memory_switch_system(&self, system: String) -> BridgeResult<serde_json::Value> {
+        self.call(
+            "memory.switch_system",
+            serde_json::json!({"system": system}),
+        )
+        .await
+    }
+
+    pub async fn memory_get_system(&self) -> BridgeResult<serde_json::Value> {
+        self.call("memory.get_system", serde_json::json!({})).await
+    }
+
+    pub async fn memory_get_stats(&self) -> BridgeResult<serde_json::Value> {
+        self.call("memory.get_stats", serde_json::json!({})).await
+    }
 }

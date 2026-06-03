@@ -105,6 +105,18 @@ def _build_integration(name: str, cfg: dict[str, Any]) -> Integration | None:
     elif name == "telegram":
         from sediman.integrations.telegram import TelegramIntegration
         return TelegramIntegration(cfg)
+    elif name == "slack":
+        from sediman.integrations.slack import SlackIntegration
+        return SlackIntegration(cfg)
+    elif name == "whatsapp":
+        from sediman.integrations.whatsapp import WhatsAppIntegration
+        return WhatsAppIntegration(cfg)
+    elif name == "lark":
+        from sediman.integrations.lark import LarkIntegration
+        return LarkIntegration(cfg)
+    elif name == "wechat":
+        from sediman.integrations.wechat import WeChatIntegration
+        return WeChatIntegration(cfg)
     logger.warning("unknown_integration", name=name)
     return None
 
@@ -113,7 +125,10 @@ def setup_integrations() -> None:
     """Initialize all enabled integrations and register their adapters with GatewayRunner."""
     config = load_config()
     for name, cfg in config.items():
-        if cfg.get("enabled") and cfg.get("token"):
+        # Check if integration is enabled and has credentials
+        # Lark uses app_id/app_secret, WeChat uses account_id, others use token
+        has_credentials = cfg.get("token") or cfg.get("app_id") or cfg.get("account_id")
+        if cfg.get("enabled") and has_credentials:
             inst = _build_integration(name, cfg)
             if inst:
                 _registry[name] = inst
@@ -143,6 +158,17 @@ def setup_integrations() -> None:
                                         "integration_server_whitelist_enabled",
                                         name=name,
                                         servers=len(allowed_servers)
+                                    )
+
+                            # For Slack, also set team whitelist
+                            if name == "slack":
+                                allowed_teams = set(platform_whitelist.get("teams", []))
+                                if allowed_teams:
+                                    _gateway_runner.set_allowed_servers(name, allowed_teams)
+                                    logger.info(
+                                        "integration_team_whitelist_enabled",
+                                        name=name,
+                                        teams=len(allowed_teams)
                                     )
 
                         # Register adapter
