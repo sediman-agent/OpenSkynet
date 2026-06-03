@@ -1306,3 +1306,53 @@ pub fn render_memory_system_picker(buf: &mut CellBuffer, area: Rect, app: &App) 
             Style::new().fg(t.text_muted));
     }
 }
+
+pub fn render_memory_menu(buf: &mut CellBuffer, area: Rect, app: &App) {
+    let t = &app.theme;
+
+    if let Some(AppModal::MemoryMenu { ref selected }) = app.active_modal {
+        const MENU_OPTIONS: &[&str] = &[
+            "View Memory Entries",
+            "Switch Memory System",
+            "View Memory Stats",
+        ];
+        const NUM_VISIBLE: usize = 5;
+        let visible = MENU_OPTIONS.len().min(NUM_VISIBLE);
+        let modal_w: u16 = 40;
+        let modal_h = (4u16 + visible as u16).min(area.height.saturating_sub(2));
+        let frame = ModalFrame::new(buf, area, app, modal_w, modal_h);
+        let inner_x = frame.inner_x;
+        let inner_w = frame.inner_w;
+
+        draw_rounded_border(buf, frame.modal, Style::new().fg(t.text_muted).bg(t.background));
+
+        buf.draw_str(inner_x, frame.modal.y + 1, "Memory",
+            Style::new().fg(t.primary).bg(t.background).add_modifier(TextAttributes::bold()));
+
+        let list_start_y = frame.modal.y + 3;
+        let mut y = list_start_y;
+
+        for (i, option) in MENU_OPTIONS.iter().enumerate() {
+            if i >= *selected + NUM_VISIBLE || i < selected.saturating_sub(NUM_VISIBLE) {
+                continue;
+            }
+
+            let is_selected = i == *selected;
+            let bg = if is_selected { t.primary } else { t.background };
+            let fg = if is_selected { t.background } else { t.text };
+
+            buf.draw_str(inner_x, y, " ", Style::new().fg(t.text).bg(t.background));
+            buf.draw_str(inner_x + 1, y, option, Style::new().fg(fg).bg(bg).add_modifier(TextAttributes::bold()));
+            let padding = inner_w.saturating_sub(4 + option.len());
+            buf.draw_str(inner_x + 2 + option.len() as u16, y, &" ".repeat(padding),
+                Style::new().fg(t.text).bg(t.background));
+
+            y += 1;
+        }
+
+        // Footer hints
+        let footer_y = frame.modal.bottom() - 2;
+        buf.draw_str(inner_x, footer_y, "Enter: select | \u{2191}\u{2193}: navigate | Esc: cancel",
+            Style::new().fg(t.text_muted));
+    }
+}
