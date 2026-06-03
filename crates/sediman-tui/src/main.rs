@@ -79,15 +79,46 @@ async fn ensure_backend(
     base_url: Option<&str>,
     verbose: bool,
 ) -> Option<tokio::process::Child> {
+
     // If socket exists, verify the backend is actually responsive
     if tokio::fs::metadata(socket_path).await.is_ok() {
         let bridge = sediman_tui_bridge::ApiClient::new(socket_path);
-        match tokio::time::timeout(Duration::from_secs(2), bridge.status()).await {
-            Ok(Ok(_)) => return None, // backend is alive
-            _ => {
-                eprintln!("Stale socket detected at {}, removing...", socket_path);
-                let _ = tokio::fs::remove_file(socket_path).await;
+
+        // Try multiple verification methods to detect stale sockets
+        let backend_alive = match tokio::time::timeout(Duration::from_secs(2), bridge.status()).await {
+            Ok(Ok(_)) => {
+                // Status succeeded, but let's double-check with another call
+                // to make sure the backend is actually responsive
+                match tokio::time::timeout(Duration::from_secs(1), bridge.list_models(None)).await {
+                    Ok(Ok(_)) => true,
+                    _ => {
+                        eprintln!("Backend status OK but models call failed - treating as stale");
+                        false
+                    }
+                }
             }
+            Ok(Err(e)) => {
+                eprintln!("Backend status call failed: {} - treating as stale", e);
+                false
+            }
+            Err(_) => {
+                eprintln!("Backend status call timed out - treating as stale");
+                false
+            }
+        };
+
+        if backend_alive {
+            return None;
+        }
+
+        eprintln!("Stale socket detected at {}, removing...", socket_path);
+        // Try multiple times to remove the socket
+        for _ in 0..3 {
+            if tokio::fs::remove_file(socket_path).await.is_ok() {
+                eprintln!("Successfully removed stale socket");
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
 
@@ -290,20 +321,30 @@ fn spawn_update_check_if_due(config: &crate::config::TuiConfig) {
     });
 }
 
-#[tokio::main]
-async fn main() {
-    logging::setup();
+fn main() {
+    // Parse args FIRST using a synchronous approach - handles --version, --help
+    // This runs before ANY async runtime or terminal operations
+    let args = Args::parse();
 
+    // Now enter the async runtime for the actual TUI
+    let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+    runtime.block_on(async_main(args));
+}
+
+async fn async_main(args: Args) {
+    // Set up panic handler now that we're in the async context
     let original_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
-        crossterm::terminal::disable_raw_mode().ok();
+        // Try to clean up terminal state, but don't panic if we fail
+        let _ = crossterm::terminal::disable_raw_mode();
         let mut stdout = std::io::stdout();
         let _ = execute!(stdout, DisableMouseCapture, DisableBracketedPaste, crossterm::cursor::Show, LeaveAlternateScreen);
         let _ = stdout.flush();
         original_hook(info);
     }));
 
-    let args = Args::parse();
+    // Set up logging
+    logging::setup();
 
     // Auto-start Python backend if needed
     let backend_child = ensure_backend(
@@ -358,20 +399,31 @@ async fn main() {
 
     let mut app_state = app::App::new(provider, model, base_url, headless, bridge);
 
-    // Fetch available providers from the Python backend
-    match app_state.bridge.list_providers().await {
-        Ok(providers) => {
+    // Fetch available providers from the Python backend (with timeout)
+    match tokio::time::timeout(Duration::from_secs(5), app_state.bridge.list_providers()).await {
+        Ok(Ok(providers)) => {
             eprintln!("Loaded {} providers from backend", providers.len());
             app_state.available_providers = providers;
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             eprintln!("Warning: Could not fetch providers ({})", e);
+        }
+        Err(_) => {
+            eprintln!("Warning: Timeout fetching providers. Continuing with default providers.");
         }
     }
 
-    // Fetch available models
-    if let Ok(models) = app_state.bridge.list_models(None).await {
-        app_state.model_list = models;
+    // Fetch available models (with timeout)
+    match tokio::time::timeout(Duration::from_secs(5), app_state.bridge.list_models(None)).await {
+        Ok(Ok(models)) => {
+            app_state.model_list = models;
+        }
+        Ok(Err(_)) => {
+            // Silently skip models on error
+        }
+        Err(_) => {
+            // Silently skip models on timeout
+        }
     }
 
     // Apply saved theme
@@ -420,6 +472,7 @@ async fn main() {
         }
     }
 
+    // Set up terminal for TUI
     crossterm::terminal::enable_raw_mode().expect("Failed to enable raw mode");
     let mut stdout = std::io::stdout();
     let _ = execute!(stdout, EnterAlternateScreen, crossterm::cursor::Hide, EnableBracketedPaste, EnableMouseCapture);

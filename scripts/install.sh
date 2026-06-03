@@ -251,6 +251,12 @@ download_tui_binary() {
                 mkdir -p "$TERMINATOR_BIN_DIR"
                 cp "$built_bin" "$tui_bin"
                 chmod +x "$tui_bin"
+
+                # Re-sign the binary on macOS to avoid it being killed
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    codesign --force --deep --sign - "$tui_bin" 2>/dev/null || true
+                fi
+
                 info "TUI built and installed to $tui_bin"
                 cleanup_source
                 return 0
@@ -287,6 +293,12 @@ download_tui_binary() {
     cleanup_tmp
 
     chmod +x "$tui_bin"
+
+    # Re-sign the binary on macOS to avoid it being killed
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        codesign --force --deep --sign - "$tui_bin" 2>/dev/null || true
+    fi
+
     info "terminator TUI installed to $tui_bin"
 }
 
