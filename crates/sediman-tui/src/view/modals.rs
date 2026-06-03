@@ -1234,6 +1234,57 @@ pub fn render_search_mode_picker(buf: &mut CellBuffer, area: Rect, app: &App) {
     }
 }
 
+const BROWSER_MODES: &[&str] = &["headless", "headed"];
+
+pub fn render_browser_mode_picker(buf: &mut CellBuffer, area: Rect, app: &App) {
+    let t = &app.theme;
+    let count = BROWSER_MODES.len();
+    let modal_w: u16 = 40;
+    // Height: border(2) + top_pad(1) + title(1) + blank(1) + items + bottom_pad(1)
+    let modal_h = (6u16 + count as u16).min(area.height.saturating_sub(2));
+    let frame = ModalFrame::new(buf, area, app, modal_w, modal_h);
+    let inner_x = frame.inner_x;
+
+    // Border: rounded corners, TextMuted
+    let border_style = Style::new().fg(t.text_muted).bg(t.background);
+    draw_rounded_border(buf, frame.modal, border_style);
+
+    // Title
+    buf.draw_str(inner_x, frame.modal.y + 1, "Select Browser Mode",
+        Style::new().fg(t.primary).bg(t.background).add_modifier(TextAttributes::bold()));
+
+    // Items starting at y+3
+    let start_y = frame.modal.y + 3;
+    for (i, mode) in BROWSER_MODES.iter().enumerate() {
+        let row_y = start_y + i as u16;
+        let selected = i == app.browser_mode_picker_selected;
+        let is_current = (*mode == "headless" && app.headless) || (*mode == "headed" && !app.headless);
+
+        let label = match *mode {
+            "headless" => "headless - no browser window (faster)",
+            "headed" => "headed - show browser window",
+            _ => *mode,
+        };
+        let label_str = if is_current {
+            format!("{} (current)", label)
+        } else {
+            label.to_string()
+        };
+        let display = truncate_str(&label_str, frame.inner_w);
+
+        if selected {
+            for sx in (frame.modal.x + 1)..(frame.modal.right() - 1) {
+                buf.put_char(sx, row_y, ' ', Style::new().bg(t.primary).fg(t.background));
+            }
+            buf.draw_str(inner_x, row_y, display,
+                Style::new().bg(t.primary).fg(t.background).add_modifier(TextAttributes::bold()));
+        } else {
+            let fg = if is_current { t.secondary } else { t.text };
+            buf.draw_str(inner_x, row_y, display, Style::new().fg(fg).bg(t.background));
+        }
+    }
+}
+
 pub fn render_doctor_modal(
     buf: &mut CellBuffer,
     area: Rect,

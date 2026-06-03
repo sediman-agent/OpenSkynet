@@ -2,27 +2,9 @@ use sediman_tui_core::command::{Command, CommandCategory};
 
 use crate::app::App;
 
-pub async fn handle_browser(app: &mut App, args: &str) {
-    let args = args.trim().to_lowercase();
-    if args.is_empty() {
-        let mode = if app.headless { "headless" } else { "headed" };
-        app.add_system_message(format!("Browser mode: {}", mode));
-        app.add_system_message("Usage: /browser headless|headed".into());
-        return;
-    }
-    match args.as_str() {
-        "headless" => {
-            app.headless = true;
-            app.add_system_message("Switched to headless mode (next task)".into());
-        }
-        "headed" => {
-            app.headless = false;
-            app.add_system_message("Switched to headed mode (next task)".into());
-        }
-        _ => {
-            app.add_system_message("Usage: /browser headless|headed".into());
-        }
-    }
+pub async fn handle_browser(app: &mut App, _args: &str) {
+    app.browser_mode_picker_selected = if app.headless { 0 } else { 1 };
+    app.active_modal = Some(crate::app::AppModal::BrowserModePicker);
 }
 
 #[allow(dead_code)]

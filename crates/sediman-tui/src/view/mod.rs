@@ -54,6 +54,7 @@ pub fn render_into(buf: &mut CellBuffer, app: &mut App) {
             AppModal::ThemePicker => modals::render_theme_picker(buf, zones.main, app),
             AppModal::CoderPicker => modals::render_coder_picker(buf, zones.main, app),
             AppModal::SearchModePicker => modals::render_search_mode_picker(buf, zones.main, app),
+            AppModal::BrowserModePicker => modals::render_browser_mode_picker(buf, zones.main, app),
             AppModal::Doctor { checks, cursor, scroll, installing, install_output } => {
                 modals::render_doctor_modal(buf, zones.main, app, checks, *cursor, *scroll, (installing, install_output));
             }

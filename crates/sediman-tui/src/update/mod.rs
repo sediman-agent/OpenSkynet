@@ -154,6 +154,7 @@ async fn handle_modal_key(app: &mut App, key: crossterm::event::KeyEvent) -> boo
         Some(AppModal::ThemePicker) => handle_theme_picker(app, key).await,
         Some(AppModal::CoderPicker) => handle_coder_picker(app, key).await,
         Some(AppModal::SearchModePicker) => handle_search_mode_picker(app, key).await,
+        Some(AppModal::BrowserModePicker) => handle_browser_mode_picker(app, key).await,
         Some(AppModal::Doctor { .. }) => handle_doctor(app, key).await,
         Some(AppModal::Help { .. }) => handle_help_modal(app, key).await,
         Some(AppModal::Info { .. }) => handle_info_modal(app, key).await,

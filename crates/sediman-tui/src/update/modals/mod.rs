@@ -1,6 +1,7 @@
 //! Modal key handler modules.
 
 pub mod api_key_prompt;
+pub mod browser_mode_picker;
 pub mod coder_picker;
 pub mod connect_picker;
 pub mod doctor;
@@ -18,6 +19,7 @@ pub mod soul_editor;
 pub mod theme_picker;
 
 pub use api_key_prompt::handle_api_key_prompt;
+pub use browser_mode_picker::handle_browser_mode_picker;
 pub use coder_picker::handle_coder_picker;
 pub use connect_picker::handle_connect_picker;
 pub use doctor::handle_doctor;

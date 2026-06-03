@@ -3,7 +3,7 @@
 use crate::app::App;
 use crossterm::event::{KeyCode, KeyModifiers};
 
-const SEARCH_MODES: &[&str] = &["auto", "simple", "advanced"];
+pub const SEARCH_MODES: &[&str] = &["auto", "simple", "advanced"];
 
 /// Handle SearchModePicker modal key input.
 pub async fn handle_search_mode_picker(app: &mut App, key: crossterm::event::KeyEvent) -> bool {

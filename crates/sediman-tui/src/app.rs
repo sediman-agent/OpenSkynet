@@ -51,6 +51,7 @@ pub enum AppModal {
     ThemePicker,
     CoderPicker,
     SearchModePicker,
+    BrowserModePicker,
     Doctor {
         checks: Vec<DoctorCheck>,
         cursor: usize,
@@ -211,6 +212,8 @@ pub struct App {
     pub coder_picker_selected: usize,
     // Search mode picker state
     pub search_mode_picker_selected: usize,
+    // Browser mode picker state
+    pub browser_mode_picker_selected: usize,
     // Session browser state
     pub session_list: Vec<sediman_tui_bridge::SessionInfo>,
     pub session_selected: usize,
@@ -394,6 +397,7 @@ impl App {
             theme_picker_saved_name: String::new(),
             coder_picker_selected: 0,
             search_mode_picker_selected: 0,
+            browser_mode_picker_selected: 0,
             session_list: Vec::new(),
             session_selected: 0,
             session_scroll: 0,
