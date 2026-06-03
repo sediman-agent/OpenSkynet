@@ -18,6 +18,9 @@ _THREAT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"(?:api[_-]?key|token|secret|password|credential)\s*[:=]\s*\S{8,}", re.I), "credential_leak"),
     # Backdoor
     (re.compile(r"authorized_keys|~/\.ssh", re.I), "ssh_backdoor"),
+    # Shell injection
+    (re.compile(r"!`[^`]+`"), "shell_injection_backtick"),
+    (re.compile(r"\$\([^)]+\)"), "shell_injection_subshell"),
     # Destructive
     (re.compile(r"rm\s+-rf\s+/", re.I), "destructive_rm"),
     (re.compile(r"drop\s+table", re.I), "destructive_sql"),

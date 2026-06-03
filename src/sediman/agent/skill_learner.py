@@ -283,6 +283,7 @@ class SkillLearnerAgent:
 
     def _parse_response(self, text: str) -> dict[str, Any] | None:
         from sediman.utils import extract_json_from_text
+        from sediman.memory.security import scan_content
 
         data = extract_json_from_text(text)
         if data is None:
@@ -299,6 +300,14 @@ class SkillLearnerAgent:
                 return None
         if not isinstance(data["steps"], list) or len(data["steps"]) < 2:
             return None
+        for step in data["steps"]:
+            if not isinstance(step, str):
+                logger.debug("skill_learner_non_string_step", step=str(step)[:80])
+                return None
+            threats = scan_content(step)
+            if threats:
+                logger.warning("skill_step_rejected_security", threats=threats, step=step[:80])
+                return None
         return data
 
     async def _apply_evaluation(self, evaluation: dict[str, Any]) -> str | None:
@@ -323,20 +332,15 @@ class SkillLearnerAgent:
         if evaluation.get("should_patch"):
             existing = engine.read(name)
             if existing:
-                updates: dict[str, Any] = {
-                    "description": description,
-                    "steps": steps,
-                }
-                if when_to_use:
-                    updates["when_to_use"] = when_to_use
-                if pitfalls:
-                    updates["pitfalls"] = pitfalls
-                if verification:
-                    updates["verification"] = verification
-                patched = engine.patch(name, updates)
-                if patched:
-                    logger.info("skill_learned_patch", name=name, steps=len(steps), new_version=patched.get("version"))
-                    return name
+                old_steps = existing.get("steps", [])
+                logger.warning(
+                    "skill_patch_requires_confirmation",
+                    name=name,
+                    old_steps=old_steps,
+                    new_steps=steps,
+                    action="skipped_auto_patch",
+                )
+                return None
         else:
             existing = engine.read(name)
             if existing:
@@ -346,17 +350,13 @@ class SkillLearnerAgent:
             similar_results = await engine.find_similar(f"{name} {description}")
             if similar_results:
                 similar = similar_results[0]
-                logger.info("skill_similar_found", new_name=name, similar_to=similar.get("name"), action="merging_into_similar")
-                updates = {"description": description, "steps": steps}
-                if when_to_use:
-                    updates["when_to_use"] = when_to_use
-                if pitfalls:
-                    updates["pitfalls"] = pitfalls
-                if verification:
-                    updates["verification"] = verification
-                patched = engine.patch(similar["name"], updates)
-                if patched:
-                    return similar["name"]
+                logger.warning(
+                    "skill_similar_merge_requires_confirmation",
+                    new_name=name,
+                    similar_to=similar.get("name"),
+                    action="skipped_auto_merge",
+                )
+                return None
 
             engine.create(
                 name=name,

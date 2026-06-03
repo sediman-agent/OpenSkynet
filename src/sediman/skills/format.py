@@ -177,6 +177,7 @@ class SkillData:
     last_error: str | None = None
     execution_count: int = 0
     avg_duration_ms: int | None = None
+    trusted: bool = False
 
     def to_json(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -236,6 +237,8 @@ class SkillData:
             d["execution_count"] = self.execution_count
         if self.avg_duration_ms is not None:
             d["avg_duration_ms"] = self.avg_duration_ms
+        if self.trusted:
+            d["trusted"] = True
         return d
 
     def to_skill_md(self) -> str:
@@ -471,6 +474,7 @@ def parse_skill_json(content: str) -> SkillData | None:
         last_error=data.get("last_error"),
         execution_count=data.get("execution_count", 0),
         avg_duration_ms=data.get("avg_duration_ms"),
+        trusted=data.get("trusted", False),
     )
 
 
