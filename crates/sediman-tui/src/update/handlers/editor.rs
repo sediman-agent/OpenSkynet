@@ -3,26 +3,26 @@
 use crate::app::App;
 use crossterm::event::{KeyCode, KeyModifiers};
 
-/// Scroll up by a specified amount.
+/// Scroll up by a specified amount (show older content).
 fn scroll_up(app: &mut App, amount: u16) {
     // Calculate total visible lines from messages
     let total_lines = app.messages.len() as u16 * 3; // Rough estimate: ~3 lines per message
     let running_lines = if app.agent_running { 5 } else { 0 };
     let total_content = total_lines + running_lines + 20; // +20 for result content
 
-    let new_offset = app.scroll_offset.saturating_sub(amount).min(total_content);
+    let new_offset = app.scroll_offset.saturating_add(amount).min(total_content);
     app.scroll_offset = new_offset;
     app.auto_scroll = false;
 }
 
-/// Scroll down by a specified amount.
+/// Scroll down by a specified amount (show newer content).
 fn scroll_down(app: &mut App, amount: u16) {
     // Calculate total visible lines from messages
     let total_lines = app.messages.len() as u16 * 3; // Rough estimate
     let running_lines = if app.agent_running { 5 } else { 0 };
     let total_content = total_lines + running_lines + 20;
 
-    let new_offset = app.scroll_offset.saturating_add(amount).min(total_content);
+    let new_offset = app.scroll_offset.saturating_sub(amount).min(total_content);
     app.scroll_offset = new_offset;
     app.auto_scroll = false;
 }

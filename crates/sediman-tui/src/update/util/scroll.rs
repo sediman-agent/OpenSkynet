@@ -23,15 +23,15 @@ fn calculate_total_content(app: &App) -> u16 {
     message_lines + running_lines + streaming_lines + 10 // +10 for padding
 }
 
-/// Scroll up by a specified amount.
+/// Scroll up by a specified amount (show older content).
 pub fn scroll_up(app: &mut App, amount: u16) {
-    app.scroll_offset = app.scroll_offset.saturating_sub(amount);
+    let max = calculate_total_content(app);
+    app.scroll_offset = (app.scroll_offset + amount).min(max);
     app.auto_scroll = false;
 }
 
-/// Scroll down by a specified amount.
+/// Scroll down by a specified amount (show newer content).
 pub fn scroll_down(app: &mut App, amount: u16) {
-    let max = calculate_total_content(app);
-    app.scroll_offset = (app.scroll_offset + amount).min(max);
+    app.scroll_offset = app.scroll_offset.saturating_sub(amount);
     app.auto_scroll = false;
 }
