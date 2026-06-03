@@ -17,6 +17,7 @@ mod interrupt;
 mod logging;
 mod gpu_app;
 mod config;
+mod updater;
 
 #[derive(Parser, Debug)]
 #[command(name = "openskynet", about = "OpenSkynet — Your AI browser employee", version)]
@@ -220,6 +221,75 @@ async fn which_exists(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Spawn a background task to check for updates if the check is due.
+fn spawn_update_check_if_due(config: &crate::config::TuiConfig) {
+    use std::time::Duration;
+
+    let frequency = config.update_frequency.as_str();
+    if frequency == "never" {
+        return;
+    }
+
+    let last_check = config.last_update_check.as_deref();
+
+    // Parse the last check timestamp
+    let last_check_time = last_check.and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    });
+
+    let now = chrono::Utc::now();
+    let should_check = match frequency {
+        "always" => true,
+        "daily" => {
+            match last_check_time {
+                Some(last) => now.signed_duration_since(last).num_days() >= 1,
+                None => true,
+            }
+        }
+        "weekly" => {
+            match last_check_time {
+                Some(last) => now.signed_duration_since(last).num_days() >= 7,
+                None => true,
+            }
+        }
+        _ => false,
+    };
+
+    if !should_check {
+        return;
+    }
+
+    // Spawn the update check task
+    tokio::spawn(async move {
+        // Wait a bit to avoid slowing down startup
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        match crate::updater::check_for_update().await {
+            Ok(Some(release)) => {
+                // Update available - show toast notification
+                // For now, we'll just log it since we don't have access to the app
+                eprintln!("Update available: {} -> {}", env!("CARGO_PKG_VERSION"), release.version());
+
+                // Save the check timestamp
+                let mut config = crate::config::TuiConfig::load();
+                config.last_update_check = Some(chrono::Utc::now().to_rfc3339());
+                let _ = config.save();
+            }
+            Ok(None) => {
+                // No update available - still save the check timestamp
+                let mut config = crate::config::TuiConfig::load();
+                config.last_update_check = Some(chrono::Utc::now().to_rfc3339());
+                let _ = config.save();
+            }
+            Err(e) => {
+                eprintln!("Update check failed: {}", e);
+            }
+        }
+    });
+}
+
 #[tokio::main]
 async fn main() {
     logging::setup();
@@ -273,6 +343,9 @@ async fn main() {
     // Load persisted config
     let saved_config = crate::config::TuiConfig::load();
     let headless = if args.headless { true } else { saved_config.headless };
+
+    // Spawn background update check if enabled (must be before any fields are moved)
+    spawn_update_check_if_due(&saved_config);
 
     let mut app_state = app::App::new(args.provider, args.model, args.base_url, headless, bridge);
 

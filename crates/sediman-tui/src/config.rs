@@ -37,6 +37,14 @@ pub struct TuiConfig {
     /// Search mode: "auto", "simple", "advanced"
     #[serde(default = "default_search_mode")]
     pub search_mode: String,
+
+    /// Update check frequency: "always", "daily", "weekly", "never"
+    #[serde(default = "default_update_frequency")]
+    pub update_frequency: String,
+
+    /// Last update check timestamp (ISO 8601 string)
+    #[serde(default)]
+    pub last_update_check: Option<String>,
 }
 
 fn default_theme() -> String { "default".into() }
@@ -45,6 +53,7 @@ fn default_side_tab() -> String { "Status".into() }
 fn default_headless() -> bool { true }
 fn default_coder_backend() -> String { "internal".into() }
 fn default_search_mode() -> String { "auto".into() }
+pub fn default_update_frequency() -> String { "daily".into() }
 
 impl Default for TuiConfig {
     fn default() -> Self {
@@ -56,6 +65,8 @@ impl Default for TuiConfig {
             headless: default_headless(),
             coder_backend: default_coder_backend(),
             search_mode: default_search_mode(),
+            update_frequency: default_update_frequency(),
+            last_update_check: None,
         }
     }
 }
@@ -120,6 +131,8 @@ mod tests {
             headless: false,
             coder_backend: "internal".into(),
             search_mode: "auto".into(),
+            update_frequency: "weekly".into(),
+            last_update_check: Some("2024-01-01T00:00:00Z".into()),
         };
         let toml_str = toml::to_string_pretty(&config).unwrap();
         let parsed: TuiConfig = toml::from_str(&toml_str).unwrap();

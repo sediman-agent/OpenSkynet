@@ -134,6 +134,9 @@ pub async fn handle_slash(app: &mut App, input: &str) {
         "doctor" => {
             crate::commands::doctor::handle_doctor(app, rest).await;
         }
+        "update" | "upgrade" => {
+            crate::commands::update::handle_update(app, rest).await;
+        }
 
         _ => {
             app.add_error_message(format!("Unknown command: /{}", cmd));

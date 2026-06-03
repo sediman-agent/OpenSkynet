@@ -34,6 +34,8 @@ pub fn save_config_now(app: &App) {
         headless: app.headless,
         coder_backend: app.coder_backend.clone(),
         search_mode: app.search_mode.clone(),
+        update_frequency: crate::config::default_update_frequency(),
+        last_update_check: None,
     };
     if let Err(e) = config.save() {
         eprintln!("Warning: {}", e);

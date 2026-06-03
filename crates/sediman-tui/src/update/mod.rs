@@ -97,6 +97,8 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                 app.model_dialog_filter.push_str(single_line);
                 app.model_dialog_model_idx = 0;
                 app.model_dialog_scroll = 0;
+            } else if matches!(app.active_modal, Some(AppModal::UpdateAvailable { .. })) {
+                // Ignore paste in update modal
             } else {
                 let line_count = text.lines().count();
                 if line_count > 1 {
@@ -158,6 +160,7 @@ async fn handle_modal_key(app: &mut App, key: crossterm::event::KeyEvent) -> boo
         Some(AppModal::Doctor { .. }) => handle_doctor(app, key).await,
         Some(AppModal::Help { .. }) => handle_help_modal(app, key).await,
         Some(AppModal::Info { .. }) => handle_info_modal(app, key).await,
+        Some(AppModal::UpdateAvailable { .. }) => handle_update_available_modal(app, key).await,
         None => false,
     }
 }
@@ -170,4 +173,133 @@ async fn handle_shell(app: &mut App, cmd: &str) {
 
     app.add_system_message(format!("$ {}", cmd));
     crate::shell::run_shell_command(app, cmd).await;
+}
+
+/// Handle key input for the update available modal.
+async fn handle_update_available_modal(app: &mut App, key: crossterm::event::KeyEvent) -> bool {
+    use crossterm::event::KeyCode;
+
+    let modal = app.active_modal.clone();
+    if let Some(AppModal::UpdateAvailable {
+        version,
+        selected,
+        show_notes,
+        notes_scroll,
+        installing,
+        ..
+    }) = modal
+    {
+        if installing {
+            // Don't allow interaction during installation
+            return true;
+        }
+
+        match key.code {
+            KeyCode::Esc => {
+                app.active_modal = None;
+                true
+            }
+            KeyCode::Enter => {
+                match selected {
+                    0 => {
+                        // Update Now - start installation
+                        app.active_modal = Some(AppModal::UpdateAvailable {
+                            version: version.clone(),
+                            release_notes: String::new(),
+                            current_version: String::new(),
+                            selected,
+                            show_notes,
+                            notes_scroll,
+                            installing: true,
+                            install_progress: "Downloading update...".to_string(),
+                        });
+
+                        let app_ref = unsafe { &mut *(app as *const _ as *mut App) };
+                        let version_clone = version.clone();
+
+                        tokio::spawn(async move {
+                            match crate::updater::install_update(&version_clone).await {
+                                Ok(()) => {
+                                    app_ref.show_toast("Update installed! Restarting...".to_string());
+                                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                                    // Restart the application
+                                    std::process::Command::new(
+                                        std::env::current_exe().unwrap()
+                                    ).spawn().expect("Failed to restart");
+                                }
+                                Err(e) => {
+                                    app_ref.show_toast(format!("Update failed: {}", e));
+                                    app_ref.active_modal = None;
+                                }
+                            }
+                        });
+                    }
+                    1 => {
+                        // Skip - close modal
+                        app.active_modal = None;
+                    }
+                    2 => {
+                        // View Release Notes - toggle notes display
+                        app.active_modal = Some(AppModal::UpdateAvailable {
+                            version,
+                            release_notes: String::new(),
+                            current_version: String::new(),
+                            selected,
+                            show_notes: !show_notes,
+                            notes_scroll,
+                            installing,
+                            install_progress: String::new(),
+                        });
+                    }
+                    _ => {}
+                }
+                true
+            }
+            KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
+                // Move selection between options
+                let new_selected = if key.code == KeyCode::Left || key.code == KeyCode::Tab {
+                    if selected == 0 { 2 } else { selected - 1 }
+                } else {
+                    if selected == 2 { 0 } else { selected + 1 }
+                };
+                if let Some(AppModal::UpdateAvailable { version, .. }) = &app.active_modal {
+                    app.active_modal = Some(AppModal::UpdateAvailable {
+                        version: version.clone(),
+                        release_notes: String::new(),
+                        current_version: String::new(),
+                        selected: new_selected,
+                        show_notes,
+                        notes_scroll,
+                        installing,
+                        install_progress: String::new(),
+                    });
+                }
+                true
+            }
+            KeyCode::Up | KeyCode::Down if show_notes => {
+                // Scroll release notes
+                let new_scroll = if key.code == KeyCode::Up {
+                    notes_scroll.saturating_sub(1)
+                } else {
+                    notes_scroll + 1
+                };
+                if let Some(AppModal::UpdateAvailable { version, .. }) = &app.active_modal {
+                    app.active_modal = Some(AppModal::UpdateAvailable {
+                        version: version.clone(),
+                        release_notes: String::new(),
+                        current_version: String::new(),
+                        selected,
+                        show_notes,
+                        notes_scroll: new_scroll,
+                        installing,
+                        install_progress: String::new(),
+                    });
+                }
+                true
+            }
+            _ => false,
+        }
+    } else {
+        false
+    }
 }

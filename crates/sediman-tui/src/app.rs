@@ -64,6 +64,16 @@ pub enum AppModal {
         lines: Vec<ModalLine>,
         scroll: u16,
     },
+    UpdateAvailable {
+        version: String,
+        release_notes: String,
+        current_version: String,
+        selected: usize,
+        show_notes: bool,
+        notes_scroll: u16,
+        installing: bool,
+        install_progress: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -780,6 +790,8 @@ pub async fn run(
         headless: app.headless,
         coder_backend: app.coder_backend.clone(),
         search_mode: app.search_mode.clone(),
+        update_frequency: crate::config::default_update_frequency(),
+        last_update_check: None,
     };
     if let Err(e) = config.save() {
         eprintln!("Warning: {}", e);

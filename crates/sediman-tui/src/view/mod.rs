@@ -61,6 +61,9 @@ pub fn render_into(buf: &mut CellBuffer, app: &mut App) {
             AppModal::Info { title, lines, scroll } => {
                 modals::render_info_modal(buf, zones.main, app, title, lines, *scroll);
             }
+            AppModal::UpdateAvailable { .. } => {
+                modals::render_update_available_modal(buf, zones.main, app);
+            }
         }
     }
 

@@ -1503,3 +1503,154 @@ pub fn render_memory_menu(buf: &mut CellBuffer, area: Rect, app: &App) {
             Style::new().fg(t.text_muted));
     }
 }
+
+/// Render the update available modal.
+pub fn render_update_available_modal(buf: &mut CellBuffer, area: Rect, app: &App) {
+    let t = &app.theme;
+
+    if let Some(AppModal::UpdateAvailable {
+        ref version,
+        ref release_notes,
+        ref current_version,
+        ref selected,
+        ref show_notes,
+        ref notes_scroll,
+        ref installing,
+        ref install_progress,
+    }) = app.active_modal
+    {
+        const NUM_VISIBLE_NOTES: usize = 15;
+        const NOTES_WIDTH: u16 = 70;
+
+        let notes_lines: Vec<String> = if *show_notes {
+            release_notes.lines().map(|s| s.to_string()).collect()
+        } else {
+            vec![]
+        };
+
+        let modal_w = if *show_notes {
+            (area.width as usize * 9 / 10).clamp(NOTES_WIDTH as usize, 90) as u16
+        } else {
+            60
+        };
+
+        let content_h = if *show_notes {
+            (notes_lines.len() as u16).min(NUM_VISIBLE_NOTES as u16)
+        } else {
+            0
+        };
+
+        let base_h = if *installing { 8 } else { 10 };
+        let modal_h = base_h + content_h + 2;
+
+        let frame = ModalFrame::new(buf, area, app, modal_w, modal_h);
+        let inner_x = frame.inner_x;
+        let inner_w = frame.inner_w;
+        let mut y = frame.modal.y + 2;
+
+        let border_style = Style::new().fg(t.secondary);
+        frame.draw_border(buf, border_style, border_style);
+
+        // Title
+        let title = if *installing { " Installing Update " } else { " Update Available " };
+        frame.draw_title(buf, title, Style::new()
+            .fg(t.secondary).bg(t.background).add_modifier(TextAttributes::bold()));
+
+        frame.draw_close_hint(buf, " Esc to close ", Style::new().fg(t.text_muted).bg(t.background));
+
+        // Version info
+        if !installing {
+            buf.draw_str(inner_x, y, "Current: ",
+                Style::new().fg(t.text_muted).bg(t.background));
+            buf.draw_str(inner_x + 9, y, current_version,
+                Style::new().fg(t.text).bg(t.background).add_modifier(TextAttributes::bold()));
+            y += 1;
+
+            buf.draw_str(inner_x, y, "Latest:  ",
+                Style::new().fg(t.text_muted).bg(t.background));
+            buf.draw_str(inner_x + 9, y, version,
+                Style::new().fg(t.accent).bg(t.background).add_modifier(TextAttributes::bold()));
+            y += 2;
+        } else {
+            // Installation progress
+            buf.draw_str(inner_x, y, "Installing update...",
+                Style::new().fg(t.primary).bg(t.background).add_modifier(TextAttributes::bold()));
+            y += 1;
+
+            let progress_display = truncate_str(install_progress, inner_w);
+            buf.draw_str(inner_x, y, progress_display,
+                Style::new().fg(t.text).bg(t.background));
+            y += 2;
+        }
+
+        // Release notes
+        if *show_notes && !installing {
+            let notes_header = "Release Notes:";
+            buf.draw_str(inner_x, y, notes_header,
+                Style::new().fg(t.secondary).bg(t.background).add_modifier(TextAttributes::bold()));
+            y += 1;
+
+            let notes_scroll = *notes_scroll as usize;
+            let end_line = (notes_scroll + NUM_VISIBLE_NOTES).min(notes_lines.len());
+
+            for (_i, line) in notes_lines.iter().enumerate().skip(notes_scroll).take(end_line - notes_scroll) {
+                if y >= frame.modal.bottom() - 2 { break; }
+
+                let display = truncate_str(line, inner_w.saturating_sub(2) as usize);
+                buf.draw_str(inner_x + 1, y, display, Style::new().fg(t.text).bg(t.background));
+                y += 1;
+            }
+
+            // Scroll indicator
+            if notes_lines.len() > NUM_VISIBLE_NOTES {
+                let pct = if notes_lines.len() > NUM_VISIBLE_NOTES {
+                    (notes_scroll * 100) / (notes_lines.len() - NUM_VISIBLE_NOTES)
+                } else {
+                    0
+                };
+                let indicator = format!(" {}% ", pct.min(100));
+                let ix = frame.modal.right().saturating_sub(display_width(&indicator) + 2);
+                let iy = frame.modal.bottom() - 2;
+                buf.draw_str(ix, iy, &indicator, Style::new().fg(t.text_muted).bg(t.background));
+            }
+
+            y += 1;
+        }
+
+        // Action buttons
+        if !installing {
+            let options = ["Update Now", "Skip", "Release Notes"];
+            let button_start_x = inner_x + inner_w.saturating_sub(options.len() * 12 + (options.len() - 1) * 2) as u16;
+            let mut x = button_start_x;
+
+            for (i, option) in options.iter().enumerate() {
+                let is_selected = i == *selected;
+                let style = if is_selected {
+                    Style::new().fg(t.background).bg(t.secondary).add_modifier(TextAttributes::bold())
+                } else {
+                    Style::new().fg(t.secondary).bg(t.background)
+                };
+
+                let btn_text = if is_selected {
+                    format!("[ {} ]", option)
+                } else {
+                    format!("  {}  ", option)
+                };
+
+                buf.draw_str(x, y, &btn_text, style);
+                x += option.len() as u16 + 4;
+            }
+        }
+
+        // Footer hints
+        let footer_y = frame.modal.bottom() - 2;
+        let hint = if *installing {
+            "Please wait...".to_string()
+        } else if *show_notes {
+            "\u{2191}\u{2193}: scroll | Enter: confirm | Esc: close".to_string()
+        } else {
+            "\u{2190}\u{2192}/Tab: choose | Enter: confirm | Esc: close".to_string()
+        };
+        buf.draw_str(inner_x, footer_y, &hint, Style::new().fg(t.text_muted).bg(t.background));
+    }
+}
