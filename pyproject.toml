@@ -63,6 +63,7 @@ dependencies = [
     "slack-sdk>=3.42.0",
     "pywa>=3.9.0",
     "lark-oapi>=1.6.8",
+    "python-magic>=0.4.27",
 ]
 
 [project.scripts]

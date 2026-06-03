@@ -119,6 +119,12 @@ class SlackIntegration(Integration):
         if not self._adapter:
             self._adapter = SlackAdapter()
 
+        # Set message handler if gateway runner is available
+        from sediman.integrations import get_gateway_runner
+        gateway_runner = get_gateway_runner()
+        if gateway_runner and hasattr(self._adapter, "set_message_handler"):
+            self._adapter.set_message_handler(gateway_runner.handle_message)
+
         if not self._listener:
             self._listener = SlackListener(
                 bot_token=token,
