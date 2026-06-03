@@ -124,6 +124,9 @@ class AgentLoop:
                 self._memory = HyMemoryStrategy(llm_provider=llm_provider)
             else:
                 self._memory = FileMemoryStrategy()
+        else:
+            # Use the provided memory strategy
+            self._memory = memory
 
         if isinstance(self._memory, FileMemoryStrategy):
             self._memory.set_llm(llm_provider)
