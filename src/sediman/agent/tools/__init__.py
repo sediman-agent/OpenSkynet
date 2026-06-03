@@ -67,6 +67,7 @@ def create_agent_tool_registry(toolsets: list[str] | None = None) -> ToolRegistr
         _handle_web_extract,
         _handle_web_search,
     )
+    from .orchestrate import _handle_search_orchestrate
     from .terminal import _handle_terminal
     from .fileops import (
         _handle_list_files,
@@ -168,6 +169,25 @@ def create_agent_tool_registry(toolsets: list[str] | None = None) -> ToolRegistr
             toolset="web",
         ),
         _handle_web_search,
+    )
+
+    registry.register(
+        ToolDefinition(
+            name="search_orchestrate",
+            description="Execute complex search pipelines using Python code with SearchSDK. Use for multi-step research, cross-referencing, or structured extraction tasks. Provides parallel search, deterministic filtering, structured extraction, and state persistence.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "Python code using SearchSDK. Available: sdk.retrieve.web/web_many(), sdk.filter.dedupe/by_domain/by_regex/by_keyword(), sdk.extract.extract_many/extract_one(), sdk.state.save/load/list()",
+                    },
+                },
+                "required": ["code"],
+            },
+            toolset="search",
+        ),
+        _handle_search_orchestrate,
     )
 
     registry.register(
