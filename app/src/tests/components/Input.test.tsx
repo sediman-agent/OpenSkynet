@@ -32,12 +32,12 @@ describe('Input Component', () => {
     render(<Input disabled />);
     const input = screen.getByRole('textbox');
     expect(input).toBeDisabled();
-    expect(input).toHaveClass('opacity-50');
+    expect(input).toHaveClass('disabled:opacity-50');
   });
 
   it('renders as password input', () => {
     render(<Input type="password" />);
-    const input = screen.getByRole('textbox');
+    const input = screen.getByDisplayValue('');
     expect(input).toHaveAttribute('type', 'password');
   });
 

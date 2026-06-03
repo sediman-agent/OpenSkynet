@@ -13,7 +13,17 @@ export default {
     '!src/vite-env.d.ts',
     '!src/tests/**',
   ],
+  transform: {
+    '^.+\\.(ts|tsx)$': ['ts-jest', {
+      tsconfig: {
+        jsx: 'react-jsx',
+      },
+    }],
+  },
   transformIgnorePatterns: [
-    '/node_modules/(?!(react-markdown|remark-gfm|rehype-highlight)/)',
+    '/node_modules/(?!(.+?/node_modules)?(@tauri-apps|@radix-ui|zustand|framer-motion|lucide-react|class-variance-authority|clsx|tailwind-merge|react-markdown|remark-gfm|rehype-highlight|sonner|cmdk))/',
   ],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+  },
 };

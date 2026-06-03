@@ -47,6 +47,7 @@ from sediman.agent.progress import (
     generate_milestones_prompt,
     parse_milestones,
 )
+from sediman.agent.streaming import ThinkTagParser
 from sediman.browser.session import BrowserSession
 from sediman.llm.provider import LLMProvider
 from sediman.memory.strategy import BaseMemoryStrategy
@@ -56,6 +57,11 @@ from sediman.config import AGENT_STATE_FILE, MEMORY_SYSTEM
 logger = structlog.get_logger()
 
 import re as _re
+
+# Regex to strip <think>...</think> tags from LLM responses.
+# Capturing group (.*?) extracts inner content for fallback when
+# the entire response is wrapped in think tags.
+_STRIP_THINK_TAGS_RE = _re.compile(r"<think\b[^>]*>(.*?)</think\s*>", _re.DOTALL)
 
 _AGENT_STATE_FILE = AGENT_STATE_FILE
 
@@ -472,13 +478,21 @@ class AgentLoop:
                 response_text = plan.response
             if not _planning_streamed or not plan.response:
                 await self._stream_text_async(response_text, phase="responding")
+            # Strip <think>...</think> tags for conversation storage and result
+            # so the Response tab shows clean text and conversation history
+            # doesn't waste tokens on model reasoning tags.
+            clean_text = _STRIP_THINK_TAGS_RE.sub("", response_text).strip()
+            if not clean_text:
+                # Entire response was in think tags — use the inner content
+                think_parts = _STRIP_THINK_TAGS_RE.findall(response_text)
+                clean_text = " ".join(p.strip() for p in think_parts if p.strip()) if think_parts else response_text
             self._conversation.append({"role": "user", "content": task})
-            self._conversation.append({"role": "assistant", "content": response_text})
+            self._conversation.append({"role": "assistant", "content": clean_text})
             if len(self._conversation) > self.max_conversation:
                 self._conversation = self._conversation[-self.max_conversation:]
             return AgentResult(
                 task=task,
-                result=response_text,
+                result=clean_text,
                 strategy_used="conversational",
             )
 
@@ -1598,20 +1612,12 @@ class AgentLoop:
             logger.debug("stream_text_callback_failed")
 
     async def _stream_text_async(self, text: str, phase: str = "responding") -> None:
-        """Stream text token-by-token for smooth TUI rendering."""
-        import asyncio
-
+        """Stream text token-by-token for smooth TUI rendering with think tag parsing."""
         if not self.on_streaming_text or not text:
             return
-        chunk_size = 3
-        for i in range(0, len(text), chunk_size):
-            chunk = text[i:i + chunk_size]
-            try:
-                self.on_streaming_text(chunk, phase)
-            except Exception:
-                logger.debug("stream_text_async_callback_failed")
-            if i > 0 and i % 18 == 0:
-                await asyncio.sleep(0)
+
+        parser = ThinkTagParser(on_streaming_text=self.on_streaming_text)
+        await parser.parse_and_stream(text, phase)
 
     def _build_step_events(self, state: AgentState) -> list[StepEvent]:
         events = []
@@ -1636,26 +1642,39 @@ class AgentLoop:
         """Generate a conversational response when the plan doesn't provide one."""
         import asyncio
         try:
-            system_msg = "You are Terminator, a helpful AI browser automation agent powered by OpenSkynet. Always respond conversationally and naturally. Be concise but friendly - never leave a response empty or blank. If the user sends a greeting, acknowledge it warmly. If they thank you, respond politely. If they send an acknowledgment like 'good' or 'ok', ask how you can help next. Keep responses under 2 sentences unless more detail is needed."
-            messages = [
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": task},
-            ]
+            # Build a more context-aware system message
+            system_msg = """You are Terminator, a helpful AI automation agent powered by OpenSkynet.
+
+Your role:
+- Help with browser automation, web scraping, form filling, data extraction
+- Execute code tasks (installing packages, running scripts, building projects)
+- Schedule recurring tasks
+- Engage in friendly, natural conversation
+
+Guidelines:
+- Be warm and conversational but get to the point
+- For greetings: acknowledge warmly and ask how you can help
+- For thanks: respond politely and offer further assistance
+- For acknowledgments ("good", "ok"): acknowledge and ask what's next
+- For questions about capabilities: explain what you can do briefly
+- Keep responses under 3 sentences typically
+- Never leave a response empty or just "ok" - add value
+- Use conversation context to maintain continuity"""
+
+            messages = [{"role": "system", "content": system_msg}]
+
             # Include recent conversation context for continuity
             if conversation and len(conversation) > 0:
                 recent_convo = conversation[-6:]  # Last 3 exchanges
-                messages = [
-                    {"role": "system", "content": system_msg},
-                ]
                 messages.extend(recent_convo)
-                messages.append({"role": "user", "content": task})
+
+            messages.append({"role": "user", "content": task})
 
             response = await asyncio.wait_for(
                 self.llm.chat(messages=messages, tools=[]),
                 timeout=10.0
             )
-            # Ensure we always return a non-empty response
-            result_text = response.text or "I'm here to help! What can I assist you with today?"
+            result_text = response.text or ""
             if not result_text.strip():
                 return "I'm here and ready to help! What would you like me to do?"
             return result_text
@@ -1663,28 +1682,44 @@ class AgentLoop:
             logger.debug("conversational_response_failed", error=str(e))
             # Provide contextual fallbacks based on the task
             task_lower = task.lower()
+
+            # Check conversation context for better responses
+            if conversation and len(conversation) > 0:
+                last_msg = conversation[-1].get("content", "").lower() if conversation[-1].get("role") == "assistant" else ""
+
+            # Greetings
             if any(greeting in task_lower for greeting in ["hi", "hello", "hey", "greetings"]):
-                return "Hello! How can I help you today?"
+                return "Hello! I'm Terminator, your AI automation assistant. I can help with browser tasks, web scraping, code execution, and more. What would you like to work on?"
             elif any(q in task_lower for q in ["how are you", "how do you do"]):
-                return "I'm doing well, thanks for asking! I'm ready to help with any browser automation or web-based tasks you have."
-            elif any(q in task_lower for q in ["what can you do", "help me", "capabilities"]):
-                return "I can help with browser automation, web scraping, filling forms, clicking buttons, extracting data from websites, and more. Just tell me what you need!"
+                return "I'm running at full capacity and ready to help! What can I do for you today?"
+
+            # Capabilities
+            elif any(q in task_lower for q in ["what can you do", "help me", "capabilities", "what are you"]):
+                return "I'm Terminator, an AI agent that automates browsers, runs code, installs packages, fills forms, extracts data, and schedules recurring tasks. Just tell me what you need!"
+
+            # Gratitude
             elif "thank" in task_lower or "thanks" in task_lower:
-                return "You're welcome! Let me know if you need anything else."
+                return "You're welcome! I'm here whenever you need help with automation or coding tasks."
+
+            # Acknowledgments
             elif any(ack in task_lower for ack in ["good", "great", "ok", "okay", "nice", "cool", "perfect", "excellent"]):
-                # Acknowledgment responses
-                if len(task_lower) < 10:  # Single word acknowledgment
-                    return "Great! Is there anything specific you'd like me to help you with?"
-                else:
-                    return f"Thanks for letting me know! How can I assist you further?"
-            elif any(ack in task_lower for ack in ["yes", "yeah", "yep", "sure", "alright", "right"]):
-                return "Got it! What would you like me to do?"
-            elif any(ack in task_lower for ack in ["no", "nope", "nah"]):
-                return "No problem. Let me know if there's anything else I can help with."
-            elif task_lower.strip() == "." or task_lower.strip() == "..":
-                return "I'm here and ready to help! What would you like me to do?"
+                return "Glad that helps! Is there anything else you'd like me to automate or work on?"
+            elif any(ack in task_lower for ack in ["yes", "yeah", "yep", "sure", "alright", "right", "correct"]):
+                return "Got it! What's the next task you'd like me to handle?"
+            elif any(ack in task_lower for ack in ["no", "nope", "nah", "not"]):
+                return "Understood. Let me know if there's anything else I can help with!"
+
+            # Empty/minimal input
+            elif task_lower.strip() in [".", "..", "..."] or len(task_lower.strip()) < 3:
+                return "I'm ready to help! Tell me what you'd like me to do - automate a browser task, run some code, or anything else."
+
+            # Default: show understanding and ask for clarification if needed
             else:
-                return f"I understand you're asking about: \"{task}\". Could you provide more details about what you'd like me to help you with?"
+                # If it's clearly a request for something specific but we're not sure what
+                if len(task_lower) > 50:
+                    return f"I understand you're asking about \"{task[:50]}...\". To help you best, could you clarify if this involves browser automation, code execution, or something else?"
+                else:
+                    return f"I can help with \"{task}\". Should I handle this through browser automation, code execution, or another approach?"
 
 
 

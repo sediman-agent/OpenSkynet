@@ -1,62 +1,20 @@
 import { useState } from 'react';
-import { Search, Download, Trash2, Bug, Info, AlertTriangle, AlertCircle } from 'lucide-react';
+import { Download, Trash2, Bug, Info, AlertTriangle, AlertCircle, FileText, Search } from 'lucide-react';
+import { PageHeader } from '@/components/shared/PageHeader';
 import { Button } from '@/components/shared/Button';
 import { Input } from '@/components/shared/Input';
+import { Card } from '@/components/shared/Card';
 import { ScrollArea } from '@/components/shared/ScrollArea';
-import { cn } from '@/lib/utils';
+import { StatusBadge } from '@/components/shared/StatusBadge';
 import { type LogEntry } from '@/types';
 
-// Mock logs data
-const mockLogs: LogEntry[] = [
-  {
-    id: '1',
-    level: 'info',
-    message: 'Application started successfully',
-    timestamp: new Date('2024-01-15T10:30:00'),
-    source: 'app',
-  },
-  {
-    id: '2',
-    level: 'debug',
-    message: 'Connecting to RPC server at ws://localhost:8765',
-    timestamp: new Date('2024-01-15T10:30:01'),
-    source: 'rpc',
-  },
-  {
-    id: '3',
-    level: 'info',
-    message: 'Browser session initialized',
-    timestamp: new Date('2024-01-15T10:30:02'),
-    source: 'browser',
-  },
-  {
-    id: '4',
-    level: 'warning',
-    message: 'Slow response from LLM API (>5s latency detected)',
-    timestamp: new Date('2024-01-15T10:30:15'),
-    source: 'llm',
-  },
-  {
-    id: '5',
-    level: 'error',
-    message: 'Failed to navigate to page: timeout after 30s',
-    timestamp: new Date('2024-01-15T10:30:30'),
-    source: 'browser',
-  },
-  {
-    id: '6',
-    level: 'info',
-    message: 'Task completed successfully',
-    timestamp: new Date('2024-01-15T10:31:00'),
-    source: 'agent',
-  },
-];
-
 export function LogsPage() {
-  const [logs, setLogs] = useState<LogEntry[]>(mockLogs);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [levelFilter, setLevelFilter] = useState<'all' | 'info' | 'warning' | 'error' | 'debug'>('all');
 
+  // TODO: Load real logs from backend
+  // For now, empty state
   const filteredLogs = logs.filter((log) => {
     const matchesSearch =
       log.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -68,33 +26,17 @@ export function LogsPage() {
     return matchesSearch && matchesLevel;
   });
 
-  const getLevelStyles = (level: LogEntry['level']) => {
-    const base = 'px-2 py-0.5 rounded text-xs font-mono font-medium';
-    switch (level) {
-      case 'error':
-        return `${base} bg-red-100 text-red-700 border border-red-200`;
-      case 'warning':
-        return `${base} bg-yellow-100 text-yellow-700 border border-yellow-200`;
-      case 'info':
-        return `${base} bg-blue-100 text-blue-700 border border-blue-200`;
-      case 'debug':
-        return `${base} bg-gray-100 text-gray-700 border border-gray-200`;
-      default:
-        return `${base} bg-gray-100 text-gray-700 border border-gray-200`;
-    }
-  };
-
   const getLevelIcon = (level: LogEntry['level']) => {
     const iconClass = 'w-3.5 h-3.5';
     switch (level) {
       case 'error':
-        return <AlertCircle className={`${iconClass} text-red-600`} />;
+        return <AlertCircle className={`${iconClass} text-destructive`} />;
       case 'warning':
-        return <AlertTriangle className={`${iconClass} text-yellow-600`} />;
+        return <AlertTriangle className={`${iconClass} text-warning`} />;
       case 'info':
-        return <Info className={`${iconClass} text-blue-600`} />;
+        return <Info className={`${iconClass} text-info`} />;
       case 'debug':
-        return <Bug className={`${iconClass} text-gray-600`} />;
+        return <Bug className={`${iconClass} text-muted-foreground`} />;
       default:
         return null;
     }
@@ -112,7 +54,7 @@ export function LogsPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `sediman-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
+    a.download = `openskynet-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -121,25 +63,34 @@ export function LogsPage() {
     setLogs([]);
   };
 
+  const errorCount = logs.filter((l) => l.level === 'error').length;
+  const warningCount = logs.filter((l) => l.level === 'warning').length;
+  const infoCount = logs.filter((l) => l.level === 'info').length;
+  const debugCount = logs.filter((l) => l.level === 'debug').length;
+
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-screen bg-muted/40">
       {/* Header */}
-      <div className="h-14 border-b border-border flex items-center justify-between px-6 bg-white">
-        <h2 className="text-lg font-semibold text-foreground">Logs</h2>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="w-4 h-4 mr-2" />
-            Export
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleClear}>
-            <Trash2 className="w-4 h-4 mr-2" />
-            Clear
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        icon={FileText}
+        title="Logs"
+        subtitle="System events and debugging"
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={handleExport}>
+              <Download className="w-4 h-4 mr-2" />
+              Export
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleClear}>
+              <Trash2 className="w-4 h-4 mr-2" />
+              Clear
+            </Button>
+          </>
+        }
+      />
 
       {/* Search & Filter */}
-      <div className="p-6 border-b border-border bg-white space-y-4">
+      <div className="p-6 border-b border-border bg-background space-y-4">
         <div className="relative max-w-3xl mx-auto">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
@@ -156,82 +107,86 @@ export function LogsPage() {
             size="sm"
             onClick={() => setLevelFilter('all')}
           >
-            All
+            All ({logs.length})
           </Button>
           <Button
             variant={levelFilter === 'error' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setLevelFilter('error')}
           >
-            Errors
+            Errors ({errorCount})
           </Button>
           <Button
             variant={levelFilter === 'warning' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setLevelFilter('warning')}
           >
-            Warnings
+            Warnings ({warningCount})
           </Button>
           <Button
             variant={levelFilter === 'info' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setLevelFilter('info')}
           >
-            Info
+            Info ({infoCount})
           </Button>
           <Button
             variant={levelFilter === 'debug' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setLevelFilter('debug')}
           >
-            Debug
+            Debug ({debugCount})
           </Button>
         </div>
       </div>
 
       {/* Logs */}
-      <ScrollArea className="flex-1 bg-muted/30">
+      <ScrollArea className="flex-1">
         <div className="max-w-4xl mx-auto py-6 px-6">
-          <div className="font-mono text-xs space-y-1">
-            {filteredLogs.map((log) => (
-              <div
-                key={log.id}
-                className="flex gap-3 py-2 px-3 rounded-md hover:bg-white transition-colors"
-              >
-                {/* Level badge */}
-                <span className={getLevelStyles(log.level)}>
-                  {log.level.toUpperCase()}
-                </span>
+          {filteredLogs.length === 0 ? (
+            <Card className="p-16 text-center">
+              <Bug className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
+              <p className="text-muted-foreground">
+                {searchQuery || levelFilter !== 'all'
+                  ? 'No logs found matching your criteria'
+                  : 'No logs available'}
+              </p>
+            </Card>
+          ) : (
+            <div className="font-mono text-xs space-y-1">
+              {filteredLogs.map((log) => (
+                <Card key={log.id} className="flex gap-3 py-2 px-3 hover:bg-accent transition-colors">
+                  {/* Level badge */}
+                  <StatusBadge
+                    status={log.level === 'error' ? 'error' : log.level === 'warning' ? 'warning' : 'info'}
+                    size="sm"
+                  >
+                    {log.level.toUpperCase()}
+                  </StatusBadge>
 
-                {/* Timestamp */}
-                <span className="text-muted-foreground shrink-0 tabular-nums">
-                  {log.timestamp.toLocaleTimeString()}
-                </span>
-
-                {/* Source */}
-                {log.source && (
-                  <span className="text-muted-foreground shrink-0">
-                    [{log.source}]
+                  {/* Timestamp */}
+                  <span className="text-muted-foreground shrink-0 tabular-nums">
+                    {log.timestamp.toLocaleTimeString()}
                   </span>
-                )}
 
-                {/* Icon */}
-                <span className="shrink-0">{getLevelIcon(log.level)}</span>
+                  {/* Source */}
+                  {log.source && (
+                    <span className="text-muted-foreground shrink-0">
+                      [{log.source}]
+                    </span>
+                  )}
 
-                {/* Message */}
-                <span className="text-foreground flex-1 break-words">
-                  {log.message}
-                </span>
-              </div>
-            ))}
+                  {/* Icon */}
+                  <span className="shrink-0">{getLevelIcon(log.level)}</span>
 
-            {filteredLogs.length === 0 && (
-              <div className="text-center py-12 text-muted-foreground">
-                <Bug className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>No logs found matching your criteria</p>
-              </div>
-            )}
-          </div>
+                  {/* Message */}
+                  <span className="text-foreground flex-1 break-words">
+                    {log.message}
+                  </span>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       </ScrollArea>
     </div>

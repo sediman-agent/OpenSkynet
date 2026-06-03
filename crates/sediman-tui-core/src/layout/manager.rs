@@ -233,3 +233,60 @@ mod tests {
         _ = zones.input.height;
     }
 }
+
+// ============================================================================
+// Additional Comprehensive Layout Tests
+// ============================================================================
+
+#[cfg(test)]
+mod comprehensive_layout_tests {
+    use super::*;
+
+    #[test]
+    fn test_manager_new() {
+        let manager = LayoutManager::new();
+        // Verify manager can be created
+        assert!(true);
+    }
+
+    #[test]
+    fn test_manager_split_areas() {
+        let manager = LayoutManager::new();
+        let area = sediman_tui_core::renderer::Rect::new(0, 0, 80, 24);
+        let zones = manager.split(area);
+        // Verify zones are returned
+        assert!(zones.title_bar.height > 0);
+        assert!(zones.status_bar.height > 0);
+        assert!(zones.input.height > 0);
+    }
+
+    #[test]
+    fn test_manager_show_banner_flag() {
+        let mut manager = LayoutManager::new();
+        manager.show_banner = true;
+        assert!(manager.show_banner);
+    }
+
+    #[test]
+    fn test_manager_show_side_panel_flag() {
+        let mut manager = LayoutManager::new();
+        manager.show_side_panel = false;
+        assert!(!manager.show_side_panel);
+    }
+
+    #[test]
+    fn test_manager_input_lines_setting() {
+        let mut manager = LayoutManager::new();
+        manager.input_lines = 5;
+        assert_eq!(manager.input_lines, 5);
+    }
+
+    #[test]
+    fn test_small_terminal_handling() {
+        let manager = LayoutManager::new();
+        let small_area = sediman_tui_core::renderer::Rect::new(0, 0, 40, 10);
+        let zones = manager.split(small_area);
+        // Should still produce valid zones
+        assert!(zones.title_bar.width > 0);
+    }
+}

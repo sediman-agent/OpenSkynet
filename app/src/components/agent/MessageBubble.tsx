@@ -56,7 +56,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
       {isUser && (
         <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-          <User className="w-4 h-4 text-white" />
+          <User className="w-4 h-4 text-primary-foreground" />
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { Button } from '@/components/shared/Button';
 
 describe('Button Component', () => {
@@ -36,7 +36,7 @@ describe('Button Component', () => {
     render(<Button disabled>Disabled</Button>);
     const button = screen.getByRole('button', { name: 'Disabled' });
     expect(button).toBeDisabled();
-    expect(button).toHaveClass('opacity-50');
+    expect(button).toHaveClass('disabled:opacity-50');
   });
 
   it('calls onClick handler when clicked', () => {

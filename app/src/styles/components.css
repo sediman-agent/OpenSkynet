@@ -1,0 +1,120 @@
+/**
+ * Component-level styles that complement Tailwind utilities
+ */
+
+@layer components {
+  /* Auto-resize textarea */
+  .textarea-autoresize {
+    field-sizing: content;
+    min-height: 3.5rem;
+    max-height: 12.5rem;
+  }
+
+  /* Markdown content styles */
+  .markdown-content {
+    & p {
+      @apply my-2;
+    }
+
+    & p:first-child {
+      @apply mt-0;
+    }
+
+    & p:last-child {
+      @apply mb-0;
+    }
+
+    & ul, & ol {
+      @apply my-2 pl-4;
+    }
+
+    & ul {
+      @apply list-disc;
+    }
+
+    & ol {
+      @apply list-decimal;
+    }
+
+    & li {
+      @apply my-1;
+    }
+
+    & code {
+      @apply bg-muted px-1.5 py-0.5 rounded text-sm font-mono;
+    }
+
+    & pre {
+      @apply bg-muted p-4 rounded-lg overflow-x-auto my-3;
+
+      & code {
+        @apply bg-transparent p-0;
+      }
+    }
+
+    & h1, & h2, & h3, & h4 {
+      @apply font-semibold mt-4 mb-2;
+    }
+
+    & h1 {
+      @apply text-xl;
+    }
+
+    & h2 {
+      @apply text-lg;
+    }
+
+    & h3 {
+      @apply text-base;
+    }
+
+    & a {
+      @apply text-primary underline underline-offset-2;
+    }
+
+    & blockquote {
+      @apply border-l-4 border-muted-foreground/25 pl-4 italic;
+    }
+
+    & table {
+      @apply w-full my-3 border-collapse;
+    }
+
+    & th, & td {
+      @apply border border-border px-3 py-2 text-sm;
+    }
+
+    & th {
+      @apply bg-muted font-medium;
+    }
+
+    & img {
+      @apply rounded-lg max-w-full h-auto;
+    }
+
+    & hr {
+      @apply my-4 border-border;
+    }
+  }
+
+  /* Typing cursor animation */
+  .typing-cursor {
+    @apply inline-block w-0.5 h-4 bg-current ml-0.5;
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  /* Focus visible styles for interactive elements */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+
+  /* Smooth transitions for interactive elements */
+  .interactive {
+    @apply transition-base transition-colors duration-200;
+  }
+}

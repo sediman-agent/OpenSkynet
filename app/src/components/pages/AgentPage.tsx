@@ -1,12 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
-import { Send, Plus, Sparkles } from 'lucide-react';
+import { Send, Plus, Bot } from 'lucide-react';
 import { useChatStore } from '@/stores/useChatStore';
 import { getChatService } from '@/services/chatService';
+import { PageHeader } from '@/components/shared/PageHeader';
 import { Button } from '@/components/shared/Button';
 import { Textarea } from '@/components/shared/Textarea';
 import { ScrollArea } from '@/components/shared/ScrollArea';
 import { MessageBubble } from '@/components/agent/MessageBubble';
-import { cn } from '@/lib/utils';
 
 export function AgentPage() {
   const conversations = useChatStore((state) => state.conversations);
@@ -43,9 +43,6 @@ export function AgentPage() {
 
     const userMessage = input.trim();
     setInput('');
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
 
     addMessage(activeConversationId, {
       role: 'user',
@@ -107,51 +104,34 @@ export function AgentPage() {
     selectConversation(conversation.id);
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      const newHeight = Math.min(textareaRef.current.scrollHeight, 200);
-      textareaRef.current.style.height = `${newHeight}px`;
-    }
-  };
-
   return (
-    <div className="flex flex-col h-screen bg-white">
+    <div className="flex flex-col h-screen bg-background">
       {/* Header */}
-      <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-white/80 backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-black to-gray-800 flex items-center justify-center shadow-lg">
-            <Sparkles className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-base font-semibold text-gray-900">OpenSkynet</h1>
-            <p className="text-xs text-gray-500">AI Agent</p>
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleNewChat}
-          className="shadow-sm hover:shadow-md transition-shadow"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          New Chat
-        </Button>
-      </div>
+      <PageHeader
+        icon={Bot}
+        title="Agent"
+        subtitle="AI-powered conversation"
+        iconVariant="primary"
+        actions={
+          <Button variant="outline" size="sm" onClick={handleNewChat}>
+            <Plus className="w-4 h-4 mr-2" />
+            New Chat
+          </Button>
+        }
+      />
 
       {/* Messages */}
       <ScrollArea className="flex-1">
-        <div ref={scrollRef} className="max-w-3xl mx-auto py-8 px-6 space-y-6">
+        <div ref={scrollRef} className="max-w-3xl mx-auto py-6 px-6 space-y-6">
           {activeConversation?.messages.map((message) => (
             <MessageBubble key={message.id} message={message} />
           ))}
           {isStreaming && (
-            <div className="flex items-center gap-2 text-gray-500 text-sm">
+            <div className="flex items-center gap-3 text-muted-foreground text-sm">
               <div className="flex gap-1">
-                <span className="w-1 h-1 bg-black rounded-full animate-pulse" />
-                <span className="w-1 h-1 bg-black rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
-                <span className="w-1 h-1 bg-black rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
+                <span className="w-1.5 h-1.5 bg-foreground/60 rounded-full animate-pulse" />
+                <span className="w-1.5 h-1.5 bg-foreground/60 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
+                <span className="w-1.5 h-1.5 bg-foreground/60 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
               </div>
               <span>OpenSkynet is thinking...</span>
             </div>
@@ -160,27 +140,28 @@ export function AgentPage() {
       </ScrollArea>
 
       {/* Input */}
-      <div className="border-t border-gray-200 bg-white p-6">
+      <div className="border-t border-border bg-background p-6">
         <div className="max-w-3xl mx-auto">
           <div className="flex items-end gap-3">
             <Textarea
               ref={textareaRef}
               value={input}
-              onChange={handleInputChange}
+              onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Message OpenSkynet..."
-              className="min-h-[56px] max-h-[200px] resize-none rounded-2xl border-gray-200 shadow-sm focus:ring-2 focus:ring-black/5 focus:border-gray-400 transition-all"
+              placeholder="Message OpenSkynet... (Press Enter to send, Shift+Enter for new line)"
               disabled={isStreaming}
+              autoResize
+              className="min-h-[56px]"
             />
             <Button
               onClick={handleSend}
               disabled={!input.trim() || isStreaming}
-              className="h-12 px-6 rounded-2xl bg-black text-white hover:bg-gray-800 shadow-lg hover:shadow-xl transition-all active:scale-105"
+              size="lg"
             >
               {isStreaming ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-transparent rounded-full animate-spin" />
-                <span>Sending</span>
+                  <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-transparent rounded-full animate-spin" />
+                  <span>Sending</span>
                 </div>
               ) : (
                 <>

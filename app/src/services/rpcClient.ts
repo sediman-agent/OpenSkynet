@@ -1,6 +1,5 @@
 import type { RPCRequest, RPCResponse, StreamEvent } from '@/types/rpc';
 
-type MessageHandler = (data: unknown) => void;
 type StreamHandler = (event: StreamEvent) => void;
 
 class RPCClient {
@@ -143,8 +142,8 @@ class RPCClient {
 
   async stream(
     method: string,
-    params?: unknown,
     onChunk: (delta: string) => void,
+    params?: unknown,
     onDone?: () => void,
     onError?: (error: string) => void
   ): Promise<void> {
@@ -170,7 +169,7 @@ class RPCClient {
     });
 
     // Send stream request
-    await this.call(method, { ...params, streamId });
+    await this.call(method, params ? { ...params, streamId } : { streamId });
   }
 
   isConnected(): boolean {

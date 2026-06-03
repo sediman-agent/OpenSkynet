@@ -1,9 +1,8 @@
 import { getRPCClient } from './rpcClient';
-import type { MessageChunk, TokenUsage } from '@/types/chat';
 
 export interface ChatStreamOptions {
   onChunk: (delta: string) => void;
-  onDone?: (usage?: TokenUsage) => void;
+  onDone?: () => void;
   onError?: (error: string) => void;
 }
 
@@ -18,12 +17,9 @@ class ChatService {
     try {
       await this.rpc.stream(
         'agent.chat',
-        { conversationId, content },
         options.onChunk,
-        (doneData) => {
-          const usage = doneData as unknown as TokenUsage;
-          options.onDone?.(usage);
-        },
+        { conversationId, content },
+        options.onDone,
         options.onError
       );
     } catch (error) {
@@ -38,12 +34,9 @@ class ChatService {
     try {
       await this.rpc.stream(
         'agent.run',
-        { task },
         options.onChunk,
-        (doneData) => {
-          const usage = doneData as unknown as TokenUsage;
-          options.onDone?.(usage);
-        },
+        { task },
+        options.onDone,
         options.onError
       );
     } catch (error) {

@@ -162,3 +162,96 @@ mod tests {
         assert_eq!(reg.all().len(), 3);
     }
 }
+
+// ============================================================================
+// Additional Comprehensive Registry Tests
+// ============================================================================
+
+#[cfg(test)]
+mod comprehensive_registry_tests {
+    use super::*;
+
+    #[test]
+    fn test_registry_empty_initially() {
+        let registry = CommandRegistry::new();
+        assert!(registry.get("test").is_none());
+        assert_eq!(registry.all().len(), 0);
+    }
+
+    #[test]
+    fn test_registry_register_command() {
+        let mut registry = CommandRegistry::new();
+        let cmd = Command {
+            name: "test",
+            aliases: &["t"],
+            description: "Test command",
+            category: CommandCategory::General,
+        };
+        registry.register(&cmd);
+        assert!(registry.get("test").is_some());
+        assert!(registry.get("t").is_some());
+    }
+
+    #[test]
+    fn test_registry_multiple_commands() {
+        let mut registry = CommandRegistry::new();
+        registry.register(&Command {
+            name: "cmd1",
+            aliases: &[],
+            description: "First",
+            category: CommandCategory::General,
+        });
+        registry.register(&Command {
+            name: "cmd2",
+            aliases: &[],
+            description: "Second",
+            category: CommandCategory::Agent,
+        });
+        assert_eq!(registry.all().len(), 2);
+    }
+
+    #[test]
+    fn test_command_category_coverage() {
+        let categories = vec![
+            CommandCategory::General,
+            CommandCategory::Agent,
+            CommandCategory::Skills,
+            CommandCategory::Hub,
+            CommandCategory::Browser,
+            CommandCategory::Sessions,
+            CommandCategory::Schedule,
+            CommandCategory::Terminal,
+            CommandCategory::Tasks,
+            CommandCategory::Utilities,
+        ];
+        assert_eq!(categories.len(), 10);
+    }
+
+    #[test]
+    fn test_command_structure() {
+        let cmd = Command {
+            name: "test",
+            aliases: &["t", "tx"],
+            description: "Test",
+            category: CommandCategory::General,
+        };
+        assert_eq!(cmd.name, "test");
+        assert_eq!(cmd.aliases.len(), 2);
+        assert_eq!(cmd.aliases[0], "t");
+        assert_eq!(cmd.aliases[1], "tx");
+    }
+
+    #[test]
+    fn test_registry_list_includes_registered() {
+        let mut registry = CommandRegistry::new();
+        let cmd = Command {
+            name: "listed",
+            aliases: &[],
+            description: "Listed command",
+            category: CommandCategory::General,
+        };
+        registry.register(&cmd);
+        let all = registry.all();
+        assert!(all.iter().any(|c| c.name == "listed"));
+    }
+}

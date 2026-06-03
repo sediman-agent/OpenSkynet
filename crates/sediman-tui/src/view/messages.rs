@@ -217,113 +217,158 @@ fn render_message(msg: &ChatMessage, lines: &mut Vec<MessageLine>, app: &App, ma
             ));
             push_wrapped(lines, &format!("    {}", text), Style::new().fg(app.theme.text), max_width);
         }
-        ChatMessage::Agent { steps, thinking_text, result, success, elapsed_secs, skill_created, scheduled_job, steps_expanded, thinking_expanded, timestamp: _ } => {
+        ChatMessage::Agent { steps, thinking_text, result, success, elapsed_secs, skill_created, scheduled_job, selected_tab, tab_expanded, timestamp: _ } => {
+            use crate::app::AgentTab;
+
             // Add separator line before agent messages
             lines.push(MessageLine::empty());
 
-            // ── Collapsible thinking section (before steps) ──
-            if !thinking_text.is_empty() {
-                let action = if *thinking_expanded { "Hide" } else { "Show" };
-                let label = format!("◆ Thinking (click Space to {})", action.to_lowercase());
-                lines.push(MessageLine::collapsible(label, *thinking_expanded, Style::new().fg(app.theme.warning)));
+            // ── Tabbed interface ──
+            let has_thinking = !thinking_text.is_empty();
+            let has_steps = !steps.is_empty();
+            let has_response = result.is_some();
 
-                if *thinking_expanded {
-                    // Show thinking content with muted color
-                    let thinking_lines: Vec<&str> = thinking_text.lines().collect();
-                    for tline in thinking_lines.iter().take(20) {
-                        if !tline.is_empty() {
-                            push_wrapped(lines, &format!("    {}", tline), Style::new().fg(app.theme.text_muted), max_width);
-                        } else {
-                            lines.push(MessageLine::empty());
+            // Only show tabs if we have content
+            if has_thinking || has_steps || has_response {
+                // Render tabs
+                let tabs = [
+                    (AgentTab::Thinking, has_thinking),
+                    (AgentTab::Steps, has_steps),
+                    (AgentTab::Response, has_response),
+                ];
+
+                let tab_labels: Vec<String> = tabs.iter()
+                    .filter(|(_, has)| *has)
+                    .map(|(tab, _)| {
+                        let is_selected = *selected_tab == *tab;
+                        let prefix = if is_selected { "[" } else { " " };
+                        let suffix = if is_selected { "]" } else { " " };
+                        format!("{}{}{}", prefix, tab.name(), suffix)
+                    })
+                    .collect();
+
+                let tabs_line = tab_labels.join(" ");
+                lines.push(MessageLine::text(
+                    format!("  {}", tabs_line),
+                    Style::new().fg(app.theme.primary).add_modifier(TextAttributes::bold()),
+                ));
+
+                // ── Show selected tab content if expanded ──
+                if *tab_expanded {
+                    match selected_tab {
+                        AgentTab::Thinking if has_thinking => {
+                            // Show thinking content
+                            let thinking_lines: Vec<&str> = thinking_text.lines().collect();
+                            for tline in thinking_lines.iter().take(20) {
+                                if !tline.is_empty() {
+                                    push_wrapped(lines, &format!("    {}", tline), Style::new().fg(app.theme.text_muted), max_width);
+                                } else {
+                                    lines.push(MessageLine::empty());
+                                }
+                            }
+                            if thinking_lines.len() > 20 {
+                                lines.push(MessageLine::text(
+                                    format!("    … {} more lines", thinking_lines.len() - 20),
+                                    Style::new().fg(app.theme.text_muted),
+                                ));
+                            }
+                        }
+                        AgentTab::Steps if has_steps => {
+                            // Show steps
+                            let step_count = steps.len();
+                            let (icon, color) = if *success {
+                                ("✓", app.theme.success)
+                            } else if result.is_some() {
+                                ("✗", app.theme.error)
+                            } else {
+                                ("○", app.theme.info)
+                            };
+
+                            lines.push(MessageLine::text(
+                                format!("    {} {} steps", icon, step_count),
+                                Style::new().fg(color),
+                            ));
+
+                            let show_steps: Vec<_> = if steps.len() > 3 {
+                                steps.iter().rev().take(3).collect::<Vec<_>>().into_iter().rev().collect()
+                            } else {
+                                steps.iter().collect()
+                            };
+
+                            if steps.len() > 3 {
+                                lines.push(MessageLine::text(
+                                    format!("    … {} earlier steps", steps.len() - 3),
+                                    Style::new().fg(app.theme.text_muted),
+                                ));
+                            }
+
+                            for step in &show_steps {
+                                render_structured_step(step, lines, app, max_width);
+                            }
+                        }
+                        AgentTab::Response if has_response => {
+                            // Show response content
+                            let res = result.as_ref().unwrap();
+                            let icon = if *success { "✓" } else { "✗" };
+                            let color = if *success { app.theme.success } else { app.theme.error };
+                            let elapsed_str = format_elapsed(*elapsed_secs);
+
+                            // Show status line
+                            lines.push(MessageLine::text(
+                                format!("    {} Done · {}", icon, elapsed_str),
+                                Style::new().fg(color).add_modifier(TextAttributes::bold()),
+                            ));
+                            lines.push(MessageLine::text(
+                                format!("    ▸ {} · {}", app.provider, app.model.as_deref().unwrap_or("default")),
+                                Style::new().fg(app.theme.text_muted),
+                            ));
+
+                            if !res.is_empty() {
+                                lines.push(MessageLine::empty());
+                                // Render markdown result with proper padding
+                                let md_lines = markdown::render_markdown_with_theme(res, &app.theme);
+                                for md_line in &md_lines {
+                                    let (text, style) = flatten_line(md_line, app);
+                                    if !text.is_empty() {
+                                        push_wrapped(lines, &format!("    {}", text), style, max_width);
+                                    } else {
+                                        lines.push(MessageLine::empty());
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            // Tab not available or not selected
+                            lines.push(MessageLine::text(
+                                "    (not available)",
+                                Style::new().fg(app.theme.text_muted),
+                            ));
                         }
                     }
-                    if thinking_lines.len() > 20 {
-                        lines.push(MessageLine::text(
-                            format!("    … {} more lines", thinking_lines.len() - 20),
-                            Style::new().fg(app.theme.text_muted),
-                        ));
-                    }
-                }
-            }
-
-            // ── Collapsible steps header ──
-            if !steps.is_empty() {
-                let step_count = steps.len();
-                let (icon, color) = if *success {
-                    ("✓", app.theme.success)
-                } else if result.is_some() {
-                    ("✗", app.theme.error)
                 } else {
-                    ("○", app.theme.info)
-                };
-
-                let action = if *steps_expanded { "Collapse" } else { "Expand" };
-                let label = format!("{} {} steps (click Space to {})", icon, step_count, action.to_lowercase());
-                lines.push(MessageLine::collapsible(label, *steps_expanded, Style::new().fg(color)));
-
-                // ── Show steps if expanded (last 3 to keep it clean) ──
-                if *steps_expanded {
-                    let show_steps: Vec<_> = if steps.len() > 3 {
-                        steps.iter().rev().take(3).collect::<Vec<_>>().into_iter().rev().collect()
-                    } else {
-                        steps.iter().collect()
-                    };
-
-                    if steps.len() > 3 {
-                        lines.push(MessageLine::text(
-                            format!("    … {} earlier steps", steps.len() - 3),
-                            Style::new().fg(app.theme.text_muted),
-                        ));
-                    }
-
-                    for step in &show_steps {
-                        render_structured_step(step, lines, app, max_width);
-                    }
+                    // Collapsed - show hint
+                    lines.push(MessageLine::text(
+                        "    (collapsed, press Space to expand)",
+                        Style::new().fg(app.theme.text_muted),
+                    ));
                 }
+
+                lines.push(MessageLine::empty());
             }
 
-            // ── Result section ──
-            if let Some(res) = result {
+            // ── Skill/job info (shown regardless of tab selection) ──
+            if let Some(skill) = skill_created {
                 lines.push(MessageLine::empty());
-                let icon = if *success { "✓" } else { "✗" };
-                let color = if *success { app.theme.success } else { app.theme.error };
-                let elapsed_str = format_elapsed(*elapsed_secs);
                 lines.push(MessageLine::text(
-                    format!("  {} Done · {}", icon, elapsed_str),
-                    Style::new().fg(color).add_modifier(TextAttributes::bold()),
+                    format!("    ✦ Skill created: {}", skill),
+                    Style::new().fg(app.theme.info),
                 ));
+            }
+            if let Some(job) = scheduled_job {
                 lines.push(MessageLine::text(
-                    format!("    ▸ {} · {}", app.provider, app.model.as_deref().unwrap_or("default")),
-                    Style::new().fg(app.theme.text_muted),
+                    format!("    ⏰ Scheduled: {}", job),
+                    Style::new().fg(app.theme.secondary),
                 ));
-
-                if !res.is_empty() {
-                    lines.push(MessageLine::empty());
-                    // Render markdown result with proper padding
-                    let md_lines = markdown::render_markdown_with_theme(res, &app.theme);
-                    for md_line in &md_lines {
-                        let (text, style) = flatten_line(md_line, app);
-                        if !text.is_empty() {
-                            push_wrapped(lines, &format!("    {}", text), style, max_width);
-                        } else {
-                            lines.push(MessageLine::empty());
-                        }
-                    }
-                }
-
-                if let Some(skill) = skill_created {
-                    lines.push(MessageLine::empty());
-                    lines.push(MessageLine::text(
-                        format!("    ✦ Skill created: {}", skill),
-                        Style::new().fg(app.theme.info),
-                    ));
-                }
-                if let Some(job) = scheduled_job {
-                    lines.push(MessageLine::text(
-                        format!("    ⏰ Scheduled: {}", job),
-                        Style::new().fg(app.theme.secondary),
-                    ));
-                }
             }
         }
         ChatMessage::System { text, .. } => {
@@ -338,6 +383,7 @@ fn render_message(msg: &ChatMessage, lines: &mut Vec<MessageLine>, app: &App, ma
 }
 
 /// Line types for rendering
+#[allow(dead_code)]
 enum MessageLine {
     Empty,
     Text { text: String, style: Style },
@@ -345,14 +391,17 @@ enum MessageLine {
 }
 
 impl MessageLine {
+    #[allow(dead_code)]
     fn empty() -> Self {
         MessageLine::Empty
     }
 
+    #[allow(dead_code)]
     fn text(text: impl Into<String>, style: Style) -> Self {
         MessageLine::Text { text: text.into(), style }
     }
 
+    #[allow(dead_code)]
     fn collapsible(label: impl Into<String>, expanded: bool, style: Style) -> Self {
         MessageLine::Collapsible { label: label.into(), expanded, style }
     }

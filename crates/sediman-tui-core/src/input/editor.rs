@@ -958,3 +958,141 @@ mod tests {
         assert_eq!(ed.cursor, 2);
     }
 }
+
+// ============================================================================
+// Additional Comprehensive Editor Tests
+// ============================================================================
+
+#[cfg(test)]
+mod comprehensive_editor_tests {
+    use super::*;
+    use std::time::Instant;
+
+    #[test]
+    fn test_editor_new() {
+        let editor = TextEditor::new();
+        assert!(editor.is_empty());
+        assert_eq!(editor.cursor(), 0);
+    }
+
+    #[test]
+    fn test_editor_set_prompt() {
+        let mut editor = TextEditor::new();
+        editor.set_prompt("> ");
+        assert!(!editor.is_empty());
+    }
+
+    #[test]
+    fn test_editor_clear() {
+        let mut editor = TextEditor::new();
+        editor.insert_str("hello");
+        editor.clear();
+        assert!(editor.is_empty());
+    }
+
+    #[test]
+    fn test_editor_backspace() {
+        let mut editor = TextEditor::new();
+        editor.insert_str("hello");
+        editor.backspace();
+        assert_eq!(editor.buffer(), "hell");
+    }
+
+    #[test]
+    fn test_editor_delete() {
+        let mut editor = TextEditor::new();
+        editor.insert_str("hello");
+        editor.move_left();
+        editor.delete();
+        assert_eq!(editor.buffer(),("helo"));
+    }
+
+    #[test]
+    fn test_editor_home() {
+        let mut editor = TextEditor::new();
+        editor.insert_str("hello");
+        editor.home();
+        assert_eq!(editor.cursor(), 0);
+    }
+
+    #[test]
+    fn test_editor_end() {
+        let mut editor = TextEditor::new();
+        editor.insert_str("hello");
+        editor.home();
+        editor.end();
+        assert_eq!(editor.cursor(), 5);
+    }
+
+    #[test]
+    fn test_editor_move_left_right() {
+        let mut editor = TextEditor::new();
+        editor.insert_str("hi");
+        editor.move_left();
+        assert_eq!(editor.cursor(), 1);
+        editor.move_right();
+        assert_eq!(editor.cursor(), 2);
+    }
+
+    #[test]
+    fn test_editor_word_left() {
+        let mut editor = TextEditor::new();
+        editor.insert_str("hello world");
+        editor.word_left();
+        assert!(editor.cursor() < 11);
+    }
+
+    #[test]
+    fn test_editor_word_right() {
+        let mut editor = TextEditor::new();
+        editor.insert_str("hello world");
+        editor.home();
+        editor.word_right();
+        assert!(editor.cursor() > 0);
+    }
+
+    #[test]
+    fn test_editor_history() {
+        let mut editor = TextEditor::new();
+        editor.insert_str("first");
+        let text1 = editor.buffer().to_string();
+        editor.clear();
+        editor.insert_str("second");
+        editor.history_up();
+        assert_eq!(editor.buffer(), text1);
+    }
+
+    #[test]
+    fn test_editor_lines_empty() {
+        let editor = TextEditor::new();
+        let lines = editor.lines();
+        assert!(lines.is_empty() || lines.len() == 1);
+    }
+
+    #[test]
+    fn test_editor_visual_lines_min() {
+        let editor = TextEditor::new();
+        assert_eq!(editor.visual_lines(80), 1);
+    }
+
+    #[test]
+    fn test_editor_visual_lines_wraps() {
+        let mut editor = TextEditor::new();
+        editor.insert_str("a".repeat(100));
+        let visual = editor.visual_lines(20);
+        assert!(visual > 1);
+    }
+
+    #[test]
+    fn test_editor_unicode() {
+        let mut editor = TextEditor::new();
+        editor.insert_str("🎉🚀");
+        assert_eq!(editor.buffer(), "🎉🚀");
+    }
+
+    #[test]
+    fn test_editor_zero_width() {
+        let editor = TextEditor::new();
+        assert_eq!(editor.visual_lines(0), 1);
+    }
+}
