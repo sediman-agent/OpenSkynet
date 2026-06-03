@@ -13,5 +13,8 @@
     "restart": "bun run stop && sleep 1 && bun run tui",
     "install-local": "./scripts/install.sh",
     "test": "cargo test -p sediman-tui && uv run pytest"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.2"
   }
 }
