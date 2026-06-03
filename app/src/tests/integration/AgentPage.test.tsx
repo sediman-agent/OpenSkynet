@@ -14,29 +14,32 @@ jest.mock('@/services/chatService', () => ({
 describe('AgentPage Integration', () => {
   it('renders header with title and New Chat button', () => {
     render(<AgentPage />);
-    expect(screen.getByText('Agent')).toBeInTheDocument();
+    expect(screen.getByText('OpenSkynet')).toBeInTheDocument();
     expect(screen.getByText('New Chat')).toBeInTheDocument();
   });
 
   it('renders message input', () => {
     render(<AgentPage />);
-    const input = screen.getByPlaceholderText(/Type your message/);
+    const input = screen.getByPlaceholderText(/Message OpenSkynet/);
     expect(input).toBeInTheDocument();
   });
 
   it('disables send button when input is empty', () => {
     render(<AgentPage />);
-    const sendButton = screen.getByRole('button', { name: '' }); // Send button has no text, just icon
+    // Get all buttons and find the send button (it has the Send icon/text)
+    const buttons = screen.getAllByRole('button');
+    const sendButton = buttons.find(btn => btn.classList.contains('bg-black'));
     expect(sendButton).toBeDisabled();
   });
 
   it('enables send button when input has text', () => {
     render(<AgentPage />);
-    const input = screen.getByPlaceholderText(/Type your message/);
+    const input = screen.getByPlaceholderText(/Message OpenSkynet/);
 
     fireEvent.change(input, { target: { value: 'Hello' } });
 
-    const sendButton = screen.getByRole('button');
+    const buttons = screen.getAllByRole('button');
+    const sendButton = buttons.find(btn => btn.classList.contains('bg-black'));
     expect(sendButton).not.toBeDisabled();
   });
 });

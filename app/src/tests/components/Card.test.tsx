@@ -3,10 +3,11 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 
 describe('Card Components', () => {
   it('renders Card with proper styles', () => {
-    render(<Card>Card Content</Card>);
+    const { container } = render(<Card>Card Content</Card>);
     const card = screen.getByText('Card Content');
     expect(card).toBeInTheDocument();
-    expect(card.parentElement).toHaveClass('rounded-lg', 'border');
+    const cardElement = container.querySelector('.rounded-lg.border');
+    expect(cardElement).toBeInTheDocument();
   });
 
   it('renders CardHeader with children', () => {
@@ -23,13 +24,15 @@ describe('Card Components', () => {
   it('CardTitle has proper styling classes', () => {
     render(<CardTitle>Test Title</CardTitle>);
     const title = screen.getByText('Test Title');
-    expect(title).toHaveClass('text-lg', 'font-semibold');
+    expect(title).toHaveClass('text-lg');
+    expect(title).toHaveClass('font-semibold');
   });
 
   it('CardDescription has proper styling classes', () => {
     render(<CardDescription>Test Description</CardDescription>);
     const description = screen.getByText('Test Description');
-    expect(description).toHaveClass('text-sm', 'text-muted-foreground');
+    expect(description).toHaveClass('text-sm');
+    expect(description).toHaveClass('text-muted-foreground');
   });
 
   it('CardContent renders children', () => {

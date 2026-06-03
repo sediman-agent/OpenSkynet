@@ -87,12 +87,27 @@ pub fn handle_editor_key(app: &mut App, key: crossterm::event::KeyEvent) -> bool
         return true;
     }
 
-    // Space bar when input is empty: toggle latest collapsible section
+    // Space bar when input is empty: toggle tab expansion
     if key.code == KeyCode::Char(' ') {
         let is_empty = app.editor.lines().iter().all(|l| l.trim().is_empty());
         if is_empty && !app.editor.is_searching() {
-            // Try to toggle thinking first, then steps
-            if app.toggle_latest_thinking() || app.toggle_latest_steps() {
+            if app.toggle_tab_expansion() {
+                app.auto_scroll = true;
+            }
+            return true;
+        }
+    }
+
+    // Left/Right arrows when input is empty: switch tabs
+    if app.editor.lines().iter().all(|l| l.trim().is_empty()) && !app.editor.is_searching() {
+        if key.code == KeyCode::Left {
+            if app.switch_prev_tab() {
+                app.auto_scroll = true;
+            }
+            return true;
+        }
+        if key.code == KeyCode::Right {
+            if app.switch_next_tab() {
                 app.auto_scroll = true;
             }
             return true;

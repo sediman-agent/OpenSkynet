@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Sediman Desktop App', () => {
+test.describe('OpenSkynet Desktop App', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
   });
 
   test('loads the application', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: 'Agent' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'OpenSkynet' })).toBeVisible();
   });
 
   test('sidebar navigation works', async ({ page }) => {
@@ -52,7 +52,7 @@ test.describe('Sediman Desktop App', () => {
   });
 
   test('Agent page allows typing message', async ({ page }) => {
-    const textarea = page.getByPlaceholderText(/Type your message/);
+    const textarea = page.getByPlaceholderText(/Message OpenSkynet/);
 
     await textarea.fill('Hello, how are you?');
     await expect(textarea).toHaveValue('Hello, how are you?');
@@ -61,7 +61,7 @@ test.describe('Sediman Desktop App', () => {
   test('Tasks page allows creating task', async ({ page }) => {
     await page.click('button:has-text("Tasks")');
 
-    const input = page.getByPlaceholderText('Enter task description');
+    const input = page.getByPlaceholderText(/What should OpenSkynet/);
     const runButton = page.getByRole('button', { name: 'Run' });
 
     // Initially Run button should be disabled

@@ -1637,7 +1637,7 @@ class AgentLoop:
         import asyncio
         try:
             # Build a more context-aware system message
-            system_msg = """You are Terminator, a helpful AI browser automation agent powered by OpenSkynet.
+            system_msg = """You are Terminator, a helpful AI automation agent powered by OpenSkynet.
 
 Your role:
 - Help with browser automation, web scraping, form filling, data extraction

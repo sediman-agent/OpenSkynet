@@ -95,6 +95,40 @@ pub struct DoctorCheck {
     pub install_cmd: Option<String>,
 }
 
+/// Tab selection for agent message display
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AgentTab {
+    Thinking,
+    Steps,
+    Response,
+}
+
+impl AgentTab {
+    pub fn next(self) -> Self {
+        match self {
+            AgentTab::Thinking => AgentTab::Steps,
+            AgentTab::Steps => AgentTab::Response,
+            AgentTab::Response => AgentTab::Thinking,
+        }
+    }
+
+    pub fn prev(self) -> Self {
+        match self {
+            AgentTab::Thinking => AgentTab::Response,
+            AgentTab::Steps => AgentTab::Thinking,
+            AgentTab::Response => AgentTab::Steps,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            AgentTab::Thinking => "Thinking",
+            AgentTab::Steps => "Steps",
+            AgentTab::Response => "Response",
+        }
+    }
+}
+
 /// A line in an info modal, with optional styling.
 #[derive(Clone, Debug)]
 pub struct ModalLine {
@@ -253,9 +287,9 @@ pub enum ChatMessage {
         scheduled_job: Option<String>,
         #[allow(dead_code)]
         timestamp: Instant,
-        // Collapsible section state
-        steps_expanded: bool,
-        thinking_expanded: bool,  // Separate collapsible for thinking
+        // Tabbed interface state
+        selected_tab: AgentTab,  // Which tab is currently selected
+        tab_expanded: bool,  // Whether the selected tab is expanded
     },
     System {
         text: String,
@@ -462,8 +496,8 @@ impl App {
             skill_created: None,
             scheduled_job: None,
             timestamp: Instant::now(),
-            steps_expanded: false,  // Start collapsed for cleaner view
-            thinking_expanded: false,  // Start collapsed
+            selected_tab: AgentTab::Steps,  // Default to Steps tab
+            tab_expanded: true,  // Start expanded
         });
         self.auto_scroll = true;
     }
@@ -522,12 +556,47 @@ impl App {
         self.auto_scroll = true;
     }
 
+    /// Switch to the next tab in the most recent Agent message
+    pub fn switch_next_tab(&mut self) -> bool {
+        for msg in self.messages.iter_mut().rev() {
+            if let ChatMessage::Agent { selected_tab, .. } = msg {
+                *selected_tab = selected_tab.next();
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Switch to the previous tab in the most recent Agent message
+    pub fn switch_prev_tab(&mut self) -> bool {
+        for msg in self.messages.iter_mut().rev() {
+            if let ChatMessage::Agent { selected_tab, .. } = msg {
+                *selected_tab = selected_tab.prev();
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Toggle expansion of the current tab in the most recent Agent message
+    pub fn toggle_tab_expansion(&mut self) -> bool {
+        for msg in self.messages.iter_mut().rev() {
+            if let ChatMessage::Agent { tab_expanded, .. } = msg {
+                *tab_expanded = !(*tab_expanded);
+                return true;
+            }
+        }
+        false
+    }
+
     /// Toggle the collapsible thinking section of the most recent Agent message
+    #[allow(dead_code)]
     pub fn toggle_latest_thinking(&mut self) -> bool {
         for msg in self.messages.iter_mut().rev() {
-            if let ChatMessage::Agent { thinking_text, thinking_expanded, .. } = msg {
+            if let ChatMessage::Agent { thinking_text, selected_tab, tab_expanded, .. } = msg {
                 if !thinking_text.is_empty() {
-                    *thinking_expanded = !(*thinking_expanded);
+                    *selected_tab = AgentTab::Thinking;
+                    *tab_expanded = !(*tab_expanded);
                     return true;
                 }
             }
@@ -536,11 +605,13 @@ impl App {
     }
 
     /// Toggle the collapsible steps section of the most recent Agent message
+    #[allow(dead_code)]
     pub fn toggle_latest_steps(&mut self) -> bool {
         for msg in self.messages.iter_mut().rev() {
-            if let ChatMessage::Agent { steps, steps_expanded, .. } = msg {
+            if let ChatMessage::Agent { steps, selected_tab, tab_expanded, .. } = msg {
                 if !steps.is_empty() {
-                    *steps_expanded = !(*steps_expanded);
+                    *selected_tab = AgentTab::Steps;
+                    *tab_expanded = !(*tab_expanded);
                     return true;
                 }
             }
@@ -551,9 +622,10 @@ impl App {
     /// Toggle the collapsible steps section of a specific message index
     #[allow(dead_code)]
     pub fn toggle_steps_at(&mut self, index: usize) -> bool {
-        if let Some(ChatMessage::Agent { steps, steps_expanded, .. }) = self.messages.get_mut(index) {
+        if let Some(ChatMessage::Agent { steps, selected_tab, tab_expanded, .. }) = self.messages.get_mut(index) {
             if !steps.is_empty() {
-                *steps_expanded = !(*steps_expanded);
+                *selected_tab = AgentTab::Steps;
+                *tab_expanded = !(*tab_expanded);
                 return true;
             }
         }
@@ -1028,5 +1100,133 @@ mod tests {
             ChatMessage::Error { text, .. } => assert_eq!(text, "fail"),
             _ => panic!("Expected Error variant"),
         }
+    }
+}
+
+// ============================================================================
+// Additional Comprehensive Tests
+// ============================================================================
+
+#[cfg(test)]
+mod comprehensive_app_tests {
+    use super::*;
+
+    #[test]
+    fn test_side_tab_variants() {
+        let tabs = vec![
+            SideTab::Status,
+            SideTab::Skills,
+            SideTab::Memory,
+            SideTab::Schedule,
+            SideTab::Sessions,
+        ];
+        assert_eq!(tabs.len(), 5);
+    }
+
+    #[test]
+    fn test_agent_mode_variants() {
+        let modes = vec![
+            AgentMode::Manager,
+            AgentMode::Coder,
+        ];
+        assert_eq!(modes.len(), 2);
+    }
+
+    #[test]
+    fn test_modal_variants_exist() {
+        // Verify all modal types can be created
+        let modals = vec![
+            AppModal::Help { scroll: 0 },
+            AppModal::ModelPicker,
+            AppModal::ProviderPicker,
+            AppModal::ConnectPicker,
+            AppModal::ApiKeyPrompt,
+            AppModal::SoulEditor,
+            AppModal::SkillBrowser,
+            AppModal::ScheduleBrowser,
+            AppModal::SessionBrowser,
+            AppModal::ThemePicker,
+            AppModal::CoderPicker,
+            AppModal::SearchModePicker,
+            AppModal::BrowserModePicker,
+        ];
+        assert_eq!(modals.len(), 13);
+    }
+
+    #[test]
+    fn test_doctor_status_variants() {
+        let statuses = vec![
+            DoctorStatus::Pass,
+            DoctorStatus::Fail,
+            DoctorStatus::Warn,
+        ];
+        assert_eq!(statuses.len(), 3);
+    }
+
+    #[test]
+    fn test_doctor_check_creation() {
+        let check = DoctorCheck {
+            category: "test".to_string(),
+            name: "check1".to_string(),
+            status: DoctorStatus::Pass,
+            message: "OK".to_string(),
+            optional: false,
+            install_cmd: None,
+        };
+        assert_eq!(check.category, "test");
+        assert!(matches!(check.status, DoctorStatus::Pass));
+    }
+
+    #[test]
+    fn test_modal_line_creation() {
+        let line = ModalLine::new("test", ModalLineStyle::Normal);
+        assert_eq!(line.text, "test");
+        assert!(matches!(line.style, ModalLineStyle::Normal));
+    }
+
+    #[test]
+    fn test_modal_line_constructors() {
+        assert_eq!(ModalLine::normal("n").text, "n");
+        assert_eq!(ModalLine::accent("a").text, "a");
+        assert_eq!(ModalLine::muted("m").text, "m");
+        assert_eq!(ModalLine::primary("p").text, "p");
+        assert_eq!(ModalLine::error("e").text, "e");
+        assert_eq!(ModalLine::heading("h").text, "h");
+        assert_eq!(ModalLine::blank().text, "");
+    }
+
+    #[test]
+    fn test_modal_line_style_variants() {
+        let styles = vec![
+            ModalLineStyle::Normal,
+            ModalLineStyle::Accent,
+            ModalLineStyle::Muted,
+            ModalLineStyle::Primary,
+            ModalLineStyle::Error,
+            ModalLineStyle::Heading,
+        ];
+        assert_eq!(styles.len(), 6);
+    }
+
+    #[test]
+    fn test_step_log_capacity_limit() {
+        assert_eq!(STEP_LOG_CAP, 200);
+        assert_eq!(AGENT_STEPS_CAP, 500);
+    }
+
+    #[test]
+    fn test_spinner_frames_non_empty() {
+        assert!(!SPINNER_FRAMES.is_empty());
+        assert!(SPINNER_FRAMES.len() == 10);
+    }
+
+    #[test]
+    fn test_frame_interval_constant() {
+        assert_eq!(FRAME_INTERVAL_MS, 33);
+    }
+
+    #[test]
+    fn test_health_check_interval() {
+        assert_eq!(HEALTH_CHECK_INTERVAL_TICKS, 90);
     }
 }

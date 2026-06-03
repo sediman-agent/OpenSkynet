@@ -26,7 +26,7 @@ export const useAppStore = create<AppState>()(
       // Initial state
       rpcUrl: 'ws://localhost:8765',
       autoConnect: true,
-      theme: 'dark',
+      theme: 'light',
       isConnected: false,
       agentStatus: {
         state: 'idle',
@@ -71,7 +71,7 @@ export const useAppStore = create<AppState>()(
       setCurrentPage: (page) => set({ currentPage: page }),
     }),
     {
-      name: 'sediman-app-store',
+      name: 'openskynet-app-store',
       partialize: (state) => ({
         rpcUrl: state.rpcUrl,
         autoConnect: state.autoConnect,

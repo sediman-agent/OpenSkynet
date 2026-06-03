@@ -151,7 +151,7 @@ export const useChatStore = create<ChatState>()(
       },
     }),
     {
-      name: 'sediman-chat-store',
+      name: 'openskynet-chat-store',
       partialize: (state) => ({
         conversations: state.conversations,
         activeConversationId: state.activeConversationId,

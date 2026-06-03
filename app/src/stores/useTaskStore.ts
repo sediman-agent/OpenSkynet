@@ -7,14 +7,14 @@ interface TaskState {
   activeTask: Task | null;
 
   // Actions
-  addTask: (task: Omit<Task, 'id' | 'createdAt'>) => void;
+  addTask: (task: Omit<Task, 'id' | 'createdAt'>) => Task;
   updateTask: (id: string, updates: Partial<Task>) => void;
   removeTask: (id: string) => void;
   setActiveTask: (task: Task | null) => void;
   clearCompleted: () => void;
 }
 
-export const useTaskStore = create<TaskState>()((set, get) => ({
+export const useTaskStore = create<TaskState>()((set) => ({
   // Initial state
   tasks: [],
   activeTask: null,
