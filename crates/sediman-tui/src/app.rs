@@ -620,7 +620,7 @@ impl App {
     /// Open the memory system picker modal.
     pub fn open_memory_system_picker(&mut self) {
         self.active_modal = Some(AppModal::MemorySystemPicker {
-            systems: vec!["file".to_string(), "hy".to_string()],
+            systems: vec!["file (default)".to_string(), "hy (system 2)".to_string()],
             selected: 0,
         });
     }

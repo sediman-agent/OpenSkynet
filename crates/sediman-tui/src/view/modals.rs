@@ -1312,9 +1312,9 @@ pub fn render_memory_menu(buf: &mut CellBuffer, area: Rect, app: &App) {
 
     if let Some(AppModal::MemoryMenu { ref selected }) = app.active_modal {
         const MENU_OPTIONS: &[&str] = &[
-            "View Memory Entries",
-            "Switch Memory System",
             "View Memory Stats",
+            "Switch Memory System",
+            "Show Current System",
         ];
         const NUM_VISIBLE: usize = 5;
         let visible = MENU_OPTIONS.len().min(NUM_VISIBLE);

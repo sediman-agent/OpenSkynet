@@ -5,9 +5,9 @@ use crossterm::event::{KeyCode, KeyModifiers};
 
 /// Memory menu options.
 const MENU_OPTIONS: &[&str] = &[
-    "View Memory Entries",
-    "Switch Memory System",
     "View Memory Stats",
+    "Switch Memory System",
+    "Show Current System",
 ];
 
 /// Handle MemoryMenu modal key input.
@@ -37,10 +37,16 @@ pub async fn handle_memory_menu(app: &mut App, key: crossterm::event::KeyEvent) 
             KeyCode::Enter => {
                 match *selected {
                     0 => {
-                        // View Memory Entries
+                        // View Memory Entries (fetch and display stats/entries)
                         app.active_modal = None;
-                        // Open memory editor
-                        crate::commands::memory::handle_memory(app, "").await;
+                        match app.bridge.memory_get_stats().await {
+                            Ok(stats) => {
+                                app.show_memory_stats(stats);
+                            }
+                            Err(e) => {
+                                app.add_error_message(format!("Failed to get memory stats: {}", e));
+                            }
+                        }
                     }
                     1 => {
                         // Switch Memory System
@@ -48,15 +54,14 @@ pub async fn handle_memory_menu(app: &mut App, key: crossterm::event::KeyEvent) 
                         app.open_memory_system_picker();
                     }
                     2 => {
-                        // View Memory Stats
+                        // View Memory System Status
                         app.active_modal = None;
-                        // Fetch and show stats
-                        match app.bridge.memory_get_stats().await {
-                            Ok(stats) => {
-                                app.show_memory_stats(stats);
+                        match app.bridge.memory_get_system().await {
+                            Ok(system) => {
+                                app.add_system_message(format!("Current memory system: {}", system));
                             }
                             Err(e) => {
-                                app.add_error_message(format!("Failed to get stats: {}", e));
+                                app.add_error_message(format!("Failed to get memory system: {}", e));
                             }
                         }
                     }
