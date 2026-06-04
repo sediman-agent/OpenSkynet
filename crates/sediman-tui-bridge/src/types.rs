@@ -718,7 +718,8 @@ pub struct MemoryData {
     pub user_entries: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct ServerStatus {
     pub running: bool,
     pub uptime_secs: u64,

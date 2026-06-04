@@ -155,7 +155,10 @@ async def handle_system_status(params: dict[str, Any], notify: NotifyFn | None =
     llm = _llm
     agent = _agent_loop
     return {
+        "running": True,
+        "uptime_secs": 0,
         "browser_open": browser is not None and browser.is_started,
+        "tasks_completed": 0,
         "model": os.environ.get("SEDIMAN_MODEL") if not llm else getattr(llm, "model", None),
         "provider": _llm_config.get("provider", os.environ.get("SEDIMAN_PROVIDER", "openai")),
         "conversation_messages": len(getattr(agent, "_conversation", [])),
@@ -1504,7 +1507,7 @@ async def handle_connection(
             params = req.get("params", {})
             req_id = req.get("id")
 
-            if method in ("agent.run", "agent.terminator"):
+            if method in ("agent.run", "agent.terminator", "agent.dispatch"):
                 cancel_task = asyncio.create_task(read_cancel())
                 try:
                     response = await dispatch_request(method, params, req_id, _sync_notify)
