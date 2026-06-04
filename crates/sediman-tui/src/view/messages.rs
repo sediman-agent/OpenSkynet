@@ -204,6 +204,7 @@ fn render_inline_section(
     }
 }
 
+#[allow(dead_code)]
 fn render_inline_steps(lines: &mut Vec<MessageLine>, app: &App, steps: &[String], max_width: usize) {
     render_inline_steps_expanded(lines, app, steps, max_width, app.steps_expanded);
 }

@@ -68,9 +68,8 @@ pub fn register_commands(registry: &mut CommandRegistry) {
 
 #[cfg(test)]
 mod tests {
-    use sediman_tui_core::command::CommandCategory;
     use super::CommandRegistry;
-        use super::register_commands;
+    use super::register_commands;
 
     #[test]
     fn test_register_commands_counts() {

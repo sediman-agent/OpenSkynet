@@ -757,8 +757,6 @@ impl App {
 
     /// Update progress data (retry countdown, validation status, etc.)
     pub fn update_progress(&mut self, progress: &sediman_tui_core::event::ProgressData) {
-        use sediman_tui_core::event::message::ProgressData;
-
         match progress.progress_type.as_str() {
             "retry" => {
                 self.retry_attempt = progress.current_attempt;
