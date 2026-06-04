@@ -28,7 +28,7 @@ def _make_mock_agent():
     mock_result.iterations = 0
     mock_result.strategy_used = "conversational"
 
-    async def fake_run(task):
+    async def fake_run(task, mode="manager"):
         if agent.on_streaming_text:
             for ch in "Hello world":
                 agent.on_streaming_text(ch, "responding")
@@ -222,7 +222,7 @@ async def test_step_notifications_arrive():
     mock_result.iterations = 0
     mock_result.strategy_used = "direct"
 
-    async def fake_run(task):
+    async def fake_run(task, mode="manager"):
         if agent.on_step:
             agent.on_step(StepEvent(step=1, action="navigate", observation="ok", phase="executing"))
         return mock_result

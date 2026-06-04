@@ -33,7 +33,7 @@ def _make_streaming_agent():
     mock_result.iterations = 0
     mock_result.strategy_used = "conversational"
 
-    async def fake_run(task):
+    async def fake_run(task, mode="manager"):
         # Phase 1: Planning — simulate real LLM streaming
         if agent.on_streaming_text:
             plan_text = '{"browser_task":"","strategy":"conversational","response":"Hello! I am Sediman."}'

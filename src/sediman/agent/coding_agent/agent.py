@@ -27,6 +27,27 @@ logger = structlog.get_logger()
 _MAX_ROUNDS = 30
 _MAX_CONSECUTIVE_ERRORS = 3
 _VERIFY_AFTER_EDITS = True
+_INLINE_VERIFY_EXTENSIONS = {
+    ".py", ".js", ".ts", ".tsx", ".jsx", ".rs", ".go", ".rb",
+    ".java", ".c", ".cpp", ".h", ".hpp", ".cs", ".swift", ".kt",
+}
+_INLINE_VERIFY_SKIP_PATTERNS = {
+    "test_", "_test.", "_tests.", ".test.", ".spec.", ".min.",
+    ".generated.", ".bundle.", ".lock", "package-lock",
+}
+
+
+def _should_inline_verify(file_path: str) -> bool:
+    from pathlib import Path
+    p = Path(file_path)
+    ext = p.suffix.lower()
+    if ext not in _INLINE_VERIFY_EXTENSIONS:
+        return False
+    name = p.name.lower()
+    for pattern in _INLINE_VERIFY_SKIP_PATTERNS:
+        if pattern in name:
+            return False
+    return True
 
 
 class CodingAgent:
@@ -42,6 +63,7 @@ class CodingAgent:
         verify_after_edits: bool = _VERIFY_AFTER_EDITS,
         hooks: HookPipeline | None = None,
         enable_hooks: bool = True,
+        conversation_history: list[dict[str, Any]] | None = None,
     ):
         self.llm = llm_provider
         self.registry = tool_registry or create_coding_tool_registry()
@@ -65,6 +87,8 @@ class CodingAgent:
         self._edited_files: list[str] = []
         self._hook_pipeline = hooks or (create_default_pipeline() if enable_hooks else None)
         self._session_id = str(int(time.time() * 1000))[-8:]
+        self._conversation_history: list[dict[str, Any]] = list(conversation_history or [])
+        self._pending_inline_feedback: list[str] = []
 
     def _emit_step(self, action: str, detail: str = "") -> None:
         if self._on_step:
@@ -79,6 +103,28 @@ class CodingAgent:
                 self._on_streaming_text(token, phase)
             except Exception:
                 logger.debug("emit_token_callback_failed")
+
+    def _get_inline_verification_feedback(self, file_path: str) -> str | None:
+        if not self._verifier or not self.project.lint_commands:
+            return None
+        if not _should_inline_verify(file_path):
+            return None
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                results_future = asyncio.ensure_future(
+                    self._verifier.verify_inline(file_path)
+                )
+                try:
+                    feedback = loop.run_until_complete(
+                        asyncio.wait_for(results_future, timeout=15)
+                    )
+                except (asyncio.TimeoutError, RuntimeError):
+                    return None
+                return feedback
+        except Exception as e:
+            logger.debug("inline_verify_failed", error=str(e))
+        return None
 
     async def run(self, task: str) -> CodingResult:
         logger.info(
@@ -96,15 +142,13 @@ class CodingAgent:
             task=task,
         )
 
-        messages: list[dict[str, Any]] = [
-            {"role": "user", "content": task},
-        ]
+        messages: list[dict[str, Any]] = list(self._conversation_history)
+        messages.append({"role": "user", "content": task})
 
         tool_loop = ToolLoop(
             llm=self.llm,
             registry=self.registry,
             max_rounds=self.max_rounds,
-            max_context_tokens=16000,
         )
 
         tool_names: list[str] = []
@@ -123,7 +167,7 @@ class CodingAgent:
             )
 
         async def on_tool_call(name: str, args: dict[str, Any]) -> None:
-            nonlocal tool_names
+            nonlocal tool_names, verifications_passed, verifications_failed
             tool_names.append(name)
 
             ctx = HookContext(
@@ -137,7 +181,7 @@ class CodingAgent:
                 pre_result = await self._hook_pipeline.run_pre(name, args, ctx)
                 if not pre_result.allowed:
                     self._emit_step(
-                        f"coding: blocked",
+                        "coding: blocked",
                         detail=f"{name}: {pre_result.reason[:100]}",
                     )
                     return
@@ -152,6 +196,17 @@ class CodingAgent:
                     self._edited_files.append(file_path)
                 if self._verifier:
                     self._verifier.track_edit(file_path)
+
+                if self._verifier and _should_inline_verify(file_path):
+                    self._emit_step("coding: verifying", detail=file_path)
+                    feedback = await self._verifier.verify_inline(file_path)
+                    if feedback:
+                        self._pending_inline_feedback.append(feedback)
+                        verifications_failed += 1
+                        self._emit_step("verify: FAIL", detail=file_path)
+                    else:
+                        verifications_passed += 1
+                        self._emit_step("verify: PASS", detail=file_path)
 
             self._emit_step(
                 f"coding: {name}",
@@ -174,18 +229,18 @@ class CodingAgent:
 
             if self._edited_files and self._verify_after_edits and self._verifier:
                 self._emit_step(
-                    "coding: verifying",
+                    "coding: final verification",
                     detail=f"{len(self._edited_files)} file(s) edited",
                 )
                 verify_results = await self._verifier.verify_all(aggressive=False)
                 for r in verify_results:
                     status = "PASS" if r.success else "FAIL"
                     self._emit_step(
-                        f"verify: {status}",
+                        f"final verify: {status}",
                         detail=f"{r.command[:80]}",
                     )
-                verifications_passed = sum(1 for r in verify_results if r.success)
-                verifications_failed = len(verify_results) - verifications_passed
+                verifications_passed += sum(1 for r in verify_results if r.success)
+                verifications_failed += len(verify_results) - sum(1 for r in verify_results if r.success)
 
             result_text = response.text or "No result returned."
             tool_summary = self._analyze_tool_results(tool_names, errors_encountered)
@@ -198,8 +253,10 @@ class CodingAgent:
                     f"\n\n[Verification: {verifications_passed} passed, "
                     f"{verifications_failed} failed]"
                 )
-                if self._verifier:
+                if self._verifier and self._verifier._all_results:
                     result_text += f"\n{self._verifier.summary}"
+
+            self._update_conversation_history(task, result_text, response.tool_calls)
 
         except Exception as e:
             logger.error("coding_agent_error", error=str(e))
@@ -209,8 +266,10 @@ class CodingAgent:
 
         elapsed = time.monotonic() - start
         success = (
-            "failed" not in result_text.lower()[:50]
+            verifications_failed == 0
             and len(errors_encountered) == 0
+            and response is not None
+            and (response.text is not None and len(response.text) > 0)
         )
 
         self._emit_step(
@@ -228,6 +287,7 @@ class CodingAgent:
             tool_calls=len(tool_names),
             files_edited=len(self._edited_files),
             verifications_passed=verifications_passed,
+            verifications_failed=verifications_failed,
             elapsed=elapsed,
         )
 
@@ -242,6 +302,23 @@ class CodingAgent:
             verifications_passed=verifications_passed,
             verifications_failed=verifications_failed,
         )
+
+    def _update_conversation_history(
+        self,
+        task: str,
+        result: str,
+        tool_calls: list[Any] | None = None,
+    ) -> None:
+        self._conversation_history.append({"role": "user", "content": task})
+        summary = result[:2000] if result else "Task completed."
+        self._conversation_history.append({"role": "assistant", "content": summary})
+        max_history = 20
+        if len(self._conversation_history) > max_history:
+            self._conversation_history = self._conversation_history[-max_history:]
+
+    @property
+    def conversation_history(self) -> list[dict[str, Any]]:
+        return list(self._conversation_history)
 
     def _format_tool_preview(self, name: str, args: dict[str, Any]) -> str:
         if name == "terminal":
@@ -317,6 +394,7 @@ def create_coding_agent(
     auto_discover_project: bool = True,
     verify_after_edits: bool = _VERIFY_AFTER_EDITS,
     enable_hooks: bool = True,
+    conversation_history: list[dict[str, Any]] | None = None,
 ) -> CodingAgent:
     return CodingAgent(
         llm_provider=llm_provider,
@@ -327,4 +405,5 @@ def create_coding_agent(
         auto_discover_project=auto_discover_project,
         verify_after_edits=verify_after_edits,
         enable_hooks=enable_hooks,
+        conversation_history=conversation_history,
     )

@@ -282,42 +282,90 @@ class ToolRegistry:
         return self._tools[name]
 
 
+_TOOL_RESULT_SOFT_LIMIT = 8000
+_TOOL_RESULT_HARD_LIMIT = 16000
+_RECENT_TOOL_RESULTS_TO_KEEP = 12
+
+
 class ToolLoop:
-    def __init__(self, llm: LLMProvider, registry: ToolRegistry, max_rounds: int = 30, budget: Any = None, max_context_tokens: int = 16000):
+    def __init__(self, llm: LLMProvider, registry: ToolRegistry, max_rounds: int = 30, budget: Any = None, max_context_tokens: int | None = None):
         self.llm = llm
         self.registry = registry
         self.max_rounds = max_rounds
         self._budget = budget
-        self._max_context_tokens = max_context_tokens
+        if max_context_tokens is not None:
+            self._max_context_tokens = max_context_tokens
+        else:
+            from sediman.llm.tokens import get_safe_context_budget
+            model = getattr(llm, "model", "gpt-4o")
+            self._max_context_tokens = get_safe_context_budget(model)
 
     def _estimate_tokens(self, messages: list[dict[str, Any]]) -> int:
-        total = 0
-        for m in messages:
-            content = str(m.get("content", ""))
-            tool_calls = m.get("tool_calls", [])
-            total += len(content) // 3
-            for tc in tool_calls:
-                args_str = str(tc.get("function", {}).get("arguments", ""))
-                total += len(args_str) // 3
-        return max(total, 1)
+        from sediman.llm.tokens import estimate_messages_tokens
+        return estimate_messages_tokens(messages)
+
+    def _smart_truncate_tool_result(self, content: str) -> str:
+        if len(content) <= _TOOL_RESULT_SOFT_LIMIT:
+            return content
+        is_error = any(
+            marker in content[:500].lower()
+            for marker in ("error", "fail", "traceback", "exception", "fatal", "denied")
+        )
+        if is_error:
+            if len(content) <= _TOOL_RESULT_HARD_LIMIT:
+                return content
+            lines = content.splitlines()
+            if len(lines) > 20:
+                head = "\n".join(lines[:10])
+                tail = "\n".join(lines[-10:])
+                return f"{head}\n... ({len(lines) - 20} lines omitted) ...\n{tail}"
+            return content[:_TOOL_RESULT_HARD_LIMIT] + "\n... (truncated)"
+        lines = content.splitlines()
+        if len(lines) > 40:
+            head = "\n".join(lines[:8])
+            tail = "\n".join(lines[-8:])
+            return f"{head}\n... ({len(lines) - 16} lines omitted, {len(content)} chars total) ...\n{tail}"
+        if len(content) > _TOOL_RESULT_HARD_LIMIT:
+            return content[:_TOOL_RESULT_HARD_LIMIT] + "\n... (truncated)"
+        return content
 
     def _compress_tool_results(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         compressed = []
         for m in messages:
             if m.get("role") == "tool":
                 content = str(m.get("content", ""))
-                if len(content) > 2000:
-                    compressed.append({
-                        **m,
-                        "content": content[:2000] + f"\n... ({len(content) - 2000} more chars truncated)",
-                    })
+                truncated = self._smart_truncate_tool_result(content)
+                if truncated is not content:
+                    compressed.append({**m, "content": truncated})
                 else:
                     compressed.append(m)
             else:
                 compressed.append(m)
         return compressed
 
+    def _summarize_old_messages(self, messages: list[dict[str, Any]]) -> str:
+        parts = []
+        for m in messages:
+            role = m.get("role", "")
+            content = str(m.get("content", ""))
+            if role == "user":
+                parts.append(f"User: {content[:200]}")
+            elif role == "assistant":
+                tool_calls = m.get("tool_calls", [])
+                if tool_calls:
+                    tools_used = ", ".join(tc.get("function", {}).get("name", "?") for tc in tool_calls)
+                    parts.append(f"Assistant called: {tools_used}")
+                elif content:
+                    parts.append(f"Assistant: {content[:200]}")
+            elif role == "tool":
+                parts.append(f"Tool result: {content[:150]}...")
+            elif role == "system":
+                if "truncat" not in content.lower() and "compac" not in content.lower():
+                    parts.append(f"System: {content[:100]}")
+        return "\n".join(parts)
+
     def _maybe_compress(self, messages: list[dict[str, Any]], system_len: int = 0) -> list[dict[str, Any]]:
+        from sediman.llm.tokens import estimate_tokens
         current_tokens = self._estimate_tokens(messages) + system_len
         if current_tokens <= self._max_context_tokens:
             return messages
@@ -332,25 +380,25 @@ class ToolLoop:
         compressed = self._compress_tool_results(messages)
         new_tokens = self._estimate_tokens(compressed) + system_len
         if new_tokens > self._max_context_tokens:
-            early = []
+            keep = []
             recent_count = 0
             for m in reversed(compressed):
                 if m.get("role") == "tool":
                     recent_count += 1
-                early.insert(0, m)
-                if recent_count >= 6 and m.get("role") == "user":
+                keep.insert(0, m)
+                if recent_count >= _RECENT_TOOL_RESULTS_TO_KEEP and m.get("role") == "user":
                     break
-            remaining = [m for m in compressed if m not in early]
-            if remaining and len(early) < len(compressed):
-                early.insert(0, {
+            dropped = [m for m in compressed if m not in keep]
+            if dropped and len(keep) < len(compressed):
+                summary = self._summarize_old_messages(dropped)
+                keep.insert(0, {
                     "role": "system",
                     "content": (
-                        f"[{len(remaining)} earlier messages were truncated to "
-                        f"conserve context. Key results from those rounds are "
-                        f"preserved in the most recent messages below.]"
+                        f"[{len(dropped)} earlier messages were summarized to conserve context. "
+                        f"Summary of prior work:\n{summary}]"
                     ),
                 })
-            compressed = early
+            compressed = keep
 
         logger.info(
             "tool_loop_compressed",
@@ -373,7 +421,8 @@ class ToolLoop:
         all_messages.extend(messages)
 
         response: LLMResponse | None = None
-        system_tokens = len(system or "") // 3
+        from sediman.llm.tokens import estimate_tokens
+        system_tokens = estimate_tokens(system or "")
         for _round in range(self.max_rounds):
             if self._budget is not None:
                 exhausted, reason = self._budget.is_exhausted()
@@ -469,7 +518,8 @@ class ToolLoop:
         all_messages.extend(messages)
 
         response: LLMResponse | None = None
-        system_tokens = len(system or "") // 3
+        from sediman.llm.tokens import estimate_tokens
+        system_tokens = estimate_tokens(system or "")
         for _round in range(self.max_rounds):
             if self._budget is not None:
                 exhausted, reason = self._budget.is_exhausted()

@@ -654,4 +654,87 @@ mod tests {
         handle_task(&mut app, "scroll", &tx).await;
         assert!(app.auto_scroll, "handle_task should enable auto_scroll");
     }
+
+    // ── Mode string mapping tests ────────────────────────────────
+
+    #[test]
+    fn test_browser_mode_maps_to_browser_string() {
+        let mode = match AgentMode::Browser {
+            AgentMode::Browser => "browser",
+            AgentMode::Coder => "coder",
+            _ => "manager",
+        };
+        assert_eq!(mode, "browser");
+    }
+
+    #[test]
+    fn test_coder_mode_maps_to_coder_string() {
+        let mode = match AgentMode::Coder {
+            AgentMode::Browser => "browser",
+            AgentMode::Coder => "coder",
+            _ => "manager",
+        };
+        assert_eq!(mode, "coder");
+    }
+
+    #[test]
+    fn test_manager_mode_maps_to_manager_string() {
+        let mode = match AgentMode::Manager {
+            AgentMode::Browser => "browser",
+            AgentMode::Coder => "coder",
+            _ => "manager",
+        };
+        assert_eq!(mode, "manager");
+    }
+
+    #[test]
+    fn test_terminator_mode_maps_to_manager_string() {
+        let mode = match AgentMode::Terminator {
+            AgentMode::Browser => "browser",
+            AgentMode::Coder => "coder",
+            _ => "manager",
+        };
+        assert_eq!(mode, "manager");
+    }
+
+    // ── Browser mode handle_task tests ───────────────────────────
+
+    #[tokio::test]
+    async fn test_handle_task_browser_mode_sets_state() {
+        let mut app = test_app();
+        app.agent_mode = AgentMode::Browser;
+        let tx = test_event_tx();
+        handle_task(&mut app, "browse example.com", &tx).await;
+        assert!(app.agent_running);
+        assert!(!app.show_banner);
+    }
+
+    #[tokio::test]
+    async fn test_handle_task_browser_mode_increments_count() {
+        let mut app = test_app();
+        app.agent_mode = AgentMode::Browser;
+        let tx = test_event_tx();
+        let initial = app.task_count;
+        handle_task(&mut app, "browse", &tx).await;
+        assert_eq!(app.task_count, initial + 1);
+    }
+
+    #[tokio::test]
+    async fn test_handle_task_browser_mode_adds_user_message() {
+        let mut app = test_app();
+        app.agent_mode = AgentMode::Browser;
+        let tx = test_event_tx();
+        handle_task(&mut app, "go to https://example.com", &tx).await;
+        assert!(!app.messages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_handle_task_browser_mode_clears_interrupt() {
+        let mut app = test_app();
+        app.agent_mode = AgentMode::Browser;
+        app.interrupt.trigger();
+        let tx = test_event_tx();
+        handle_task(&mut app, "browse", &tx).await;
+        assert!(!app.interrupt.is_triggered());
+    }
 }

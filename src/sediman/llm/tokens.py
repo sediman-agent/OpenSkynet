@@ -5,8 +5,83 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+_TIKTOKEN_AVAILABLE: bool | None = None
+_TIKTOKEN_ENC: Any = None
+
+
+def _get_tiktoken_encoder() -> Any:
+    global _TIKTOKEN_AVAILABLE, _TIKTOKEN_ENC
+    if _TIKTOKEN_AVAILABLE is None:
+        try:
+            import tiktoken
+            _TIKTOKEN_ENC = tiktoken.get_encoding("cl100k_base")
+            _TIKTOKEN_AVAILABLE = True
+        except Exception:
+            _TIKTOKEN_AVAILABLE = False
+    return _TIKTOKEN_ENC if _TIKTOKEN_AVAILABLE else None
+
+
 def estimate_tokens(text: str) -> int:
-    return int(len(text) * 0.5) + 1
+    if not text:
+        return 0
+    enc = _get_tiktoken_encoder()
+    if enc is not None:
+        try:
+            return len(enc.encode(text))
+        except Exception:
+            pass
+    has_cjk = any("\u4e00" <= c <= "\u9fff" for c in text[:200])
+    if has_cjk:
+        return max(1, len(text) // 2)
+    return max(1, len(text) // 3)
+
+
+def estimate_messages_tokens(messages: list[dict[str, Any]]) -> int:
+    total = 0
+    for m in messages:
+        content = str(m.get("content", ""))
+        total += estimate_tokens(content)
+        tool_calls = m.get("tool_calls", [])
+        for tc in tool_calls:
+            fn = tc.get("function", {})
+            total += estimate_tokens(str(fn.get("name", "")))
+            total += estimate_tokens(str(fn.get("arguments", "")))
+        total += 4
+    return max(total, 1)
+
+
+MODEL_CONTEXT_WINDOWS: dict[str, int] = {
+    "gpt-4o": 128000,
+    "gpt-4o-mini": 128000,
+    "gpt-4-turbo": 128000,
+    "gpt-4": 8192,
+    "gpt-3.5-turbo": 16385,
+    "o1": 200000,
+    "o1-mini": 128000,
+    "o3-mini": 200000,
+    "claude-3-5-sonnet": 200000,
+    "claude-3-sonnet": 200000,
+    "claude-3-haiku": 200000,
+    "deepseek-chat": 64000,
+    "deepseek-coder": 64000,
+    "gemini-2.0-flash": 1048576,
+    "gemini-1.5-pro": 2097152,
+}
+
+DEFAULT_CONTEXT_WINDOW = 128000
+
+
+def get_model_context_window(model: str) -> int:
+    model_lower = model.lower()
+    for key, window in MODEL_CONTEXT_WINDOWS.items():
+        if key in model_lower:
+            return window
+    return DEFAULT_CONTEXT_WINDOW
+
+
+def get_safe_context_budget(model: str, reserve_ratio: float = 0.25) -> int:
+    window = get_model_context_window(model)
+    return int(window * (1.0 - reserve_ratio))
 
 
 MODEL_COST_PER_1K_INPUT: dict[str, float] = {

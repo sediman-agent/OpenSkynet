@@ -217,8 +217,14 @@ class SubagentSession:
             max_rounds=self.template.max_iterations,
             on_step=self.on_step,
             on_streaming_text=self._on_streaming_text,
+            conversation_history=self._conversation_history if hasattr(self, '_conversation_history') else None,
         )
-        return await coding_agent.run(task)
+        result = await coding_agent.run(task)
+        if hasattr(self, '_conversation_history'):
+            self._conversation_history = coding_agent.conversation_history
+        else:
+            self._conversation_history = coding_agent.conversation_history
+        return result
 
     async def _run_browser_step(self, task: str) -> BrowserResult:
         browser_agent = BrowserSubagent(

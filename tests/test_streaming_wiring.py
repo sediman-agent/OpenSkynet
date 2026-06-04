@@ -168,7 +168,7 @@ class TestRpcServerStreaming:
         streaming_was_set = [False]
         original_run = mock_agent.run
 
-        async def fake_run(task):
+        async def fake_run(task, mode="manager"):
             if mock_agent.on_streaming_text is not None:
                 streaming_was_set[0] = True
                 mock_agent.on_streaming_text("hello", "responding")
@@ -207,7 +207,7 @@ class TestRpcServerStreaming:
         mock_result.iterations = 0
         mock_result.strategy_used = "direct"
 
-        async def fake_run(task):
+        async def fake_run(task, mode="manager"):
             if mock_agent.on_streaming_text:
                 mock_agent.on_streaming_text("hello", "responding")
             return mock_result
@@ -277,7 +277,7 @@ class TestRpcServerStreaming:
         mock_result.iterations = 0
         mock_result.strategy_used = "direct"
 
-        async def fake_run(task):
+        async def fake_run(task, mode="manager"):
             from sediman.agent.loop import StepEvent
             if mock_agent.on_step:
                 mock_agent.on_step(StepEvent(step=1, action="navigate", observation="done"))

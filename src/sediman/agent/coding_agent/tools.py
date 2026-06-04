@@ -31,8 +31,8 @@ async def _handle_glob(
             suffix = "/" if m.is_dir() else ""
             lines.append(str(rel) + suffix)
         output = "\n".join(lines)
-        if len(output) > 15000:
-            output = output[:15000] + "\n... (truncated)"
+        if len(output) > 30000:
+            output = output[:30000] + "\n... (truncated)"
         return ToolResult(
             success=True,
             output=output,
@@ -130,8 +130,8 @@ async def _handle_git_diff(
                 output="No changes (working tree clean).",
                 data={"has_changes": False},
             )
-        if len(output) > 15000:
-            output = output[:15000] + "\n... (diff truncated)"
+        if len(output) > 30000:
+            output = output[:30000] + "\n... (diff truncated)"
         return ToolResult(
             success=True,
             output=output,

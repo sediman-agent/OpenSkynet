@@ -11,6 +11,7 @@ import structlog
 from sediman.agent.subagents.factory import SubagentFactory
 from sediman.agent.subagents.result import SubagentResult
 from sediman.agent.system.types import Issue, IssueStatus, VerifyResult, WorkflowConfig, WorkflowResult
+from sediman.agent.interrupt import InterruptSignal, AgentInterruptedError
 from sediman.agent.system.worktree import (
     create_worktree, remove_worktree, cleanup_worktrees,
     stash_push, stash_pop, find_git_root,
@@ -204,6 +205,10 @@ class SystemOrchestrator:
         self.config = config or WorkflowConfig()
         self.board = SystemBoard()
 
+    async def _check_interrupt(self):
+        if InterruptSignal.get().is_set():
+            raise AgentInterruptedError("Terminator interrupted")
+
     async def run(self, task: str, subtasks: list[str]) -> WorkflowResult:
         result = WorkflowResult(task=task)
         result.timeline.started_at = time.time()
@@ -227,8 +232,10 @@ class SystemOrchestrator:
 
         try:
             await self._execute_phase(result, task, repo_root)
+            await self._check_interrupt()
             if result.resolved and not result.failed:
                 await self._integrate_phase(result, repo_root)
+            await self._check_interrupt()
             if result.resolved:
                 await self._redteam_phase(result, repo_root)
         finally:
@@ -249,6 +256,7 @@ class SystemOrchestrator:
         result.timeline.record_phase("execute", "started")
         round_num = 0
         while not self.board.is_done() and round_num < self.config.max_rounds:
+            await self._check_interrupt()
             round_num += 1
             open_issues = self.board.open_issues()
             if not open_issues:

@@ -50,6 +50,20 @@ class InlineVerifier:
 
         return None
 
+    async def verify_edited_files(self) -> str | None:
+        if not self._edited_files:
+            return None
+        all_failures: list[VerifyResult] = []
+        for fp in list(self._edited_files):
+            results: list[VerifyResult] = []
+            await self._run_lint_on_file(fp, results)
+            self._all_results.extend(results)
+            failures = [r for r in results if not r.success]
+            all_failures.extend(failures)
+        if all_failures:
+            return self._format_as_tool_feedback(all_failures)
+        return None
+
     async def verify_all(self, aggressive: bool = False) -> list[VerifyResult]:
         results: list[VerifyResult] = []
 

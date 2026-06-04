@@ -67,8 +67,14 @@ async def _handle_terminal(
         )
 
     output = result.output or ""
-    if len(output) > 10000:
-        output = output[:10000] + "\n... (output truncated)"
+    if len(output) > 30000:
+        lines = output.splitlines()
+        if len(lines) > 100:
+            head = "\n".join(lines[:60])
+            tail = "\n".join(lines[-40:])
+            output = f"{head}\n... ({len(lines) - 100} lines omitted) ...\n{tail}"
+        else:
+            output = output[:30000] + "\n... (output truncated)"
 
     if not result.success and not result.timed_out:
         output = _format_error_output(command, result.exit_code, output)

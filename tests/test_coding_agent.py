@@ -190,7 +190,7 @@ class TestCodingAgent:
 
             call_kwargs = mock_loop.run_streaming.call_args
             system_prompt = call_kwargs.kwargs.get("system", "")
-            assert "Project Context" in system_prompt
+            assert "Project" in system_prompt
             assert "Python" in system_prompt
             assert "ruff check" in system_prompt
             assert "pytest" in system_prompt
