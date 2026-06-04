@@ -45,7 +45,9 @@ pub fn render_messages(buf: &mut CellBuffer, area: Rect, app: &mut App) {
             render_streaming_sections(&mut new_lines, app, max_width, area);
         }
 
-        for msg in &app.messages {
+        let skip_last = app.agent_running && !app.messages.is_empty();
+        let end = app.messages.len().saturating_sub(if skip_last { 1 } else { 0 });
+        for msg in app.messages.iter().take(end) {
             render_completed_message(msg, &mut new_lines, app, max_width);
         }
 
