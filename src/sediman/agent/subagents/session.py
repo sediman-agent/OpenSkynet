@@ -131,7 +131,7 @@ class SubagentSession:
                             result_text = tool_result.output
                             if not tool_result.success:
                                 state.errors.append(f"Tool {tc.name} failed: {result_text[:200]}")
-                            if tool_result.data and tc.name in ("write_file", "patch"):
+                            if tool_result.data and tc.name in ("write_file", "patch", "skill_manage"):
                                 state.actions_taken.append(
                                     {
                                         "tool": tc.name,
