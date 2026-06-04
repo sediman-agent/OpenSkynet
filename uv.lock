@@ -1728,7 +1728,7 @@ wheels = [
 
 [[package]]
 name = "openskynet"
-version = "0.3.11"
+version = "0.3.14"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },

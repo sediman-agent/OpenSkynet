@@ -48,6 +48,13 @@ class Reflector:
         """
         content = observation.content or ""
 
+        # Stream reflection status to user
+        if hasattr(state, '_streaming_token') and state._streaming_token:
+            try:
+                state._streaming_token("Reflecting on result...", "reflecting")
+            except Exception:
+                pass
+
         def _has_data_values(text: str) -> bool:
             if _re.search(r'\d+\.?\d*', text):
                 return True
@@ -215,6 +222,13 @@ class Reflector:
     ) -> Reflection:
         """Perform LLM-based reflection."""
         try:
+            # Stream that we're doing deep analysis
+            if hasattr(state, '_streaming_token') and state._streaming_token:
+                try:
+                    state._streaming_token("Analyzing result with LLM...", "reflecting")
+                except Exception:
+                    pass
+
             result = await self.manager.reflect(
                 task=state.task,
                 result=observation.content,

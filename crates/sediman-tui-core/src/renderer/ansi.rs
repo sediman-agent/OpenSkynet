@@ -3,10 +3,35 @@ use std::io::{self, Write as IoWrite};
 
 use super::{Cell, CellBuffer, Color, Style};
 
+static SGR_RESET: &[u8] = b"\x1b[0";
+static SGR_M: &[u8] = b"m";
+static CURSOR_HIDE: &[u8] = b"\x1b[?25l";
+static CURSOR_SHOW: &[u8] = b"\x1b[?25h";
+static CLEAR_ALL: &[u8] = b"\x1b[2J\x1b[H";
+
 #[derive(Default)]
 pub struct AnsiWriter {
     last_fg: Option<Color>,
     last_bg: Option<Color>,
+    last_attrs: u8,
+}
+
+const ATTR_BOLD: u8 = 1;
+const ATTR_DIM: u8 = 2;
+const ATTR_ITALIC: u8 = 4;
+const ATTR_UNDERLINE: u8 = 8;
+const ATTR_REVERSE: u8 = 16;
+const ATTR_STRIKETHROUGH: u8 = 32;
+
+fn attrs_bitmask(a: super::TextAttributes) -> u8 {
+    let mut mask = 0u8;
+    if a.bold { mask |= ATTR_BOLD; }
+    if a.dim { mask |= ATTR_DIM; }
+    if a.italic { mask |= ATTR_ITALIC; }
+    if a.underline { mask |= ATTR_UNDERLINE; }
+    if a.reverse { mask |= ATTR_REVERSE; }
+    if a.strikethrough { mask |= ATTR_STRIKETHROUGH; }
+    mask
 }
 
 impl AnsiWriter {
@@ -15,35 +40,97 @@ impl AnsiWriter {
     }
 
     pub fn clear_all(stdout: &mut dyn IoWrite) {
-        let _ = write!(stdout, "\x1b[2J\x1b[H");
+        let _ = stdout.write_all(CLEAR_ALL);
         let _ = stdout.flush();
     }
 
     pub fn hide_cursor(stdout: &mut dyn IoWrite) {
-        let _ = write!(stdout, "\x1b[?25l");
+        let _ = stdout.write_all(CURSOR_HIDE);
         let _ = stdout.flush();
     }
 
     pub fn show_cursor(stdout: &mut dyn IoWrite) {
-        let _ = write!(stdout, "\x1b[?25h");
+        let _ = stdout.write_all(CURSOR_SHOW);
         let _ = stdout.flush();
     }
 
+    #[inline]
+    fn write_color_inline(out: &mut dyn IoWrite, base: u8, color: Color) -> io::Result<()> {
+        match color {
+            Color::Named(idx) => {
+                let code = Self::ansi_16_code(base, idx);
+                write!(out, ";{}", code)?;
+            }
+            Color::Rgb(r, g, b) => {
+                write!(out, ";{};2;{};{};{}", base, r, g, b)?;
+            }
+            Color::Rgba(_) => {
+                let (r, g, b) = color.to_rgb();
+                write!(out, ";{};2;{};{};{}", base, r, g, b)?;
+            }
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn write_sgr_inline(out: &mut dyn IoWrite, style: Style) -> io::Result<()> {
+        out.write_all(SGR_RESET)?;
+        if let Some(fg) = style.fg {
+            Self::write_color_inline(out, 38, fg)?;
+        } else {
+            out.write_all(b";39")?;
+        }
+        if let Some(bg) = style.bg {
+            Self::write_color_inline(out, 48, bg)?;
+        } else {
+            out.write_all(b";49")?;
+        }
+        let a = style.attrs;
+        if a.bold { out.write_all(b";1")?; }
+        if a.dim { out.write_all(b";2")?; }
+        if a.italic { out.write_all(b";3")?; }
+        if a.underline { out.write_all(b";4")?; }
+        if a.reverse { out.write_all(b";7")?; }
+        if a.strikethrough { out.write_all(b";9")?; }
+        out.write_all(SGR_M)?;
+        Ok(())
+    }
+
     pub fn write(&mut self, stdout: &mut dyn IoWrite, changes: &[super::diff::Change]) -> io::Result<()> {
+        if changes.is_empty() {
+            return Ok(());
+        }
+
+        let mut buf = [0u8; 32];
         let mut last_y: Option<u16> = None;
         let mut next_x: Option<u16> = None;
 
         for change in changes {
             let need_position = last_y != Some(change.y) || next_x != Some(change.x);
             if need_position {
-                write!(stdout, "\x1b[{};{}H", change.y + 1, change.x + 1)?;
+                let pos = format!("\x1b[{};{}H", change.y + 1, change.x + 1);
+                stdout.write_all(pos.as_bytes())?;
             }
-            self.write_style_io(stdout, change.cell.style)?;
+
+            let attrs = attrs_bitmask(change.cell.style.attrs);
+            let fg_changed = self.last_fg != change.cell.style.fg;
+            let bg_changed = self.last_bg != change.cell.style.bg;
+            let attrs_changed = self.last_attrs != attrs;
+
+            if fg_changed || bg_changed || attrs_changed {
+                Self::write_sgr_inline(stdout, change.cell.style)?;
+                self.last_fg = change.cell.style.fg;
+                self.last_bg = change.cell.style.bg;
+                self.last_attrs = attrs;
+            }
+
             let ch = if change.cell.ch == '\0' { ' ' } else { change.cell.ch };
-            stdout.write_all(ch.to_string().as_bytes())?;
+            let enc = ch.encode_utf8(&mut buf);
+            stdout.write_all(enc.as_bytes())?;
             let w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) as u16;
             last_y = Some(change.y);
             next_x = Some(change.x + w);
+            let _ = &buf;
         }
         stdout.flush()
     }
@@ -74,52 +161,6 @@ impl AnsiWriter {
 
         out.push_str("\x1b[0m");
         out
-    }
-
-    fn write_style_io(&mut self, out: &mut dyn IoWrite, style: Style) -> io::Result<()> {
-        let fg_changed = self.last_fg != style.fg;
-        let bg_changed = self.last_bg != style.bg;
-
-        if fg_changed || bg_changed {
-            out.write_all(b"\x1b[0")?;
-            if let Some(fg) = style.fg {
-                Self::write_color_io(out, 38, fg)?;
-            } else {
-                out.write_all(b";39")?;
-            }
-            if let Some(bg) = style.bg {
-                Self::write_color_io(out, 48, bg)?;
-            } else {
-                out.write_all(b";49")?;
-            }
-            if style.attrs.bold { out.write_all(b";1")?; }
-            if style.attrs.dim { out.write_all(b";2")?; }
-            if style.attrs.italic { out.write_all(b";3")?; }
-            if style.attrs.underline { out.write_all(b";4")?; }
-            if style.attrs.reverse { out.write_all(b";7")?; }
-            if style.attrs.strikethrough { out.write_all(b";9")?; }
-            out.write_all(b"m")?;
-            self.last_fg = style.fg;
-            self.last_bg = style.bg;
-        }
-        Ok(())
-    }
-
-    fn write_color_io(out: &mut dyn IoWrite, base: u8, color: Color) -> io::Result<()> {
-        match color {
-            Color::Named(idx) => {
-                let code = Self::ansi_16_code(base, idx);
-                write!(out, ";{}", code)?;
-            }
-            Color::Rgb(r, g, b) => {
-                write!(out, ";{};2;{};{};{}", base, r, g, b)?;
-            }
-            Color::Rgba(_) => {
-                let (r, g, b) = color.to_rgb();
-                write!(out, ";{};2;{};{};{}", base, r, g, b)?;
-            }
-        }
-        Ok(())
     }
 
     fn write_sgr(out: &mut String, style: Style) {

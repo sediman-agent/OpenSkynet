@@ -64,6 +64,7 @@ from sediman.agent.loop_modules import (
     AgentHelpers,
     BackgroundTaskManager,
 )
+from sediman.agent.background_validation import BackgroundValidator, get_background_validator
 
 logger = structlog.get_logger()
 
@@ -211,6 +212,7 @@ class AgentLoop:
             subagent_registry=self._subagent_registry,
             memory=self._memory,
         )
+        self._background_validator: BackgroundValidator | None = None
 
     def _init_refactored_components(self) -> None:
         """Initialize refactored execution, reflection, and post-task components."""
@@ -347,9 +349,114 @@ class AgentLoop:
         self._browser_agent_factory.set_memory_context(self._cached_memory_context)
         return self._browser_agent_factory.get_browser_agent(recording_name=recording_name, task=task)
 
+    def _get_background_validator(self) -> BackgroundValidator:
+        """Get or create background validator."""
+        if self._background_validator is None:
+            self._background_validator = BackgroundValidator(
+                reflector=self._reflector,
+                on_validation_update=self._on_validation_update,
+            )
+        return self._background_validator
+
+    def _on_validation_update(self, task) -> None:
+        """Handle background validation updates."""
+        if self.on_streaming_text:
+            try:
+                # Stream validation status to user
+                if task.status.value == "validating":
+                    self.on_streaming_text("Validating result...", "progress")
+                elif task.status.value == "validated":
+                    self.on_streaming_text(
+                        f"{{\"validation\": {{\"confidence\": {task.confidence:.2f}, \"issues\": {len(task.issues)}}}}}",
+                        "progress"
+                    )
+                elif task.status.value == "improved":
+                    self.on_streaming_text(
+                        f"{{\"improvement\": {{\"original\": {len(task.original_result)}, \"improved\": {len(task.improved_result or '')}}}}}",
+                        "progress"
+                    )
+            except Exception:
+                pass
+
+    async def _run_parallel_browser_operations(
+        self,
+        operations: list[Callable[[], Any]],
+    ) -> list[Any]:
+        """Run independent browser operations in parallel.
+
+        Args:
+            operations: List of async callables that perform browser operations
+
+        Returns:
+            List of results in the same order as operations
+        """
+        if not operations or len(operations) == 1:
+            # Single operation, no parallelization needed
+            if operations:
+                return [await operations[0]()]
+            return []
+
+        # Run operations in parallel
+        results = await asyncio.gather(
+            *[op() for op in operations],
+            return_exceptions=True
+        )
+
+        # Handle exceptions
+        processed_results = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.warning("parallel_operation_failed", index=i, error=str(result))
+                processed_results.append(None)
+            else:
+                processed_results.append(result)
+
+        return processed_results
+
+    def _calculate_final_confidence(self, state: AgentState) -> float:
+        """Calculate final confidence score for the result.
+
+        Args:
+            state: The current agent state
+
+        Returns:
+            Confidence score between 0.0 and 1.0
+        """
+        if not state.reflections:
+            # No reflections performed - use heuristics
+            if state.errors:
+                return 0.4
+            if len(state.result) > 200:
+                return 0.7
+            return 0.5
+
+        # Use the last reflection's confidence
+        if state.reflections:
+            last_reflection = state.reflections[-1]
+            base_confidence = last_reflection.confidence
+
+            # Adjust based on errors
+            if state.errors:
+                base_confidence *= 0.7
+
+            # Adjust based on result length
+            if len(state.result) > 500:
+                base_confidence = min(base_confidence + 0.1, 1.0)
+            elif len(state.result) < 100:
+                base_confidence = max(base_confidence - 0.2, 0.0)
+
+            return max(0.0, min(base_confidence, 1.0))
+
+        return 0.5
+
     async def run(self, task: str, mode: str = "manager") -> AgentResult:
         session_id = str(uuid.uuid4())[:8]
-        state = AgentState(task=task, max_iterations=self._max_iterations)
+        state = AgentState(
+            task=task,
+            max_iterations=self._max_iterations,
+            _streaming_token=self._stream_text,
+            _streaming_callback=self.on_streaming_text
+        )
         self._budget = Budget()
         self._budget.start()
         self.llm.set_token_callback(self._budget.add_tokens)
@@ -596,6 +703,20 @@ class AgentLoop:
                 detail=observation.content[:100],
             )
 
+            # Progressive Result Delivery: Stream partial results immediately
+            if observation.content and len(observation.content) > 50:
+                # Send as progress event with partial result
+                if hasattr(state, '_streaming_token') and state._streaming_token:
+                    try:
+                        # Indicate this is a partial result (may be refined)
+                        preview = observation.content[:300] + "..." if len(observation.content) > 300 else observation.content
+                        state._streaming_token(
+                            f"{{\"partial_result\": {json.dumps(preview)}, \"confidence\": \"preliminary\"}}",
+                            "progress"
+                        )
+                    except Exception:
+                        pass
+
             # ── Progress Check (loop detection + milestones) ──
             if self._progress is not None:
                 page_url = ""
@@ -679,6 +800,9 @@ class AgentLoop:
             schedule_cron=state.schedule_cron,
             iterations=state.iteration,
             strategy_used=plan.strategy.value,
+            confidence=self._calculate_final_confidence(state),
+            validation_status="validated",
+            issues_found=state.errors,
         )
 
     def _is_turbo_eligible(self, task: str) -> bool:

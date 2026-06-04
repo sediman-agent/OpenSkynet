@@ -142,6 +142,12 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Unb
                 app.append_streaming_token(&token, &phase);
             }
         }
+        AppEvent::Progress(progress_data) => {
+            // Handle progress events (retry countdown, validation status, etc.)
+            if app.agent_running {
+                app.update_progress(&progress_data);
+            }
+        }
         AppEvent::UpdateSuccess => {
             app.show_toast("Update installed! Restarting...".to_string());
             app.running = false;

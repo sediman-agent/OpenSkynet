@@ -144,6 +144,45 @@ async fn handle_terminator_task(app: &mut App, task: &str, event_tx: &mpsc::Unbo
                                             let _ = tx.send(AppEvent::AgentStep(phase, step_line));
                                         }
                                     }
+                                    "progress" => {
+                                        // Handle structured progress data (retry, validation, etc.)
+                                        if let Some(ref data) = ws_msg.data {
+                                            if let Some(retry_val) = data.get("retry") {
+                                                // Retry progress
+                                                if let (Some(attempt), Some(max), Some(countdown)) = (
+                                                    retry_val.get("attempt").and_then(|a| a.as_u64()),
+                                                    retry_val.get("max").and_then(|m| m.as_u64()),
+                                                    retry_val.get("countdown").and_then(|c| c.as_f64()),
+                                                ) {
+                                                    use sediman_tui_core::event::ProgressData;
+                                                    let progress = ProgressData::retry(
+                                                        attempt as u32,
+                                                        max as u32,
+                                                        countdown as f32,
+                                                    );
+                                                    let _ = tx.send(AppEvent::Progress(progress));
+                                                }
+                                            } else if let Some(validation_val) = data.get("validation") {
+                                                // Validation progress
+                                                if let (Some(confidence), Some(issues)) = (
+                                                    validation_val.get("confidence").and_then(|c| c.as_f64()),
+                                                    validation_val.get("issues").and_then(|i| i.as_u64()),
+                                                ) {
+                                                    use sediman_tui_core::event::ProgressData;
+                                                    let progress = ProgressData::validation(
+                                                        confidence as f32,
+                                                        issues as usize,
+                                                    );
+                                                    let _ = tx.send(AppEvent::Progress(progress));
+                                                }
+                                            } else if data.get("reflection").is_some() {
+                                                // Reflection progress
+                                                use sediman_tui_core::event::ProgressData;
+                                                let progress = ProgressData::reflection();
+                                                let _ = tx.send(AppEvent::Progress(progress));
+                                            }
+                                        }
+                                    }
                                     "result" => {
                                         final_result = ws_msg.result;
                                         break;

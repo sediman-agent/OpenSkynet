@@ -213,6 +213,10 @@ impl CellBuffer {
         self.area.height
     }
 
+    pub fn cells_ref(&self) -> &[Cell] {
+        &self.cells
+    }
+
     fn mark_dirty(&mut self, y: u16) {
         if (y as usize) < self.dirty_rows.len() {
             self.dirty_rows[y as usize] = true;
@@ -284,6 +288,7 @@ impl CellBuffer {
         for c in &mut self.cells {
             c.clear();
         }
+        let _ = &mut self.dirty_rows;
         for d in &mut self.dirty_rows {
             *d = true;
         }
@@ -291,37 +296,53 @@ impl CellBuffer {
 
     pub fn fill(&mut self, rect: Rect, cell: Cell) {
         let clamped = rect.clamp(self.area);
-        for y in clamped.y..clamped.bottom() {
-            for x in clamped.x..clamped.right() {
-                if let Some(i) = self.index(x, y) {
-                    self.cells[i] = cell;
-                }
+        if clamped.width == 0 || clamped.height == 0 {
+            return;
+        }
+        let w = self.area.width as usize;
+        let cw = clamped.width as usize;
+        let row_end = clamped.bottom().min(self.area.height) as usize;
+        for row in clamped.y as usize..row_end {
+            let start = row * w + clamped.x as usize;
+            for i in start..start + cw {
+                self.cells[i] = cell;
             }
-            self.mark_dirty(y);
+            self.dirty_rows[row] = true;
         }
     }
 
     pub fn fill_style(&mut self, rect: Rect, style: super::Style) {
         let clamped = rect.clamp(self.area);
-        for y in clamped.y..clamped.bottom() {
-            for x in clamped.x..clamped.right() {
-                if let Some(i) = self.index(x, y) {
-                    self.cells[i].style = style;
-                }
+        if clamped.width == 0 || clamped.height == 0 {
+            return;
+        }
+        let w = self.area.width as usize;
+        let cw = clamped.width as usize;
+        let row_end = clamped.bottom().min(self.area.height) as usize;
+        for row in clamped.y as usize..row_end {
+            let start = row * w + clamped.x as usize;
+            for i in start..start + cw {
+                self.cells[i].style = style;
             }
-            self.mark_dirty(y);
+            self.dirty_rows[row] = true;
         }
     }
 
     pub fn clear_rect(&mut self, rect: Rect) {
         let clamped = rect.clamp(self.area);
-        for y in clamped.y..clamped.bottom() {
-            for x in clamped.x..clamped.right() {
-                if let Some(i) = self.index(x, y) {
-                    self.cells[i].clear();
-                }
+        if clamped.width == 0 || clamped.height == 0 {
+            return;
+        }
+        let w = self.area.width as usize;
+        let cw = clamped.width as usize;
+        let empty = Cell::EMPTY;
+        let row_end = clamped.bottom().min(self.area.height) as usize;
+        for row in clamped.y as usize..row_end {
+            let start = row * w + clamped.x as usize;
+            for i in start..start + cw {
+                self.cells[i] = empty;
             }
-            self.mark_dirty(y);
+            self.dirty_rows[row] = true;
         }
     }
 

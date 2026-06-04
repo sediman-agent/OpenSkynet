@@ -66,7 +66,31 @@ class RecoveryStrategy:
                 f"attempt={step.retries}, backoff={backoff:.1f}s",
                 step=step.id,
             )
-            await asyncio.sleep(backoff)
+
+            # Emit retry progress with countdown
+            try:
+                # Try to get the streaming callback from state if available
+                if hasattr(state, '_streaming_callback') and state._streaming_callback:
+                    state._streaming_token(f"Retrying step (attempt {step.retries + 1}/{step.max_retries})", "progress")
+
+                    # Show countdown during backoff
+                    countdown_interval = 0.1
+                    elapsed = 0
+                    while elapsed < backoff:
+                        remaining = backoff - elapsed
+                        state._streaming_token(
+                            f"{{\"retry\": {{\"attempt\": {step.retries + 1}, \"max\": {step.max_retries}, \"countdown\": {remaining:.1f}}}}}",
+                            "progress"
+                        )
+                        await asyncio.sleep(countdown_interval)
+                        elapsed += countdown_interval
+                else:
+                    # Fallback to normal sleep if no streaming callback
+                    await asyncio.sleep(backoff)
+            except Exception:
+                # If streaming fails, fall back to normal sleep
+                await asyncio.sleep(backoff)
+
             logger.info(
                 "retrying_step",
                 attempt=step.retries + 1,

@@ -26,6 +26,19 @@ pulldown-cmark = "0.13.4"
 unicode-width.workspace = true
 syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "default-themes", "parsing", "html", "regex-fancy"] }
 
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "renderer_bench"
+harness = false
+path = "benches/renderer_bench.rs"
+
+[[bench]]
+name = "pipeline_bench"
+harness = false
+path = "benches/pipeline_bench.rs"
+
 [features]
 default = []
 gpu = ["wgpu", "winit", "fontdue", "bytemuck"]

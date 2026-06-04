@@ -5,12 +5,11 @@
 //!
 //! Color palette matches OpenCode's exact theme mapping.
 
+use std::borrow::Cow;
+
 use crate::renderer::{Line, Span, Style, TextAttributes};
 use crate::styling::Theme;
 
-// ── Public API ──────────────────────────────────────────────────
-
-/// Render a markdown string into styled lines for the cell buffer.
 pub fn render_markdown(text: &str) -> Vec<Line> {
     render_markdown_with_theme(text, &Theme::default())
 }
@@ -22,16 +21,13 @@ pub fn render_markdown_with_theme(text: &str, theme: &Theme) -> Vec<Line> {
     renderer.lines
 }
 
-fn preprocess_latex(text: &str) -> String {
+fn preprocess_latex<'a>(text: &'a str) -> Cow<'a, str> {
     if !text.contains('$') {
-        return text.to_string();
+        return Cow::Borrowed(text);
     }
-    let mut result = text.to_string();
-
-    result = replace_display_math(&result);
-    result = replace_inline_math(&result);
-
-    result
+    let result = replace_display_math(text);
+    let result = replace_inline_math(&result);
+    Cow::Owned(result)
 }
 
 fn replace_display_math(text: &str) -> String {
@@ -140,7 +136,8 @@ fn replace_inline_math(text: &str) -> String {
 /// Render a code block with syntax highlighting into styled lines.
 /// Returns lines wrapped in a bordered box.
 pub fn render_code_block(code: &str, lang: Option<&str>, width: u16) -> Vec<Line> {
-    let mut renderer = MarkdownRenderer::new(&Theme::default());
+    let theme = Theme::default();
+    let mut renderer = MarkdownRenderer::new(&theme);
     renderer.width = width;
     renderer.render_code_block(code, lang);
     renderer.lines
@@ -148,18 +145,18 @@ pub fn render_code_block(code: &str, lang: Option<&str>, width: u16) -> Vec<Line
 
 // ── Internal ────────────────────────────────────────────────────
 
-struct MarkdownRenderer {
+struct MarkdownRenderer<'a> {
     lines: Vec<Line>,
     width: u16,
-    theme: Theme,
+    theme: &'a Theme,
 }
 
-impl MarkdownRenderer {
-    fn new(theme: &Theme) -> Self {
+impl<'a> MarkdownRenderer<'a> {
+    fn new(theme: &'a Theme) -> Self {
         Self {
             lines: Vec::new(),
             width: 80,
-            theme: theme.clone(),
+            theme,
         }
     }
 
@@ -460,50 +457,48 @@ impl MarkdownRenderer {
 
     fn render_code_block(&mut self, code: &str, lang: Option<&str>) {
         let inner_width = self.width.saturating_sub(4) as usize;
-        let t = &self.theme;
+        let t = self.theme;
 
-        // Top border with language label
         let label = lang.unwrap_or("code");
-        let top = format!("┌─ {} {}", label, "─".repeat(inner_width.saturating_sub(label.len() + 3)));
-        self.lines.push(Line::from_styled(
-            top,
-            Style::new().fg(t.border),
-        ));
+        let dash_count = inner_width.saturating_sub(label.len() + 3);
+        let mut top = String::with_capacity(inner_width + 4);
+        top.push_str("┌─ ");
+        top.push_str(label);
+        top.push(' ');
+        for _ in 0..dash_count {
+            top.push('─');
+        }
+        self.lines.push(Line::from_styled(top, Style::new().fg(t.border)));
 
-        // Syntax-highlighted lines
         let highlighted = self.highlight_code(code.trim_end(), lang);
 
-        for line_line in highlighted {
-            let border_prefix = "\u{2502} ";
-            let mut styled_spans: Vec<crate::renderer::Span> = Vec::new();
-            styled_spans.push(crate::renderer::Span::styled(
-                border_prefix, Style::new().fg(t.md_code_block),
-            ));
+        let border_style = Style::new().fg(t.md_code_block);
+        let pad_style = Style::new().fg(t.md_code_block);
 
-            // Extend with the highlighted spans preserving their styles
+        for line_line in &highlighted {
+            let mut styled_spans: Vec<Span> = Vec::with_capacity(line_line.spans.len() + 2);
+            styled_spans.push(Span::styled("\u{2502} ", border_style));
+
             let total_text_width: usize = line_line.spans.iter()
                 .map(|s| crate::renderer::display_width(&s.text) as usize).sum();
             for span in &line_line.spans {
                 styled_spans.push(span.clone());
             }
 
-            // Pad to inner_width
             let pad_len = inner_width.saturating_sub(total_text_width);
             if pad_len > 0 {
-                styled_spans.push(crate::renderer::Span::styled(
-                    " ".repeat(pad_len), Style::new().fg(t.md_code_block),
-                ));
+                styled_spans.push(Span::styled(" ".repeat(pad_len), pad_style));
             }
 
-            self.lines.push(crate::renderer::Line::from_spans(styled_spans));
+            self.lines.push(Line::from_spans(styled_spans));
         }
 
-        // Bottom border
-        let bottom = format!("└{}", "─".repeat(inner_width + 1));
-        self.lines.push(Line::from_styled(
-            bottom,
-            Style::new().fg(t.border),
-        ));
+        let mut bottom = String::with_capacity(inner_width + 2);
+        bottom.push('└');
+        for _ in 0..inner_width + 1 {
+            bottom.push('─');
+        }
+        self.lines.push(Line::from_styled(bottom, Style::new().fg(t.border)));
         self.lines.push(Line::new());
     }
 
@@ -525,11 +520,13 @@ impl MarkdownRenderer {
             .unwrap_or_else(|| ss.find_syntax_plain_text());
 
         let mut highlighter = HighlightLines::new(syntax, theme);
-        let mut result = Vec::new();
+        let line_count = code.lines().count();
+        let mut result = Vec::with_capacity(line_count);
 
         for line in LinesWithEndings::from(code) {
             let ranges = highlighter.highlight_line(line, ss).unwrap_or_default();
-            let mut spans: Vec<crate::renderer::Span> = Vec::new();
+            let span_count = ranges.len();
+            let mut spans: Vec<crate::renderer::Span> = Vec::with_capacity(span_count);
             for (style, text) in ranges {
                 let clean = text.trim_end_matches('\n').trim_end_matches('\r');
                 let fg = Self::map_syntect_color(style.foreground);
@@ -545,12 +542,7 @@ impl MarkdownRenderer {
     }
 
     fn map_syntect_color(c: syntect::highlighting::Color) -> crate::renderer::Color {
-        crate::renderer::Color::Rgba(crate::renderer::Rgba::new(
-            c.r as f32 / 255.0,
-            c.g as f32 / 255.0,
-            c.b as f32 / 255.0,
-            c.a as f32 / 255.0,
-        ))
+        crate::renderer::Color::Rgb(c.r, c.g, c.b)
     }
 }
 
@@ -783,12 +775,12 @@ mod tests {
         let sc = syntect::highlighting::Color { r: 255, g: 128, b: 64, a: 255 };
         let color = super::MarkdownRenderer::map_syntect_color(sc);
         match color {
-            Color::Rgba(rgba) => {
-                assert!((rgba.r - 1.0).abs() < 0.01, "R should be ~1.0");
-                assert!((rgba.g - 0.5).abs() < 0.01, "G should be ~0.5");
-                assert!((rgba.b - 0.25).abs() < 0.02, "B should be ~0.25");
+            Color::Rgb(r, g, b) => {
+                assert_eq!(r, 255);
+                assert_eq!(g, 128);
+                assert_eq!(b, 64);
             }
-            _ => panic!("Expected Rgba color"),
+            _ => panic!("Expected Rgb color"),
         }
     }
 

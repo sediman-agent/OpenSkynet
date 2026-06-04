@@ -153,7 +153,7 @@ class RPCClient {
 
   async stream(
     method: string,
-    onChunk: (delta: string) => void,
+    onChunk: (delta: string, phase?: string) => void,
     params?: unknown,
     onDone?: () => void,
     onError?: (error: string) => void
@@ -165,7 +165,14 @@ class RPCClient {
       switch (event.type) {
         case 'chunk':
           if (event.data.delta) {
-            onChunk(event.data.delta);
+            // Pass phase information to callback
+            onChunk(event.data.delta, event.data.phase);
+          }
+          break;
+        case 'progress':
+          // Handle progress events (retry countdown, reflection status, etc.)
+          if (event.data) {
+            onChunk(JSON.stringify(event.data), event.data.phase || 'progress');
           }
           break;
         case 'done':

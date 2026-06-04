@@ -1552,6 +1552,14 @@ async def serve() -> None:
     _cron_scheduler.start()
     logger.info("cron_scheduler_started")
 
+    # Pre-warm browser for faster first task
+    try:
+        browser = await _get_browser()
+        if browser and browser.is_started:
+            logger.info("browser_prewarmed", status="ready")
+    except Exception as e:
+        logger.warning("browser_prewarm_failed", error=str(e))
+
     # Initialize GatewayRunner for integration message handling
     from sediman.gateway.runner import GatewayRunner
     from sediman.integrations import set_gateway_runner, set_gateway_config

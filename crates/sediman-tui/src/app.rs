@@ -205,6 +205,14 @@ pub struct App {
     pub thinking_expanded: bool,
     pub steps_expanded: bool,
 
+    // Progress tracking for retry countdown, validation, etc.
+    pub retry_attempt: Option<u32>,
+    pub retry_max: Option<u32>,
+    pub retry_countdown: Option<f32>,
+    pub validation_confidence: Option<f32>,
+    pub validation_issues: Option<usize>,
+    pub reflection_status: bool,
+
     pub agent_mode: AgentMode,
     pub agent_modes: Vec<AgentModeEntry>,
     pub current_mode_index: usize,
@@ -518,6 +526,14 @@ impl App {
             toast_text: String::new(),
             toast_expiry: None,
             side_panel_scroll: 0,
+
+            // Progress tracking fields
+            retry_attempt: None,
+            retry_max: None,
+            retry_countdown: None,
+            validation_confidence: None,
+            validation_issues: None,
+            reflection_status: false,
         }
     }
 
@@ -733,6 +749,36 @@ impl App {
                 let buf = result.get_or_insert_with(String::new);
                 Self::truncate_streaming(buf, &cleaned);
             }
+        }
+
+        self.auto_scroll = true;
+        self.mark_dirty();
+    }
+
+    /// Update progress data (retry countdown, validation status, etc.)
+    pub fn update_progress(&mut self, progress: &sediman_tui_core::event::ProgressData) {
+        use sediman_tui_core::event::message::ProgressData;
+
+        match progress.progress_type.as_str() {
+            "retry" => {
+                self.retry_attempt = progress.current_attempt;
+                self.retry_max = progress.max_attempts;
+                self.retry_countdown = progress.countdown_seconds;
+                self.streaming_phase = "retrying".to_string();
+            }
+            "validation" => {
+                self.validation_confidence = progress.confidence;
+                self.validation_issues = progress.issues_count;
+                // Clear retry status when validation starts
+                self.retry_attempt = None;
+                self.retry_max = None;
+                self.retry_countdown = None;
+            }
+            "reflection" => {
+                self.reflection_status = true;
+                self.streaming_phase = "reflecting".to_string();
+            }
+            _ => {}
         }
 
         self.auto_scroll = true;

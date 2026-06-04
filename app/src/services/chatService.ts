@@ -1,7 +1,8 @@
 import { getRPCClient } from './rpcClient';
 
 export interface ChatStreamOptions {
-  onChunk: (delta: string) => void;
+  onChunk: (delta: string, phase?: string) => void;
+  onProgress?: (progress: { phase: string; message: string; detail?: string }) => void;
   onDone?: () => void;
   onError?: (error: string) => void;
 }

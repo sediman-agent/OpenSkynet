@@ -21,32 +21,40 @@ impl DiffEngine {
             if !old_dirty && !new_dirty {
                 continue;
             }
-            for x in 0..width {
-                let old_cell = old.get(x, y);
-                let new_cell = new.get(x, y);
-                match (old_cell, new_cell) {
-                    (Some(old), Some(new)) if old != new => {
+
+            let old_row = y < old.height();
+            let new_row = y < new.height();
+
+            if old_row && new_row && old.width() == width && new.width() == width {
+                let old_start = (y as usize) * (old.area().width as usize);
+                let new_start = (y as usize) * (new.area().width as usize);
+                let old_cells = &old.cells_ref()[old_start..old_start + width as usize];
+                let new_cells = &new.cells_ref()[new_start..new_start + width as usize];
+                for x in 0..width as usize {
+                    if old_cells[x] != new_cells[x] {
                         changes.push(Change {
-                            x,
+                            x: x as u16,
                             y,
-                            cell: *new,
+                            cell: new_cells[x],
                         });
                     }
-                    (None, Some(new)) if !new.is_empty() => {
-                        changes.push(Change {
-                            x,
-                            y,
-                            cell: *new,
-                        });
+                }
+            } else {
+                for x in 0..width {
+                    let old_cell = old.get(x, y);
+                    let new_cell = new.get(x, y);
+                    match (old_cell, new_cell) {
+                        (Some(old), Some(new)) if old != new => {
+                            changes.push(Change { x, y, cell: *new });
+                        }
+                        (None, Some(new)) if !new.is_empty() => {
+                            changes.push(Change { x, y, cell: *new });
+                        }
+                        (Some(old), None) if !old.is_empty() => {
+                            changes.push(Change { x, y, cell: Cell::default() });
+                        }
+                        _ => {}
                     }
-                    (Some(old), None) if !old.is_empty() => {
-                        changes.push(Change {
-                            x,
-                            y,
-                            cell: Cell::default(),
-                        });
-                    }
-                    _ => {}
                 }
             }
         }
@@ -61,9 +69,19 @@ impl DiffEngine {
     }
 
     pub fn optimize(changes: &mut [Change]) {
-        changes.sort_by(|a, b| {
-            a.y.cmp(&b.y).then(a.x.cmp(&b.x))
-        });
+        if changes.len() <= 1 {
+            return;
+        }
+        let mut sorted = true;
+        for w in changes.windows(2) {
+            if w[0].y > w[1].y || (w[0].y == w[1].y && w[0].x > w[1].x) {
+                sorted = false;
+                break;
+            }
+        }
+        if !sorted {
+            changes.sort_by(|a, b| a.y.cmp(&b.y).then(a.x.cmp(&b.x)));
+        }
     }
 }
 

@@ -92,6 +92,8 @@ class AgentState:
     plan_signatures: list[str] = field(default_factory=list)
     replan_count: int = 0
     max_replans: int = 3
+    _streaming_token: Callable[[str, str], None] | None = field(default=None, repr=False)
+    _streaming_callback: Callable[[str], None] | None = field(default=None, repr=False)
 
     @property
     def current_step(self) -> PlanStep | None:

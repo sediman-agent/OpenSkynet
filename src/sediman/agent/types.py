@@ -42,3 +42,6 @@ class AgentResult:
     iterations: int = 0
     strategy_used: str = "direct"
     success: bool = True
+    confidence: float = 0.5
+    validation_status: str = "validated"  # pending, validating, validated, improved, failed
+    issues_found: list[str] = field(default_factory=list)

@@ -1,0 +1,74 @@
+{
+  "benchmarks": {
+    "planning_cycle": {
+      "name": "planning_cycle",
+      "total_time_ms": 2001.1770290999266,
+      "llm_time_ms": 2001.149649999934,
+      "python_overhead_ms": 0.0012500022421590984,
+      "json_serialization_ms": 0.023279299421119504,
+      "async_overhead_ms": 0,
+      "iterations": 10,
+      "rust_potential_ms": 5,
+      "rust_potential_pct": 0.25
+    },
+    "execution_loop": {
+      "name": "execution_loop",
+      "total_time_ms": 1102.2664603999146,
+      "llm_time_ms": 1001.0730188505477,
+      "python_overhead_ms": 0.034068800414388534,
+      "json_serialization_ms": 0,
+      "async_overhead_ms": 0,
+      "iterations": 20,
+      "rust_potential_ms": 15,
+      "rust_potential_pct": 1.2
+    },
+    "reflection_heuristics": {
+      "name": "reflection_heuristics",
+      "total_time_ms": 0.002769999991869554,
+      "llm_time_ms": 0,
+      "python_overhead_ms": 0.002496579945727717,
+      "json_serialization_ms": 0,
+      "async_overhead_ms": 0,
+      "iterations": 100,
+      "rust_potential_ms": 0.05,
+      "rust_potential_pct": 5.0
+    },
+    "websocket_framing": {
+      "name": "websocket_framing",
+      "total_time_ms": 0.0034349589986959472,
+      "llm_time_ms": 0,
+      "python_overhead_ms": 0.002892946999054402,
+      "json_serialization_ms": 0.002892946999054402,
+      "async_overhead_ms": 0,
+      "iterations": 1000,
+      "rust_potential_ms": 0.1,
+      "rust_potential_pct": 15.0
+    },
+    "async_overhead": {
+      "name": "async_overhead",
+      "total_time_ms": 0.014519366700187674,
+      "llm_time_ms": 0,
+      "python_overhead_ms": 0.014519366700187674,
+      "json_serialization_ms": 0,
+      "async_overhead_ms": 0.014519366700187674,
+      "iterations": 10000,
+      "rust_potential_ms": 0.001,
+      "rust_potential_pct": 10.0
+    }
+  },
+  "typical_task_analysis": {
+    "composition": {
+      "planning_cycle": 1,
+      "execution_loop": 5,
+      "reflection_heuristics": 5,
+      "websocket_framing": 50,
+      "async_overhead": 100
+    },
+    "total_python_ms": 7514.146865719413,
+    "total_with_rust_ms": 7428.796865719412,
+    "savings_ms": 85.35000000000036,
+    "improvement_pct": 1.1358574902146108,
+    "recommendation": "Optimize Python streaming first",
+    "rust_migration_value": "LOW - <2% improvement expected"
+  }
+}

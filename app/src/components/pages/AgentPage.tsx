@@ -24,6 +24,8 @@ export function AgentPage() {
 
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingPhase, setStreamingPhase] = useState<'thinking' | 'planning' | 'executing' | 'reflecting' | 'retrying'>('thinking');
+  const [retryProgress, setRetryProgress] = useState<{ attempt: number; max: number; countdown: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -61,6 +63,8 @@ export function AgentPage() {
     });
 
     setIsStreaming(true);
+    setStreamingPhase('thinking');
+    setRetryProgress(null);
 
     try {
       const chatService = getChatService();
@@ -71,9 +75,61 @@ export function AgentPage() {
         activeConversationId,
         userMessage,
         {
-          onChunk: (delta) => {
-            if (lastMessage) {
-              appendToMessage(activeConversationId, lastMessage.id, delta);
+          onChunk: (delta, phase = 'responding') => {
+            // Update streaming phase based on phase from backend
+            if (phase === 'planning') {
+              setStreamingPhase('planning');
+            } else if (phase === 'executing') {
+              setStreamingPhase('executing');
+            } else if (phase === 'thinking') {
+              setStreamingPhase('thinking');
+            } else if (phase === 'reflecting') {
+              setStreamingPhase('reflecting');
+            }
+
+            // For planning/reflection, append to a separate field or show differently
+            if (phase === 'planning' || phase === 'thinking' || phase === 'reflecting') {
+              // Show planning/thinking in a subtle way
+              if (lastMessage) {
+                appendToMessage(activeConversationId, lastMessage.id, delta);
+              }
+            } else if (phase === 'progress') {
+              // Handle progress events (retry countdown, etc.)
+              try {
+                const progress = JSON.parse(delta);
+                if (progress.retry) {
+                  setStreamingPhase('retrying');
+                  setRetryProgress({
+                    attempt: progress.retry.attempt,
+                    max: progress.retry.max,
+                    countdown: progress.retry.countdown
+                  });
+                }
+              } catch {
+                // Not JSON, treat as normal text
+                if (lastMessage) {
+                  appendToMessage(activeConversationId, lastMessage.id, delta);
+                }
+              }
+            } else {
+              // Normal execution response
+              if (lastMessage) {
+                appendToMessage(activeConversationId, lastMessage.id, delta);
+              }
+            }
+          },
+          onProgress: (progress) => {
+            // Handle structured progress events
+            if (progress.phase === 'retrying') {
+              setStreamingPhase('retrying');
+              const match = progress.detail.match(/attempt (\d+)\/(\d+)/);
+              if (match) {
+                setRetryProgress({
+                  attempt: parseInt(match[1]),
+                  max: parseInt(match[2]),
+                  countdown: 0
+                });
+              }
             }
           },
           onDone: () => {
@@ -81,6 +137,7 @@ export function AgentPage() {
               setMessageStatus(activeConversationId, lastMessage.id, 'done');
             }
             setIsStreaming(false);
+            setRetryProgress(null);
           },
           onError: (error) => {
             if (lastMessage) {
@@ -88,11 +145,13 @@ export function AgentPage() {
               appendToMessage(activeConversationId, lastMessage.id, `\n\nError: ${error}`);
             }
             setIsStreaming(false);
+            setRetryProgress(null);
           },
         }
       );
     } catch (error) {
       setIsStreaming(false);
+      setRetryProgress(null);
     }
   };
 
@@ -145,8 +204,44 @@ export function AgentPage() {
             </div>
           )}
           {isStreaming && (
-            <div className="flex items-center gap-2 text-muted-foreground text-xs">
-              <span>Thinking…</span>
+            <div className="flex flex-col gap-1 text-muted-foreground text-xs">
+              <div className="flex items-center gap-2">
+                {streamingPhase === 'thinking' && (
+                  <>
+                    <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+                    <span>Thinking…</span>
+                  </>
+                )}
+                {streamingPhase === 'planning' && (
+                  <>
+                    <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+                    <span>Planning…</span>
+                  </>
+                )}
+                {streamingPhase === 'executing' && (
+                  <>
+                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                    <span>Executing…</span>
+                  </>
+                )}
+                {streamingPhase === 'reflecting' && (
+                  <>
+                    <span className="w-1.5 h-1.5 bg-yellow-500 rounded-full animate-pulse" />
+                    <span>Reflecting…</span>
+                  </>
+                )}
+                {streamingPhase === 'retrying' && retryProgress && (
+                  <>
+                    <span className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse" />
+                    <span>Retrying ({retryProgress.attempt}/{retryProgress.max})…</span>
+                  </>
+                )}
+              </div>
+              {retryProgress && retryProgress.countdown > 0 && (
+                <div className="text-[10px] text-muted-foreground pl-4">
+                  Retrying in {retryProgress.countdown.toFixed(1)}s…
+                </div>
+              )}
             </div>
           )}
         </div>
