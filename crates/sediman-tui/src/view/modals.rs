@@ -1712,7 +1712,7 @@ pub fn render_onboarding_wizard(buf: &mut CellBuffer, area: Rect, app: &App, ste
                 buf.draw_str(inner_x, y + 2, "  Connecting to backend...",
                     Style::new().fg(t.text_muted).bg(t.background));
             } else {
-                let visible = 8usize;
+                let visible = 10usize;
                 let start = app.provider_picker_scroll.min(providers.len().saturating_sub(visible));
             let end = (start + visible).min(providers.len());
 

@@ -51,12 +51,19 @@ pub async fn handle_onboarding(app: &mut App, key: KeyEvent) -> bool {
             if app.provider_picker_idx > 0 {
                 app.provider_picker_idx -= 1;
             }
+            if app.provider_picker_idx < app.provider_picker_scroll {
+                app.provider_picker_scroll = app.provider_picker_idx;
+            }
             true
         }
         KeyCode::Down | KeyCode::Char('j') if step == 1 => {
             let count = app.available_providers.len();
             if count > 0 && app.provider_picker_idx + 1 < count {
                 app.provider_picker_idx += 1;
+            }
+            const VISIBLE: usize = 10;
+            if app.provider_picker_idx >= app.provider_picker_scroll + VISIBLE {
+                app.provider_picker_scroll = app.provider_picker_idx - (VISIBLE - 1);
             }
             true
         }
