@@ -409,10 +409,11 @@ category name (one word).
 building/testing software, git operations, file manipulation, system administration, \
 devops tasks. Does NOT need a web browser.
 - **browser**: Navigating websites, filling forms, extracting web data, clicking \
-buttons, web automation, online shopping, checking prices, reading web articles. \
-Needs browser access.
-- **conversational**: Greetings, general questions, clarifications, "what can you do?", \
-"how are you?", "thanks", explanations that don't require tools.
+buttons, web automation, online shopping, checking prices/stocks/weather, reading web \
+articles, searching for current online information. Needs browser or web search access.
+- **conversational**: Greetings, general questions that don't need current data, \
+clarifications, "what can you do?", "how are you?", "thanks", explanations about \
+capabilities.
 
 ## Rules
 - If the task requires reading/writing local files → code
@@ -420,7 +421,8 @@ Needs browser access.
 - If the task requires navigating to a URL → browser
 - If the task could be done in a terminal → code
 - If the task requires viewing rendered web pages → browser
-- If the task is just chatting or asking questions → conversational
+- If the task requires CURRENT/REAL-TIME information (prices, stocks, weather, news) → browser
+- If the task is just chatting or asking general questions → conversational
 - For mixed tasks, classify by the PRIMARY action
 
 ## Examples
@@ -454,6 +456,10 @@ Needs browser access.
 "add TypeScript types to the API responses" → code
 "find the cheapest GPU on newegg" → browser
 "set up a new Next.js project with Tailwind" → code
+"what's the apple stock price" → browser
+"get recent stock prices" → browser
+"show me current bitcoin price" → browser
+"i want to know the latest weather" → browser
 
 Task: {task}
 

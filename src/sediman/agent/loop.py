@@ -54,6 +54,17 @@ from sediman.memory.strategy import BaseMemoryStrategy
 from sediman.agentbrowser.session import AgentBrowserSession
 from sediman.config import AGENT_STATE_FILE, MEMORY_SYSTEM
 
+# Refactored loop modules
+from sediman.agent.loop_modules import (
+    ConversationManager,
+    BrowserAgentFactory,
+    StreamingHandler,
+    SkillManager,
+    PersistenceManager,
+    AgentHelpers,
+    BackgroundTaskManager,
+)
+
 logger = structlog.get_logger()
 
 import re as _re
@@ -161,6 +172,45 @@ class AgentLoop:
 
         # Initialize refactored components
         self._init_refactored_components()
+
+        # Initialize new modular components
+        self._conversation: list[dict[str, str]] = []
+        self._conversation_manager = ConversationManager(
+            conversation_list=self._conversation,
+            conversation_getter=lambda: self._conversation,
+            max_conversation=max_conversation,
+            context_window=context_window,
+            compressor=self._compressor,
+            memory=self._memory,
+        )
+        self._browser_agent_factory = BrowserAgentFactory(
+            browser_session=browser_session,
+            llm_provider=llm_provider,
+            max_steps=max_steps,
+            flash_mode=flash_mode,
+            turbo_mode=turbo_mode,
+            on_step=on_step,
+        )
+        self._streaming_handler = StreamingHandler(
+            llm_provider=llm_provider,
+            on_streaming_text=on_streaming_text,
+        )
+        self._skill_manager = SkillManager(
+            llm_provider=llm_provider,
+            browser_session=browser_session,
+            skill_learner=self._skill_learner,
+            skill_auditor=self._skill_auditor,
+        )
+        self._persistence_manager = PersistenceManager(
+            state_file=_AGENT_STATE_FILE,
+        )
+        self._background_task_manager = BackgroundTaskManager(
+            recorder=self._recorder,
+            skill_learner=self._skill_learner,
+            skill_auditor=self._skill_auditor,
+            subagent_registry=self._subagent_registry,
+            memory=self._memory,
+        )
 
     def _init_refactored_components(self) -> None:
         """Initialize refactored execution, reflection, and post-task components."""
@@ -285,75 +335,17 @@ class AgentLoop:
         return self._subagent_factory
 
     def _get_browser_agent(self, recording_name: str | None = None, task: str = "") -> BrowserSubagent:
-        if isinstance(self.browser, AgentBrowserSession):
-            return self._get_agent_browser_agent(recording_name=recording_name, task=task)
-
-        on_browser_step = None
-        if self.on_step:
-            browser_step_counter = [0]
-            def on_browser_step(action: str, url: str) -> None:
-                browser_step_counter[0] += 1
-                self.on_step(StepEvent(
-                    step=browser_step_counter[0],
-                    action=action,
-                    observation=url,
-                    phase="executing",
-                    url=url if url.startswith("http") else None,
-                ))
-        if self._cached_memory_context is None:
-            try:
-                from sediman.memory.store import MemoryStore
-                memory_store = MemoryStore()
-                self._cached_memory_context = memory_store.format_for_system_prompt_filtered(
-                    task or "browser task", max_chars=800
-                )
-            except Exception:
-                self._cached_memory_context = ""
-        return BrowserSubagent(
-            browser_session=self.browser,
-            llm_provider=self.llm,
-            max_steps=self.max_steps,
-            flash_mode=self.flash_mode,
-            turbo_mode=self.turbo_mode,
-            on_browser_step=on_browser_step,
-            conversation=self._conversation,
-            recording_name=recording_name,
-            memory_context=self._cached_memory_context,
-            browser_use_llm=self._cached_browser_use_llm,
-        )
+        self._browser_agent_factory.set_conversation(self._conversation)
+        self._browser_agent_factory.set_memory_context(self._cached_memory_context)
+        agent = self._browser_agent_factory.get_browser_agent(recording_name=recording_name, task=task)
+        self._cached_browser_use_llm = self._browser_agent_factory.get_browser_use_llm()
+        self._cached_memory_context = self._browser_agent_factory.get_memory_context()
+        return agent
 
     def _get_agent_browser_agent(self, recording_name: str | None = None, task: str = "") -> BrowserSubagent:
-        from sediman.agentbrowser.subagent import AgentBrowserSubagent
-
-        on_browser_step = None
-        if self.on_step:
-            browser_step_counter = [0]
-            def on_browser_step(action: str, url: str) -> None:
-                browser_step_counter[0] += 1
-                self.on_step(StepEvent(
-                    step=browser_step_counter[0],
-                    action=action,
-                    observation=url,
-                    phase="executing",
-                ))
-        if self._cached_memory_context is None:
-            try:
-                from sediman.memory.store import MemoryStore
-                memory_store = MemoryStore()
-                self._cached_memory_context = memory_store.format_for_system_prompt_filtered(
-                    task or "browser task", max_chars=800
-                )
-            except Exception:
-                self._cached_memory_context = ""
-        return AgentBrowserSubagent(
-            browser_session=self.browser,
-            llm_provider=self.llm,
-            max_steps=self.max_steps,
-            on_browser_step=on_browser_step,
-            conversation=self._conversation,
-            memory_context=self._cached_memory_context,
-            recording_name=recording_name,
-        )
+        self._browser_agent_factory.set_conversation(self._conversation)
+        self._browser_agent_factory.set_memory_context(self._cached_memory_context)
+        return self._browser_agent_factory.get_browser_agent(recording_name=recording_name, task=task)
 
     async def run(self, task: str) -> AgentResult:
         session_id = str(uuid.uuid4())[:8]
@@ -1393,31 +1385,11 @@ class AgentLoop:
         return None
 
     async def _verify_skill(self, skill_name: str) -> bool:
-        try:
-            from sediman.skills.executor import execute_skill
-            engine = self._get_engine()
-            skill_data = engine.read(skill_name)
-            if not skill_data:
-                return False
-            result = await execute_skill(skill_data, self.browser, self.llm, max_retries=0)
-            from sediman.errors import looks_like_error
-            if looks_like_error(result):
-                logger.info("skill_verification_failed", name=skill_name, result=result[:100])
-                return False
-            logger.info("skill_verification_passed", name=skill_name)
-            return True
-        except Exception as e:
-            logger.debug("skill_verification_error", name=skill_name, error=str(e))
-            return False
+        return await self._skill_manager.verify_skill(skill_name)
 
     def _verify_skill_later(self, skill_name: str) -> None:
         """Fire-and-forget verification that does not block the background task."""
-        async def _run() -> None:
-            try:
-                await self._verify_skill(skill_name)
-            except Exception as e:
-                logger.debug("lazy_verification_failed", name=skill_name, error=str(e))
-        asyncio.create_task(_run())
+        self._skill_manager.verify_skill_later(skill_name)
 
     async def _post_task(self, state: AgentState, plan: ManagerPlan, task: str) -> None:
         if getattr(plan, "create_subagent", None):
@@ -1559,225 +1531,51 @@ class AgentLoop:
             return None
 
     def _looks_like_error(self, text: str) -> bool:
-        from sediman.errors import looks_like_error
-        return looks_like_error(text)
+        return AgentHelpers.looks_like_error(text)
 
     def _try_fallback(self, step: PlanStep, state: AgentState | None = None) -> bool:
-        if step.fallback_attempted:
-            return False
-
-        fallback_map = {
-            Strategy.USE_SKILL: Strategy.DIRECT,
-            Strategy.DELEGATE: Strategy.DIRECT,
-            Strategy.DECOMPOSE: Strategy.DELEGATE,
-            Strategy.DIRECT: None,
-        }
-
-        new_strategy = fallback_map.get(step.strategy)
-        if new_strategy is None:
-            if state and state.errors:
-                from sediman.agent.guardrails import AuditLog
-                AuditLog.get().record("fallback", "direct_exhausted", "no_fallback_from_direct", step=step.id)
-            return False
-
-        step.original_strategy = step.original_strategy or step.strategy
-        step.strategy = new_strategy
-        step.fallback_attempted = True
-        step.status = "pending"
-        step.retries = 0
-        if step.failure_history:
-            step.description = f"{step.description}\n[Fallback from {step.original_strategy.value}: {'; '.join(step.failure_history[-1:])}]"
-        return True
+        return AgentHelpers.try_fallback(step, state)
 
     def _emit(self, state: AgentState, message: str, detail: str = "", url: str | None = None, tool_name: str | None = None) -> None:
-        if self.on_step:
-            self.on_step(StepEvent(
-                step=state.iteration,
-                action=message,
-                observation="",
-                phase=state.phase.value,
-                detail=detail,
-                url=url,
-                tool_name=tool_name,
-            ))
+        AgentHelpers.emit_step(self.on_step, state, message, detail, url, tool_name)
 
     def _stream_text(self, token: str, phase: str = "responding") -> None:
-        if not self.on_streaming_text:
-            return
-        if not token:
-            return
-        try:
-            self.on_streaming_text(token, phase)
-        except Exception:
-            logger.debug("stream_text_callback_failed")
+        self._streaming_handler.stream_text(token, phase)
 
     async def _stream_text_async(self, text: str, phase: str = "responding") -> None:
         """Stream text token-by-token for smooth TUI rendering with think tag parsing."""
-        if not self.on_streaming_text or not text:
-            return
-
-        parser = ThinkTagParser(on_streaming_text=self.on_streaming_text)
-        await parser.parse_and_stream(text, phase)
+        await self._streaming_handler.stream_text_async(text, phase)
 
     def _build_step_events(self, state: AgentState) -> list[StepEvent]:
-        events = []
-        for i, step in enumerate(state.plan_steps):
-            events.append(StepEvent(
-                step=i,
-                action=f"{step.strategy.value}: {step.description[:80]}",
-                observation=step.result[:200] if step.result else "",
-            ))
-        return events
+        return AgentHelpers.build_step_events(state)
 
     def get_conversation(self) -> list[dict[str, str]]:
-        return list(self._conversation)
+        return self._conversation_manager.get_conversation()
 
     def set_conversation(self, messages: list[dict[str, str]]) -> None:
-        self._conversation = list(messages)
+        self._conversation_manager.set_conversation(messages)
 
     def clear_conversation(self) -> None:
-        self._conversation = []
+        self._conversation_manager.clear_conversation()
 
     async def _get_conversational_response(self, task: str, conversation: list[dict[str, str]]) -> str:
         """Generate a conversational response when the plan doesn't provide one."""
-        import asyncio
-        try:
-            # Build a more context-aware system message
-            system_msg = """You are Terminator, a helpful AI automation agent powered by OpenSkynet.
-
-Your role:
-- Help with browser automation, web scraping, form filling, data extraction
-- Execute code tasks (installing packages, running scripts, building projects)
-- Schedule recurring tasks
-- Engage in friendly, natural conversation
-
-Guidelines:
-- Be warm and conversational but get to the point
-- For greetings: acknowledge warmly and ask how you can help
-- For thanks: respond politely and offer further assistance
-- For acknowledgments ("good", "ok"): acknowledge and ask what's next
-- For questions about capabilities: explain what you can do briefly
-- Keep responses under 3 sentences typically
-- Never leave a response empty or just "ok" - add value
-- Use conversation context to maintain continuity"""
-
-            messages = [{"role": "system", "content": system_msg}]
-
-            # Include recent conversation context for continuity
-            if conversation and len(conversation) > 0:
-                recent_convo = conversation[-6:]  # Last 3 exchanges
-                messages.extend(recent_convo)
-
-            messages.append({"role": "user", "content": task})
-
-            response = await asyncio.wait_for(
-                self.llm.chat(messages=messages, tools=[]),
-                timeout=10.0
-            )
-            result_text = response.text or ""
-            if not result_text.strip():
-                return "I'm here and ready to help! What would you like me to do?"
-            return result_text
-        except (asyncio.TimeoutError, Exception) as e:
-            logger.debug("conversational_response_failed", error=str(e))
-            # Provide contextual fallbacks based on the task
-            task_lower = task.lower()
-
-            # Check conversation context for better responses
-            if conversation and len(conversation) > 0:
-                last_msg = conversation[-1].get("content", "").lower() if conversation[-1].get("role") == "assistant" else ""
-
-            # Greetings
-            if any(greeting in task_lower for greeting in ["hi", "hello", "hey", "greetings"]):
-                return "Hello! I'm Terminator, your AI automation assistant. I can help with browser tasks, web scraping, code execution, and more. What would you like to work on?"
-            elif any(q in task_lower for q in ["how are you", "how do you do"]):
-                return "I'm running at full capacity and ready to help! What can I do for you today?"
-
-            # Capabilities
-            elif any(q in task_lower for q in ["what can you do", "help me", "capabilities", "what are you"]):
-                return "I'm Terminator, an AI agent that automates browsers, runs code, installs packages, fills forms, extracts data, and schedules recurring tasks. Just tell me what you need!"
-
-            # Gratitude
-            elif "thank" in task_lower or "thanks" in task_lower:
-                return "You're welcome! I'm here whenever you need help with automation or coding tasks."
-
-            # Acknowledgments
-            elif any(ack in task_lower for ack in ["good", "great", "ok", "okay", "nice", "cool", "perfect", "excellent"]):
-                return "Glad that helps! Is there anything else you'd like me to automate or work on?"
-            elif any(ack in task_lower for ack in ["yes", "yeah", "yep", "sure", "alright", "right", "correct"]):
-                return "Got it! What's the next task you'd like me to handle?"
-            elif any(ack in task_lower for ack in ["no", "nope", "nah", "not"]):
-                return "Understood. Let me know if there's anything else I can help with!"
-
-            # Empty/minimal input
-            elif task_lower.strip() in [".", "..", "..."] or len(task_lower.strip()) < 3:
-                return "I'm ready to help! Tell me what you'd like me to do - automate a browser task, run some code, or anything else."
-
-            # Default: show understanding and ask for clarification if needed
-            else:
-                # If it's clearly a request for something specific but we're not sure what
-                if len(task_lower) > 50:
-                    return f"I understand you're asking about \"{task[:50]}...\". To help you best, could you clarify if this involves browser automation, code execution, or something else?"
-                else:
-                    return f"I can help with \"{task}\". Should I handle this through browser automation, code execution, or another approach?"
+        return await self._streaming_handler.get_conversational_response(task, conversation)
 
 
 
     async def compress_context(self) -> int:
-        if not self._compressor.should_compress(self._conversation):
-            return 0
-        await self._memory.on_pre_compress()
-        before = len(self._conversation)
-        self._conversation = await self._compressor.compress(self._conversation)
-        return before - len(self._conversation)
+        return await self._conversation_manager.compress_context()
 
     def _build_task_with_context(self, task: str) -> str:
-        if not self._conversation:
-            return task
-
-        from sediman.utils import format_conversation_context
-        context = format_conversation_context(self._conversation, limit=self.context_window)
-
-        return f"""Previous conversation context:
-{context}
-
-Current task: {task}
-
-Note: Continue from where we left off. Remember what was discussed above."""
+        return self._conversation_manager.build_task_with_context(task)
 
     @staticmethod
     def _extract_skill_arguments(skill: dict[str, Any], task: str) -> dict[str, str]:
-        args: dict[str, str] = {}
-        skill_name = skill.get("name", "")
-        task_lower = task.lower()
-        if skill_name.lower() in task_lower:
-            prefix = task_lower.split(skill_name.lower())[-1].strip()
-            args["ARGUMENTS"] = prefix
-            args["0"] = prefix
-        else:
-            args["ARGUMENTS"] = task
-            args["0"] = task
-        return args
+        return SkillManager.extract_skill_arguments(skill, task)
 
     async def _install_suggested_skill(self, skill_name: str, source: str) -> str | None:
-        try:
-            from sediman.skills.hub import LocalSkillInstaller, GitHubInstaller
-            engine = self._get_engine()
-            installer = LocalSkillInstaller()
-            ok, msg = installer.install(skill_name, source, engine, force=False)
-            if not ok:
-                gh = GitHubInstaller()
-                ref = f"{source}@{skill_name}"
-                ok, msg = gh.install(ref, engine, force=False)
-            if ok:
-                self._cached_skill_summaries = None
-                logger.info("suggested_skill_installed", name=skill_name, source=source)
-                return msg
-            logger.warning("suggested_skill_install_failed", name=skill_name, msg=msg)
-            return None
-        except Exception as e:
-            logger.warning("suggested_skill_install_error", name=skill_name, error=str(e))
-            return None
+        return await self._skill_manager.install_suggested_skill(skill_name, source)
 
     async def _save_session(self, task: str, result: str, actions: list[dict[str, Any]]) -> None:
         try:
@@ -1793,25 +1591,7 @@ Note: Continue from where we left off. Remember what was discussed above."""
             logger.debug("session_save_failed", error=str(e))
 
     def _create_scheduled_job(self, plan: ManagerPlan) -> str | None:
-        if not plan.schedule:
-            return None
-        try:
-            from sediman.scheduler.cron import CronManager, validate_cron_expr
-            if not validate_cron_expr(plan.schedule.cron):
-                logger.warning("invalid_cron_expr", expr=plan.schedule.cron)
-                return None
-            cron = CronManager()
-            job_id = cron.add_job(
-                cron_expr=plan.schedule.cron,
-                task=plan.schedule.task,
-                model=getattr(self.llm, "model", None),
-                base_url=getattr(self.llm, "base_url", None),
-            )
-            logger.info("task_scheduled", job_id=job_id, cron=plan.schedule.cron, task=plan.schedule.task)
-            return job_id
-        except Exception as e:
-            logger.warning("schedule_creation_failed", error=str(e))
-            return None
+        return AgentHelpers.create_scheduled_job(plan, self.llm)
 
     def get_memory_manager(self) -> MemoryManager:
         return self._memory

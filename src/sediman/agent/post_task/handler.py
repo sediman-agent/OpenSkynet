@@ -71,7 +71,7 @@ class PostTaskHandler:
             self._schedule_job(plan, state)
 
         # Record skill if applicable
-        skill_created = self._recorder.record(
+        skill_created = self.recorder.record(
             task=task,
             plan=plan,
             browser_result=state.result,

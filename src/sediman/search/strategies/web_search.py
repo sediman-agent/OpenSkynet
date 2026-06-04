@@ -10,7 +10,6 @@ from typing import Any
 
 from structlog import get_logger
 
-from ..config import WEB_SEARCH_MAX_CONTENT_LENGTH, WEB_SEARCH_TIMEOUT
 from ..base import BaseSearchStrategy, SearchResult, SearchError
 from ..utils.parsers import parse_web_result
 
@@ -73,8 +72,6 @@ class WebSearchStrategy(BaseSearchStrategy):
             result = await web_extract(
                 url=search_url,
                 query=query,
-                timeout=WEB_SEARCH_TIMEOUT,
-                max_length=WEB_SEARCH_MAX_CONTENT_LENGTH,
             )
 
             content = result.get("content", "")
@@ -121,8 +118,6 @@ class WebSearchStrategy(BaseSearchStrategy):
             "type": "object",
             "properties": {
                 "query": {"type": "string", "minLength": 1},
-                "timeout": {"type": "integer", "default": WEB_SEARCH_TIMEOUT},
-                "max_length": {"type": "integer", "default": WEB_SEARCH_MAX_CONTENT_LENGTH},
             },
             "required": ["query"],
         }
