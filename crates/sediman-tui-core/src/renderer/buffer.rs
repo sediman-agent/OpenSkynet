@@ -321,14 +321,12 @@ impl CellBuffer {
         if let Some(i) = self.index(cx, y) {
             self.cells[i] = Cell::new(ch, style);
         }
-        let mut cx = cx + 1;
-        for _ in 1..w {
+        for (cx, _) in (cx + 1..).zip(1..w) {
             if cx < right {
                 if let Some(i) = self.index(cx, y) {
                     self.cells[i].skip = true;
                 }
             }
-            cx += 1;
         }
     }
 

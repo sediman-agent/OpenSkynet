@@ -1131,7 +1131,7 @@ pub async fn run(
     tokio::spawn(async move {
         tokio::signal::ctrl_c().await.ok();
         // Send shutdown event and set interrupt flag
-        let _ = shutdown_tx.send(AppEvent::Shutdown);
+        drop(shutdown_tx.send(AppEvent::Shutdown));
         interrupt_flag.store(true, std::sync::atomic::Ordering::SeqCst);
     });
 

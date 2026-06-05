@@ -39,7 +39,7 @@ impl ModalFrame {
     }
 
     pub fn draw_close_hint(&self, buf: &mut CellBuffer, hint: &str, style: Style) {
-        let x = self.modal.right().saturating_sub(display_width(hint) as u16 + 2);
+        let x = self.modal.right().saturating_sub(display_width(hint) + 2);
         buf.draw_str(x, self.modal.y, hint, style);
     }
 

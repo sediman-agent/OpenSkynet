@@ -97,7 +97,7 @@ async fn run_terminator_stream(
                         match ws_msg.msg_type.as_str() {
                             "streaming" => {
                                 if let Some(ref st) = ws_msg.streaming_token {
-                                    try_send(&tx, AppEvent::StreamingToken(StreamingTokenData { token: st.token.clone(), phase: st.phase.clone() }));
+                                    try_send(tx, AppEvent::StreamingToken(StreamingTokenData { token: st.token.clone(), phase: st.phase.clone() }));
                                 }
                             }
                             "step" => {
@@ -108,7 +108,7 @@ async fn run_terminator_stream(
                                     if let Some(ref detail) = event.detail {
                                         step_line.push_str(&format!("\n  {}", detail));
                                     }
-                                    try_send(&tx, AppEvent::AgentStep(phase, step_line));
+                                    try_send(tx, AppEvent::AgentStep(phase, step_line));
                                 }
                             }
                             "result" => {

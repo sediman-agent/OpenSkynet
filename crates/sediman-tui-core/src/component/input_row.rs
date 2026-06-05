@@ -47,7 +47,7 @@ pub fn draw_input_row(buf: &mut CellBuffer, x: u16, y: u16, max_w: usize, config
 
     let mut cx = x;
     buf.draw_str(cx, y, config.prompt, prompt_style);
-    cx += display_width(config.prompt) as u16;
+    cx += display_width(config.prompt);
 
     let available = max_w.saturating_sub(display_width(config.prompt) as usize);
     let text_chars: Vec<char> = config.text.chars().collect();
@@ -89,10 +89,10 @@ pub fn draw_input_row(buf: &mut CellBuffer, x: u16, y: u16, max_w: usize, config
         }
     }
 
-    if config.cursor == text_chars.len() && config.cursor >= scroll + visible.len() {
-        if (cx as usize) < (x as usize) + max_w {
-            buf.put_char(cx, y, ' ', cursor_style);
-        }
+    if config.cursor == text_chars.len() && config.cursor >= scroll + visible.len()
+        && (cx as usize) < (x as usize) + max_w
+    {
+        buf.put_char(cx, y, ' ', cursor_style);
     }
 }
 

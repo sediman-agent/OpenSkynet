@@ -19,13 +19,13 @@ pub fn draw_separator(buf: &mut CellBuffer, y: u16, x_start: u16, x_end: u16, st
 }
 
 pub fn draw_pill(buf: &mut CellBuffer, x: u16, y: u16, text: &str, text_style: Style) -> u16 {
-    let w = display_width(text) as u16;
+    let w = display_width(text);
     buf.draw_str(x, y, text, text_style);
     x + w
 }
 
 pub fn draw_right_aligned(buf: &mut CellBuffer, y: u16, right_x: u16, text: &str, style: Style) {
-    let w = display_width(text) as u16;
+    let w = display_width(text);
     let x = right_x.saturating_sub(w);
     buf.draw_str(x, y, text, style);
 }
