@@ -202,7 +202,7 @@ impl ApplicationHandler for GpuAppHandler {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
-                self.app.agent.running = false;
+                self.app.running = false;
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {

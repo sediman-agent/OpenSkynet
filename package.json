@@ -8,11 +8,13 @@
     "build": "cargo build --release -p sediman-tui",
     "tui": "cargo run -p sediman-tui --",
     "python": "uv run python -m sediman.rpc_server",
-    "stop": "pkill -f 'sediman.rpc_server' 2>/dev/null; pkill -f 'sediman-tui' 2>/dev/null; rm -f /tmp/sediman-python.sock /tmp/sediman.sock; echo 'Stopped.'",
-    "start": "bun run stop && sleep 1 && bun run tui",
-    "restart": "bun run stop && sleep 1 && bun run tui",
+    "stop": "pkill -f 'sediman.rpc_server' 2>/dev/null; pkill -f 'sediman-tui' 2>/dev/null; sleep 0.3; rm -f /tmp/sediman-python.sock /tmp/sediman.sock; echo 'Stopped.'",
+    "start": "bun run stop && sleep 0.5 && bun run tui",
+    "restart": "bun run stop && sleep 0.5 && bun run tui",
     "install-local": "./scripts/install.sh",
-    "test": "cargo test -p sediman-tui && uv run pytest"
+    "test": "cargo test -p sediman-tui && uv run pytest",
+    "electron:dev": "cd app && npm run dev & sleep 3 && electron electron/main.js",
+    "electron": "electron electron/main.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
@@ -23,6 +25,7 @@
     "@types/jest": "^30.0.0",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
-    "vite-plugin-dts": "^5.0.2"
+    "vite-plugin-dts": "^5.0.2",
+    "electron": "^27.3.11"
   }
 }

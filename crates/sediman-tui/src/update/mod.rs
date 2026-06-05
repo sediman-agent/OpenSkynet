@@ -112,7 +112,7 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Sen
             }
         }
         AppEvent::Shutdown => {
-            app.agent.running = false;
+            app.running = false;
         }
         AppEvent::AgentStep(_phase, action) => {
             // Only append steps if agent is currently running
@@ -153,7 +153,7 @@ pub async fn handle_message(app: &mut App, event: AppEvent, event_tx: &mpsc::Sen
         }
         AppEvent::UpdateSuccess => {
             app.show_toast("Update installed! Restarting...".to_string());
-            app.agent.running = false;
+            app.running = false;
         }
         AppEvent::UpdateFailed(err) => {
             app.show_toast(format!("Update failed: {}", err));
@@ -463,18 +463,19 @@ use sediman_tui_core::event::AppEvent;
     #[tokio::test]
     async fn test_shutdown_sets_running_false() {
         let mut app = make_app();
-        app.agent.running = true;
+        app.running = true;
         let tx = make_event_tx();
         handle_message(&mut app, AppEvent::Shutdown, &tx).await;
-        assert!(!app.agent.running);
+        assert!(!app.running);
     }
 
     #[tokio::test]
     async fn test_update_success_sets_running_false() {
         let mut app = make_app();
+        app.running = true;
         let tx = make_event_tx();
         handle_message(&mut app, AppEvent::UpdateSuccess, &tx).await;
-        assert!(!app.agent.running);
+        assert!(!app.running);
     }
 
     #[tokio::test]

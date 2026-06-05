@@ -1148,8 +1148,7 @@ pub async fn run(
     let mut pending_resize: Option<(u16, u16)> = None;
 
     loop {
-        // Check if we should exit (from Ctrl+C or other reasons)
-        if !app.agent.running {
+        if !app.running {
             break;
         }
 

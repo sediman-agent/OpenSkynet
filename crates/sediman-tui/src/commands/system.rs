@@ -36,7 +36,7 @@ pub async fn handle_compress(app: &mut App, _args: &str) {
 
 #[allow(dead_code)]
 pub async fn handle_exit(app: &mut App, _args: &str) {
-    app.agent.running = false;
+    app.running = false;
 }
 
 #[allow(dead_code)]

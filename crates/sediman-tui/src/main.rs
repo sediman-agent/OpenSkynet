@@ -449,12 +449,17 @@ async fn async_main(args: Args) {
     let startup_no_spawn = no_spawn;
     let startup_verbose = verbose;
 
+    let backend_child: std::sync::Arc<tokio::sync::Mutex<Option<tokio::process::Child>>> =
+        std::sync::Arc::new(tokio::sync::Mutex::new(None));
+
+    let child_handle = backend_child.clone();
     tokio::spawn(async move {
-        let _child = ensure_backend(
+        let child = ensure_backend(
             &startup_socket, startup_no_spawn,
             &startup_provider, startup_model.as_deref(), startup_base_url.as_deref(),
             startup_verbose,
         ).await;
+        *child_handle.lock().await = child;
 
         // Sync model
         for _ in 0..5 {
@@ -507,6 +512,13 @@ async fn async_main(args: Args) {
     let _ = execute!(stdout, DisableMouseCapture, DisableBracketedPaste, crossterm::cursor::Show, LeaveAlternateScreen);
     let _ = stdout.flush();
 
+    // Kill the Python backend child process on TUI exit
+    if let Ok(mut guard) = backend_child.try_lock() {
+        if let Some(ref mut child) = *guard {
+            let _ = child.kill().await;
+            info!("Backend child process killed.");
+        }
+    }
 
     if let Err(e) = result {
         error!("Error: {}", e);
