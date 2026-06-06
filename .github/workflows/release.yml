@@ -9,46 +9,6 @@ permissions:
   packages: write
 
 jobs:
-  release-tui:
-    name: Build & release TUI (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: aarch64-apple-darwin
-            runner: macos-latest
-            platform: aarch64-macos
-          - target: x86_64-apple-darwin
-            runner: macos-13
-            platform: x86_64-macos
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-latest
-            platform: x86_64-linux
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
-      - name: Build
-        run: cargo build --release -p sediman-tui --target ${{ matrix.target }}
-      - name: Package
-        run: |
-          mkdir -p dist/bin
-          cp target/${{ matrix.target }}/release/sediman-tui dist/bin/terminator
-          cd dist && tar czf sediman-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz bin/
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/sediman-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz
-          generate_release_notes: true
-
   release-electron:
     name: Build & release Electron app
     runs-on: ${{ matrix.os }}

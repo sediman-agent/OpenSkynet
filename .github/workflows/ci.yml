@@ -24,23 +24,3 @@ jobs:
         run: |
           cd packages/app
           bun run build
-
-  rust:
-    name: Rust TUI
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ runner.os }}-cargo
-      - name: Build
-        run: cargo build --workspace
-      - name: Run tests
-        run: cargo test --workspace
-      - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
