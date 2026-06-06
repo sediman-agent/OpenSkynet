@@ -94,6 +94,7 @@ export async function startTUI(deps: TUIDeps): Promise<void> {
     exitOnCtrlC: false,
     targetFps: 30,
     screenMode: "alternate-screen",
+    autoFocus: true,
     onDestroy: () => {},
   });
 
@@ -266,6 +267,8 @@ class TUIController {
     this.renderFooter();
     this.startTicker();
 
+    setTimeout(() => { this.textarea.focus(); }, 100);
+
     this.renderer.on("resize", () => {
       this.root.width = this.renderer.width;
       this.root.height = this.renderer.height;
@@ -410,10 +413,16 @@ class TUIController {
   }
 
   private renderContent(): void {
+    for (const child of this.contentAreaBox.getChildren().slice()) {
+      this.contentAreaBox.remove(child.id);
+      child.destroy();
+    }
     for (const child of this.contentArea.getChildren().slice()) {
       this.contentArea.remove(child.id);
       child.destroy();
     }
+    this.contentAreaBox.visible = false;
+    this.contentArea.visible = false;
     this.contentLines = [];
 
     if (this.app.showBanner && this.app.messages.length === 0) {
@@ -421,49 +430,61 @@ class TUIController {
     } else {
       this.renderMessages();
     }
-    this.contentArea.scrollTop = 0;
     this.renderer.requestRender();
+  }
+
+  private addContentLineTo(target: BoxRenderable, text: string, color: string): void {
+    const line = new TextRenderable(this.renderer, {
+      content: text || " ",
+      height: 1,
+      fg: rgba(color),
+    });
+    target.add(line);
+    this.contentLines.push(line);
   }
 
   private renderBanner(): void {
     const t = this.theme();
-    this.addContentLine(" ", t.textMuted);
+    this.contentAreaBox.visible = true;
+    this.addContentLineTo(this.contentAreaBox, " ", t.textMuted);
     for (let i = 0; i < LOGO_LINES.length; i++) {
       const colorKey = LOGO_COLORS[i] ?? "primary";
-      this.addContentLine(LOGO_LINES[i] || " ", t[colorKey]);
+      this.addContentLineTo(this.contentAreaBox, LOGO_LINES[i] || " ", t[colorKey]);
     }
-    this.addContentLine(" ", t.textMuted);
-    this.addContentLine("Your Terminator.", t.info);
-    this.addContentLine(`v${this.app.version}`, t.textMuted);
-    this.addContentLine("", t.background);
-    this.addContentLine(`● Browser: ${this.app.headless ? "headless" : "headed + vision"}`, t.text);
-    this.addContentLine(`◎ Path: ${process.cwd().slice(-50)}`, t.text);
-    this.addContentLine("", t.background);
-    this.addContentLine("Type a task or /help to begin.", t.textMuted);
-    this.addContentLine("", t.background);
+    this.addContentLineTo(this.contentAreaBox, " ", t.textMuted);
+    this.addContentLineTo(this.contentAreaBox, "Your Terminator.", t.info);
+    this.addContentLineTo(this.contentAreaBox, `v${this.app.version}`, t.textMuted);
+    this.addContentLineTo(this.contentAreaBox, " ", t.textMuted);
+    this.addContentLineTo(this.contentAreaBox, `● Browser: ${this.app.headless ? "headless" : "headed + vision"}`, t.text);
+    this.addContentLineTo(this.contentAreaBox, `◎ Path: ${process.cwd().slice(-50)}`, t.text);
+    this.addContentLineTo(this.contentAreaBox, " ", t.textMuted);
+    this.addContentLineTo(this.contentAreaBox, "Type a task or /help to begin.", t.textMuted);
+    this.addContentLineTo(this.contentAreaBox, " ", t.textMuted);
+    this.renderer.requestRender();
   }
 
   private renderMessages(): void {
     const t = this.theme();
     const W = this.renderer.width;
     const maxW = W - 4;
+    this.contentArea.visible = true;
 
     for (const msg of this.app.messages) {
       switch (msg.type) {
         case "user":
-          this.addContentLine(`❯ ${truncateStr(msg.text ?? "", maxW)}`, t.secondary);
+          this.addContentLineTo(this.contentArea, `❯ ${truncateStr(msg.text ?? "", maxW)}`, t.secondary);
           break;
         case "system":
-          this.addContentLine(`  ${truncateStr(msg.text ?? "", maxW)}`, t.textMuted);
+          this.addContentLineTo(this.contentArea, `  ${truncateStr(msg.text ?? "", maxW)}`, t.textMuted);
           break;
         case "error":
-          this.addContentLine(`✗ ${truncateStr(msg.text ?? "", maxW)}`, t.error);
+          this.addContentLineTo(this.contentArea, `✗ ${truncateStr(msg.text ?? "", maxW)}`, t.error);
           break;
         case "agent":
           if (msg.state === "streaming") {
-            this.renderAgentStreaming(msg, t, maxW);
+            this.renderAgentStreaming(this.contentArea, msg, t, maxW);
           } else if (msg.state === "completed") {
-            this.renderAgentCompleted(msg, t, maxW);
+            this.renderAgentCompleted(this.contentArea, msg, t, maxW);
           }
           break;
       }
@@ -474,7 +495,7 @@ class TUIController {
       if (lastMsg?.type === "agent" && lastMsg.state === "streaming") {
         const elapsed = this.app.agent.startTime ? (Date.now() - this.app.agent.startTime) / 1000 : 0;
         const stepCount = lastMsg.steps?.length ?? 0;
-        this.addContentLine(
+        this.addContentLineTo(this.contentArea,
           `${this.app.spinnerChar} Working… ${formatElapsed(elapsed)} · ${stepCount} steps`,
           t.primary,
         );
@@ -482,67 +503,57 @@ class TUIController {
     }
   }
 
-  private renderAgentStreaming(msg: ChatMessage, t: ThemeTokens, maxW: number): void {
+  private renderAgentStreaming(target: BoxRenderable, msg: ChatMessage, t: ThemeTokens, maxW: number): void {
     if (msg.thinkingText && msg.thinkingText.length > 0) {
-      this.addContentLine("◆ Thinking", t.warning);
+      this.addContentLineTo(target, "◆ Thinking", t.warning);
       for (const line of msg.thinkingText.split("\n").slice(-5).filter((l: string) => l.trim())) {
-        this.addContentLine(`  ${truncateStr(line.trim(), maxW)}`, t.textMuted);
+        this.addContentLineTo(target, `  ${truncateStr(line.trim(), maxW)}`, t.textMuted);
       }
     }
     if (msg.steps?.length) {
-      this.addContentLine(`▸ ${msg.steps.length} steps`, t.info);
+      this.addContentLineTo(target, `▸ ${msg.steps.length} steps`, t.info);
       for (const step of msg.steps.slice(-8)) {
-        this.addContentLine(`  ${truncateStr(step, maxW)}`, t.text);
+        this.addContentLineTo(target, `  ${truncateStr(step, maxW)}`, t.text);
       }
     }
     if (msg.result && msg.result.length > 0) {
-      this.addContentLine("▶ Response", t.info);
+      this.addContentLineTo(target, "▶ Response", t.info);
       for (const line of msg.result.split("\n").slice(-15)) {
-        this.addContentLine(`  ${truncateStr(line, maxW)}`, t.text);
+        this.addContentLineTo(target, `  ${truncateStr(line, maxW)}`, t.text);
       }
     }
   }
 
-  private renderAgentCompleted(msg: ChatMessage, t: ThemeTokens, maxW: number): void {
+  private renderAgentCompleted(target: BoxRenderable, msg: ChatMessage, t: ThemeTokens, maxW: number): void {
     const icon = msg.success ? "✓" : "✗";
     const iconColor = msg.success ? t.success : t.error;
     const elapsed = msg.elapsedSecs ?? 0;
-    this.addContentLine(`${icon} Done · ${formatElapsed(elapsed)}`, iconColor);
+    this.addContentLineTo(target, `${icon} Done · ${formatElapsed(elapsed)}`, iconColor);
 
     if (msg.tabExpanded !== false) {
       if (msg.result) {
         for (const line of msg.result.split("\n").slice(0, 30)) {
-          this.addContentLine(`  ${truncateStr(line, maxW)}`, t.text);
+          this.addContentLineTo(target, `  ${truncateStr(line, maxW)}`, t.text);
         }
       }
       if (msg.steps?.length) {
         for (const step of msg.steps.slice(-5)) {
-          this.addContentLine(`  ${truncateStr(step, maxW)}`, t.text);
+          this.addContentLineTo(target, `  ${truncateStr(step, maxW)}`, t.text);
         }
       }
       if (msg.thinkingText) {
         for (const line of msg.thinkingText.split("\n").slice(0, 20).filter((l: string) => l.trim())) {
-          this.addContentLine(`  ${truncateStr(line.trim(), maxW)}`, t.textMuted);
+          this.addContentLineTo(target, `  ${truncateStr(line.trim(), maxW)}`, t.textMuted);
         }
       }
     }
 
     if (msg.skillCreated) {
-      this.addContentLine(`  ✦ Skill created: ${msg.skillCreated}`, t.info);
+      this.addContentLineTo(target, `  ✦ Skill created: ${msg.skillCreated}`, t.info);
     }
     if (msg.scheduledJob) {
-      this.addContentLine(`  ⏰ Scheduled: ${msg.scheduledJob}`, t.secondary);
+      this.addContentLineTo(target, `  ⏰ Scheduled: ${msg.scheduledJob}`, t.secondary);
     }
-  }
-
-  private addContentLine(text: string, color: string): void {
-    const line = new TextRenderable(this.renderer, {
-      content: text || " ",
-      height: 1,
-      fg: rgba(color),
-    });
-    this.contentArea.add(line);
-    this.contentLines.push(line);
   }
 
   private modeColor(): string {

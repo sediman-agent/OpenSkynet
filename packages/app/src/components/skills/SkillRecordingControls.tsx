@@ -1,106 +1,124 @@
 /**
  * Skill Recording Controls Component
- * Professional UI for recording browser interactions as skills
+ * Server-side recording integration for browser panel
  */
 
 import { useState, useEffect } from 'react';
-import { Circle, Square, Save, X } from 'lucide-react';
+import { Circle, Square, X } from 'lucide-react';
 import { Button } from '@/components/shared/Button';
 import { Input } from '@/components/shared/Input';
-import { skillRecordingService, RecordingState } from '@/services/skills';
 import { Modal } from '@/components/shared/Modal';
 
+interface RecordingState {
+  isRecording: boolean;
+  sessionId: string | null;
+  sessionName: string;
+}
+
 interface SkillRecordingControlsProps {
-  onRecordingComplete?: (skillId: string) => void;
+  onRecordingComplete?: (skillName: string) => void;
   position?: 'header' | 'sidebar' | 'floating';
 }
+
+const API_BASE = 'http://localhost:3001';
 
 export function SkillRecordingControls({
   onRecordingComplete,
   position = 'header'
 }: SkillRecordingControlsProps) {
-  const [recordingState, setRecordingState] = useState<RecordingState>(skillRecordingService.getState());
+  const [recordingState, setRecordingState] = useState<RecordingState>({
+    isRecording: false,
+    sessionId: null,
+    sessionName: '',
+  });
   const [showStartModal, setShowStartModal] = useState(false);
-  const [showSaveModal, setShowSaveModal] = useState(false);
   const [skillName, setSkillName] = useState('');
-  const [skillDescription, setSkillDescription] = useState('');
-  const [skillCategory, setSkillCategory] = useState<'automation' | 'form' | 'navigation' | 'scraping'>('automation');
 
   useEffect(() => {
-    const updateState = () => {
-      setRecordingState(skillRecordingService.getState());
+    // Poll recording state from server
+    const checkRecording = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/record/active`);
+        if (response.ok) {
+          const data = await response.json();
+          const sessions = data.sessions || [];
+          const activeSession = sessions.find((s: any) => s.status === 'recording');
+          if (activeSession) {
+            setRecordingState({
+              isRecording: true,
+              sessionId: activeSession.id,
+              sessionName: activeSession.name,
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check recording state:', error);
+      }
     };
 
-    skillRecordingService.on('recording-started', updateState);
-    skillRecordingService.on('recording-stopped', updateState);
-    skillRecordingService.on('recording-cancelled', updateState);
-    skillRecordingService.on('action-recorded', updateState);
-
-    return () => {
-      skillRecordingService.off('recording-started', updateState);
-      skillRecordingService.off('recording-stopped', updateState);
-      skillRecordingService.off('recording-cancelled', updateState);
-      skillRecordingService.off('action-recorded', updateState);
-    };
+    checkRecording();
+    const interval = setInterval(checkRecording, 3000);
+    return () => clearInterval(interval);
   }, []);
 
-  const handleStartRecording = () => {
+  const handleStartRecording = async () => {
     if (!skillName.trim()) {
       return;
     }
 
-    skillRecordingService.startRecording({
-      name: skillName,
-      description: skillDescription,
-      category: skillCategory,
-    });
+    try {
+      const response = await fetch(`${API_BASE}/api/record/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: skillName }),
+      });
 
-    setShowStartModal(false);
-    setSkillName('');
-    setSkillDescription('');
-  };
-
-  const handleStopRecording = () => {
-    setShowSaveModal(true);
-  };
-
-  const handleSaveSkill = () => {
-    const skill = skillRecordingService.stopRecording({
-      name: skillName || recordingState.currentSkill?.name,
-      description: skillDescription || recordingState.currentSkill?.description,
-    });
-
-    if (skill && onRecordingComplete) {
-      onRecordingComplete(skill.id);
+      if (response.ok) {
+        const result = await response.json();
+        setRecordingState({
+          isRecording: true,
+          sessionId: result.id,
+          sessionName: result.name,
+        });
+        setShowStartModal(false);
+        setSkillName('');
+      }
+    } catch (error) {
+      console.error('Failed to start recording:', error);
     }
-
-    setShowSaveModal(false);
-    setSkillName('');
-    setSkillDescription('');
   };
 
-  const handleCancelRecording = () => {
-    skillRecordingService.cancelRecording();
-    setShowSaveModal(false);
-  };
+  const handleStopRecording = async () => {
+    if (!recordingState.sessionId) return;
 
-  const formatDuration = (startTime: number | null): string => {
-    if (!startTime) return '0:00';
-    const seconds = Math.floor((Date.now() - startTime) / 1000);
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+    try {
+      const response = await fetch(`${API_BASE}/api/record/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: recordingState.sessionId }),
+      });
 
-  const isRecording = recordingState.isRecording;
-  const actionCount = recordingState.actionCount;
-  const duration = formatDuration(recordingState.startTime);
+      if (response.ok) {
+        setRecordingState({
+          isRecording: false,
+          sessionId: null,
+          sessionName: '',
+        });
+
+        if (onRecordingComplete && skillName) {
+          onRecordingComplete(skillName);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+    }
+  };
 
   if (position === 'header') {
     return (
       <>
         <div className="flex items-center gap-2">
-          {!isRecording ? (
+          {!recordingState.isRecording ? (
             <Button
               size="sm"
               variant="default"
@@ -117,9 +135,8 @@ export function SkillRecordingControls({
                   <Circle className="w-3 h-3 text-red-500 animate-pulse" />
                 </div>
                 <span className="text-xs font-medium text-red-700">
-                  Recording • {actionCount} actions
+                  {recordingState.sessionName || 'Recording'}...
                 </span>
-                <span className="text-xs text-red-600">{duration}</span>
               </div>
               <div className="flex items-center gap-1">
                 <Button
@@ -134,7 +151,7 @@ export function SkillRecordingControls({
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={handleCancelRecording}
+                  onClick={handleStopRecording}
                   className="h-6 px-2 text-xs hover-lift text-red-600 hover:text-red-700"
                 >
                   <X className="w-3 h-3" />
@@ -161,29 +178,6 @@ export function SkillRecordingControls({
               autoFocus
             />
 
-            <Input
-              label="Description"
-              placeholder="What does this skill do?"
-              value={skillDescription}
-              onChange={(e) => setSkillDescription(e.target.value)}
-            />
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-2">
-                Category
-              </label>
-              <select
-                value={skillCategory}
-                onChange={(e) => setSkillCategory(e.target.value as any)}
-                className="w-full px-3 py-2 text-sm rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="automation">Automation</option>
-                <option value="form">Form Filling</option>
-                <option value="navigation">Navigation</option>
-                <option value="scraping">Data Scraping</option>
-              </select>
-            </div>
-
             <div className="flex items-center justify-between pt-4 border-t border-gray-200">
               <Button
                 variant="ghost"
@@ -202,64 +196,6 @@ export function SkillRecordingControls({
             </div>
           </div>
         </Modal>
-
-        {/* Save Recording Modal */}
-        <Modal
-          isOpen={showSaveModal}
-          onClose={() => setShowSaveModal(false)}
-          title="Save Recorded Skill"
-          description={`You recorded ${actionCount} actions over ${duration}`}
-          size="md"
-        >
-          <div className="space-y-4">
-            <Input
-              label="Skill Name"
-              placeholder="Enter skill name"
-              value={skillName || recordingState.currentSkill?.name || ''}
-              onChange={(e) => setSkillName(e.target.value)}
-              autoFocus
-            />
-
-            <Input
-              label="Description"
-              placeholder="Describe what this skill does"
-              value={skillDescription || recordingState.currentSkill?.description || ''}
-              onChange={(e) => setSkillDescription(e.target.value)}
-            />
-
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-              <p className="text-sm text-blue-800">
-                <strong>Tip:</strong> You can edit this skill later or add additional actions manually.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  onClick={handleCancelRecording}
-                  className="text-red-600 hover:text-red-700"
-                >
-                  Discard
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => setShowSaveModal(false)}
-                >
-                  Continue Recording
-                </Button>
-              </div>
-              <Button
-                variant="primary"
-                onClick={handleSaveSkill}
-                disabled={!skillName.trim() && !recordingState.currentSkill?.name}
-              >
-                <Save className="w-4 h-4 mr-2" />
-                Save Skill
-              </Button>
-            </div>
-          </div>
-        </Modal>
       </>
     );
   }
@@ -268,7 +204,7 @@ export function SkillRecordingControls({
   return (
     <>
       <div className="fixed bottom-4 left-4 z-50">
-        {!isRecording ? (
+        {!recordingState.isRecording ? (
           <Button
             size="lg"
             variant="primary"
@@ -285,11 +221,18 @@ export function SkillRecordingControls({
                 <Circle className="w-3 h-3 text-red-500 animate-pulse" />
                 <span className="text-sm font-semibold">Recording</span>
               </div>
-              <span className="text-xs text-gray-500">{duration}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleStopRecording}
+                className="text-red-600"
+              >
+                <X className="w-3 h-3" />
+              </Button>
             </div>
 
             <div className="text-xs text-gray-600 mb-3">
-              {actionCount} actions captured
+              {recordingState.sessionName}
             </div>
 
             <div className="flex gap-2">
@@ -302,20 +245,12 @@ export function SkillRecordingControls({
                 <Square className="w-3 h-3 mr-1" />
                 Stop
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={handleCancelRecording}
-                className="text-red-600"
-              >
-                <X className="w-3 h-3" />
-              </Button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Modals would be the same */}
+      {/* Modal would be the same */}
     </>
   );
 }
