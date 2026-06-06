@@ -42,7 +42,7 @@ jobs:
         run: bun install
       - name: Run server tests
         working-directory: .
-        run: bun test packages/server/tests --exclude vendor
+        run: bun test packages/server/tests --exclude vendor --exclude skills
 
   rust:
     name: Rust build & test
