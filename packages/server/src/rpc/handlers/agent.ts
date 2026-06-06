@@ -1,6 +1,7 @@
 import type { RPCServer, NotifyFn } from "../server.js";
 import type { RPCHandlerDeps } from "../deps.js";
 import type { StepEvent } from "../../core/types.js";
+import { T800Agent, TerminatorAgent } from "../../electron/index.js";
 
 export function registerAgentHandlers(
   server: RPCServer,
@@ -8,7 +9,7 @@ export function registerAgentHandlers(
 ): void {
   server.register("agent.run", async (params, notify) => {
     return runStreaming(params, notify, deps, (task, mode) =>
-      deps.agentLoop.run(task, mode),
+      runAgentTask(task, mode, deps),
     );
   });
 
@@ -19,85 +20,56 @@ export function registerAgentHandlers(
 
   server.register("agent.terminator", async (params, notify) => {
     const task = (params.task as string) ?? "";
-    const mode = params.mode as string | undefined;
+    const mode = "terminator";
 
-    const steps: StepEvent[] = [];
-    const startTime = Date.now();
-
-    notify!("chat.progress", {
-      phase: "planning",
-      action: "terminator_start",
-      detail: task,
-    });
-
-    try {
-      const result = await deps.agentLoop.run(task, mode);
-
-      for (const step of result.steps) {
-        notify!("chat.progress", {
-          phase: step.phase,
-          action: step.action,
-          url: step.url,
-          detail: step.detail,
-          step: steps.length,
-        });
-        steps.push(step);
-      }
-
-      return result;
-    } catch (err) {
-      return {
-        task,
-        result: err instanceof Error ? err.message : String(err),
-        success: false,
-        steps,
-        actions_taken: [],
-        iterations: 0,
-        strategy_used: "terminator",
-        elapsed_secs: (Date.now() - startTime) / 1000,
-      };
-    }
+    return runStreaming(params, notify, deps, (task, mode) =>
+      runAgentTask(task, mode, deps),
+    );
   });
 
   server.register("agent.dispatch", async (params, notify) => {
     const task = (params.task as string) ?? "";
-    const mode = params.mode as string | undefined;
+    const mode = params.mode as string ?? "kimi";
 
-    const startTime = Date.now();
-
-    notify!("chat.progress", {
-      phase: "planning",
-      action: "dispatch_start",
-      detail: task,
-    });
-
-    try {
-      const result = await deps.agentLoop.run(task, mode);
-
-      for (const step of result.steps) {
-        notify!("chat.progress", {
-          phase: step.phase,
-          action: step.action,
-          url: step.url,
-          detail: step.detail,
-          step: step.phase === "executing" ? 1 : 0,
-        });
-      }
-
-      return result;
-    } catch (err) {
-      return {
-        task,
-        result: err instanceof Error ? err.message : String(err),
-        success: false,
-        steps: [],
-        actions_taken: [],
-        iterations: 0,
-        strategy_used: "dispatch",
-        elapsed_secs: (Date.now() - startTime) / 1000,
-      };
-    }
+    return runStreaming(params, notify, deps, (task, mode) =>
+      runAgentTask(task, mode, deps),
+    );
   });
+}
+
+async function runAgentTask(
+  task: string,
+  mode: string | undefined,
+  deps: RPCHandlerDeps,
+): Promise<import("../../core/types.js").AgentResult> {
+  // Route to appropriate agent based on mode
+  const agentMode = mode === "terminator" ? "terminator" : "t800";
+
+  if (agentMode === "terminator") {
+    const agent = new TerminatorAgent({
+      llmProvider: deps.llmProvider,
+      memory: deps.memory,
+      skillEngine: deps.skillEngine,
+      skillSearch: deps.skillSearch,
+      agentLoop: deps.agentLoop,
+      toolBus: deps.agentLoop["toolBus"] ?? undefined,
+      headless: deps.headless,
+      workingDirectory: process.cwd(),
+    });
+    return agent.run(task);
+  } else {
+    const agent = new T800Agent({
+      llmProvider: deps.llmProvider,
+      memory: deps.memory,
+      skillEngine: deps.skillEngine,
+      skillSearch: deps.skillSearch,
+      agentLoop: deps.agentLoop,
+      toolBus: deps.agentLoop["toolBus"] ?? undefined,
+      headless: deps.headless,
+      workingDirectory: process.cwd(),
+    });
+    return agent.run(task);
+  }
 }
 
 async function runStreaming(

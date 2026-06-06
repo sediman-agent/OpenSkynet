@@ -75,6 +75,11 @@ function convertZodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
  * Convert a single Zod type to JSON Schema format
  */
 function convertZodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unknown> {
+  // Handle undefined types (fallback)
+  if (!zodType || typeof zodType !== 'object') {
+    return {};
+  }
+
   const def = zodType._def;
 
   // Handle string types

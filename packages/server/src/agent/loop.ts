@@ -10,6 +10,16 @@ import { AuditLog, SharedScratchpad, checkBudget, type Budget } from "./guardrai
 import { loadSoul } from "./soul";
 import logger from "../core/logging";
 import { getConfig } from "../core/config";
+import {
+  IterationManager,
+  ToolExecutor,
+  ResponseProcessor,
+  CompressionHandler,
+  ReflectionHandler,
+  type IterationState,
+  type ProcessedResponse,
+  type ReflectionResult,
+} from "./loop/index";
 
 type Message = { role: string; content: string };
 type TaskCategory = "simple" | "complex" | "browser" | "research" | "creative";
@@ -37,12 +47,18 @@ export class AgentLoop {
   private scratchpad: SharedScratchpad;
   private progress: ProgressTracker;
   private budget: Budget;
-  private thinkParser: ThinkTagParser;
   private soul: string;
   private promptBuilder: PromptBuilder;
   private compressor: ContextCompressor;
   private maxIterations: number;
   private compressThreshold: number;
+
+  // Modular components for future refactoring
+  private iterationManager: IterationManager;
+  private toolExecutor: ToolExecutor;
+  private responseProcessor: ResponseProcessor;
+  private compressionHandler: CompressionHandler;
+  private reflectionHandler: ReflectionHandler;
 
   constructor(opts: AgentLoopOpts) {
     const config = getConfig();
@@ -57,7 +73,6 @@ export class AgentLoop {
     this.scratchpad = new SharedScratchpad();
     this.progress = new ProgressTracker();
     this.compressor = new ContextCompressor();
-    this.thinkParser = new ThinkTagParser();
     this.promptBuilder = new PromptBuilder();
     this.soul = "";
     this.maxIterations = config.compressThreshold * 2 + 10;
@@ -70,6 +85,13 @@ export class AgentLoop {
       usedIterations: 0,
       usedTimeMs: 0,
     };
+
+    // Initialize modular components
+    this.iterationManager = new IterationManager(this.maxIterations, this.budget);
+    this.toolExecutor = new ToolExecutor(this.toolBus, this.auditLog, this.interrupt);
+    this.responseProcessor = new ResponseProcessor();
+    this.compressionHandler = new CompressionHandler(this.compressor, this.compressThreshold);
+    this.reflectionHandler = new ReflectionHandler();
   }
 
   async run(task: string, mode?: string): Promise<AgentResult> {

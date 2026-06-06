@@ -19,6 +19,11 @@
 export { ElectronAgent } from "./agent/ElectronAgent";
 export type { ElectronAgentOpts } from "./agent/ElectronAgent";
 
+export { T800Agent } from "./agent/T800Agent";
+export type { T800AgentOpts } from "./agent/T800Agent";
+
+export { TerminatorAgent } from "./agent/TerminatorAgent";
+
 export * from "./tools";
 export type { BuiltinTool, ToolExecution, ExecutableToolResult, ToolAccesses } from "./tooling/types";
 

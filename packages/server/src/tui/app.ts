@@ -1,7 +1,7 @@
 import type { ThemeTokens } from "./theme.js";
 import { getTheme } from "./theme.js";
 
-export type AgentMode = "Manager" | "Browser" | "Coder" | "Terminator";
+export type AgentMode = "T-800" | "Terminator";
 
 export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -14,10 +14,20 @@ export interface AgentModeEntry {
 }
 
 export const DEFAULT_MODES: AgentModeEntry[] = [
-  { mode: "manager", label: "Mgr", runner: "default", description: "General-purpose agent", capabilities: [] },
-  { mode: "browser", label: "Brow", runner: "browser", description: "Web browsing agent", capabilities: ["browser"] },
-  { mode: "coder", label: "Code", runner: "coding", description: "Coding agent", capabilities: ["fileops", "terminal"] },
-  { mode: "terminator", label: "Term", runner: "orchestrator", description: "Autonomous multi-task agent", capabilities: ["fileops", "terminal", "browser"] },
+  {
+    mode: "t800",
+    label: "T-800",
+    runner: "t800",
+    description: "Direct execution agent with all tools",
+    capabilities: ["fileops", "terminal", "browser", "web", "skills", "coding", "documents"]
+  },
+  {
+    mode: "terminator",
+    label: "Term",
+    runner: "terminator",
+    description: "Autonomous multi-task orchestrator",
+    capabilities: ["fileops", "terminal", "browser", "web", "skills", "coding", "documents", "orchestration"]
+  },
 ];
 
 export const COMMANDS: Array<{ name: string; aliases?: string[]; description: string; category: string }> = [
@@ -277,7 +287,7 @@ export class App {
   cycleAgentMode(): void {
     this.agent.currentModeIndex = (this.agent.currentModeIndex + 1) % this.agent.modes.length;
     const entry = this.agent.modes[this.agent.currentModeIndex];
-    this.agent.mode = (entry.mode === "browser" ? "Browser" : entry.mode === "coder" ? "Coder" : entry.mode === "terminator" ? "Terminator" : "Manager") as AgentMode;
+    this.agent.mode = (entry.mode === "t800" ? "T-800" : entry.mode === "terminator" ? "Terminator" : "T-800") as AgentMode;
   }
 
   currentModeLabel(): string {
