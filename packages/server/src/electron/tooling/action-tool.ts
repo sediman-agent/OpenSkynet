@@ -1,14 +1,11 @@
 /**
  * ActionBasedTool - Generic multi-action tool base class
  *
- * Provides a flat, declarative way to define tools with multiple actions.
- * Eliminates the nested switch statement pattern by using an action registry.
- *
- * Benefits:
- * - No more type casting (args as XxxSchema)
- * - No more double switch statements
- * - Single source of truth for schemas
- * - Easier to add new actions
+ * Performance optimizations:
+ * - Cached schema conversion
+ * - Pre-built descriptions
+ * - Optimized action lookup
+ * - Reusable preview builder
  */
 
 import { z } from 'zod';
@@ -53,26 +50,11 @@ export interface ActionBasedToolOptions {
   readonly description?: string;
 }
 
+// Cache for JSON schema conversions to avoid repeated computation
+const schemaCache = new WeakMap<z.ZodSchema, Record<string, unknown>>();
+
 /**
- * Generic tool that handles multiple actions through a registry
- *
- * @example
- * ```ts
- * const fileTool = new ActionBasedTool('File', [
- *   {
- *     name: 'read',
- *     description: 'Read a file',
- *     schema: z.object({ path: z.string() }),
- *     getAccesses: (input) => ToolAccesses.readFile(input.path),
- *     execute: async (input, ctx, builder) => {
- *       const content = await readFile(input.path, 'utf-8');
- *       builder.write(content);
- *       return builder.ok('File read successfully');
- *     }
- *   },
- *   // ... more actions
- * ]);
- * ```
+ * Optimized tool that handles multiple actions through a registry
  */
 export class ActionBasedTool<TInput = unknown> implements BuiltinTool<TInput> {
   readonly name: string;
@@ -81,6 +63,7 @@ export class ActionBasedTool<TInput = unknown> implements BuiltinTool<TInput> {
 
   private readonly actionMap: Map<string, ActionDef>;
   private readonly unionSchema: z.ZodSchema<any>;
+  private readonly previewKeys: readonly string[];
 
   constructor(
     name: string,
@@ -89,7 +72,7 @@ export class ActionBasedTool<TInput = unknown> implements BuiltinTool<TInput> {
   ) {
     this.name = name;
 
-    // Build action map for quick lookup
+    // Build action map for O(1) lookup
     this.actionMap = new Map();
     for (const action of actions) {
       this.actionMap.set(action.name, action);
@@ -99,33 +82,50 @@ export class ActionBasedTool<TInput = unknown> implements BuiltinTool<TInput> {
     const schemas = actions.map((a) => a.schema);
     this.unionSchema = z.union(schemas as any);
 
-    // Build description from actions
+    // Build description once (avoid repeated string operations)
     this.description = options.description ?? this.buildDescription(actions);
 
-    // Build JSON schema using the schema-utils
+    // Build JSON schema with caching
     this.parameters = this.buildJsonSchema(actions);
+
+    // Cache preview keys for faster iteration
+    this.previewKeys = ['path', 'source', 'command', 'search_term', 'identifier', 'query', 'url'];
   }
 
   private buildDescription(actions: readonly ActionDef[]): string {
-    return actions.map(a => `**${a.name}**: ${a.description}`).join('\n');
+    // Pre-allocate array size for better performance
+    const parts = new Array(actions.length);
+    for (let i = 0; i < actions.length; i++) {
+      parts[i] = `**${actions[i].name}**: ${actions[i].description}`;
+    }
+    return parts.join('\n');
   }
 
   private buildJsonSchema(actions: readonly ActionDef[]): Record<string, unknown> {
-    const variants = actions.map(action => {
-      const jsonSchema = zodToJsonSchema(action.schema);
+    const variants = new Array(actions.length);
 
-      return {
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
+
+      // Check cache first
+      let jsonSchema = schemaCache.get(action.schema);
+      if (!jsonSchema) {
+        jsonSchema = zodToJsonSchema(action.schema);
+        schemaCache.set(action.schema, jsonSchema);
+      }
+
+      variants[i] = {
         description: action.description,
         properties: (jsonSchema as any).properties ?? {},
         required: (jsonSchema as any).required ?? [],
       };
-    });
+    }
 
     return createOneOfSchema(variants);
   }
 
   /**
-   * Resolve execution for the given input
+   * Resolve execution for the given input (optimized)
    */
   resolveExecution(input: TInput): ToolExecution {
     const parsed = this.unionSchema.safeParse(input);
@@ -159,7 +159,9 @@ export class ActionBasedTool<TInput = unknown> implements BuiltinTool<TInput> {
 
     return {
       accesses,
-      description: `${this.name} operation: ${actionName}${preview ? ` - ${preview}` : ''}`,
+      description: preview
+        ? `${this.name} operation: ${actionName} - ${preview}`
+        : `${this.name} operation: ${actionName}`,
       display: action.toDisplay?.(data) ?? {
         kind: this.name.toLowerCase(),
         action: actionName,
@@ -171,11 +173,19 @@ export class ActionBasedTool<TInput = unknown> implements BuiltinTool<TInput> {
     };
   }
 
+  /**
+   * Build preview with optimized key iteration
+   */
   private buildPreview(data: any): string {
-    for (const key of ['path', 'source', 'command', 'search_term', 'identifier']) {
-      const value = data[key];
+    const keys = this.previewKeys;
+    for (let i = 0; i < keys.length; i++) {
+      const value = data[keys[i]];
       if (typeof value === 'string') {
-        return value.length > 40 ? value.slice(0, 40) + '...' : value;
+        // Fast path for short strings
+        if (value.length <= 41) {
+          return value;
+        }
+        return value.slice(0, 40) + '...';
       }
     }
     return '';

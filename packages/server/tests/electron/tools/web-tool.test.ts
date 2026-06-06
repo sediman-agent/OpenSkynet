@@ -56,20 +56,25 @@ describe("WebTool", () => {
     });
 
     test("handles invalid URL", async () => {
-
       const execution = await tool.resolveExecution({
         action: "fetch",
         url: "not-a-valid-url",
         method: "GET",
       });
 
-      const result = await execution.execute({
-        turnId: "test-turn",
-        toolCallId: "test-call",
-        signal: new AbortController().signal,
-      });
-
-      expect(result.isError).toBe(true);
+      // Validation happens at resolveExecution stage
+      if ("isError" in execution) {
+        expect(execution.isError).toBe(true);
+        expect(execution.output).toContain("Validation error");
+      } else {
+        // If validation passes (shouldn't happen), execution should fail
+        const result = await execution.execute({
+          turnId: "test-turn",
+          toolCallId: "test-call",
+          signal: new AbortController().signal,
+        });
+        expect(result.isError).toBe(true);
+      }
     });
 
     test("handles network errors gracefully", async () => {

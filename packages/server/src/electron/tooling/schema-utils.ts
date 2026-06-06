@@ -1,18 +1,15 @@
 /**
  * Schema utility functions for electron tools
- * Provides consistent schema conversion and helpers
+ * Performance-optimized implementation with caching
  */
 
 import { z } from 'zod';
 
+// Cache for converted schemas to avoid repeated computation
+const schemaConversionCache = new WeakMap<z.ZodType, Record<string, unknown>>();
+
 /**
- * Convert a Zod schema to JSON Schema format
- * Note: This is a simplified implementation. For production use,
- * consider using the 'zod-to-json-schema' library for full schema support.
- *
- * @param schema - Zod schema to convert
- * @param jsonSchemaOverride - Optional hardcoded JSON schema to use instead
- * @returns JSON Schema object
+ * Convert a Zod schema to JSON Schema format (optimized with caching)
  */
 export function zodToJsonSchema(
   schema?: z.ZodType,
@@ -31,27 +28,36 @@ export function zodToJsonSchema(
     };
   }
 
-  // Basic Zod to JSON Schema conversion
-  // This handles common types but is not exhaustive
-  // For full support, use zod-to-json-schema library
-  return convertZodToJsonSchema(schema);
+  // Check cache first
+  let cached = schemaConversionCache.get(schema);
+  if (cached) {
+    return cached;
+  }
+
+  // Convert and cache
+  const result = convertZodToJsonSchema(schema);
+  schemaConversionCache.set(schema, result);
+
+  return result;
 }
 
 /**
- * Convert Zod schema to JSON Schema format
- * Internal implementation for common Zod types
+ * Convert Zod schema to JSON Schema format (optimized)
  */
 function convertZodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
   const zodObj = schema as z.ZodObject<z.ZodRawShape>;
+  const shape = zodObj._def.shape();
+  const keys = Object.keys(shape);
   const properties: Record<string, unknown> = {};
   const required: string[] = [];
 
-  // Get the shape of the Zod object
-  const shape = zodObj._def.shape();
+  // Pre-allocate for better performance
+  required.length = 0;
 
-  for (const [key, def] of Object.entries(shape)) {
-    const propSchema = convertZodTypeToJsonSchema(def);
-    properties[key] = propSchema;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const def = shape[key];
+    properties[key] = convertZodTypeToJsonSchema(def);
 
     // Check if property is required (not optional)
     if (!def.isOptional()) {
@@ -72,7 +78,68 @@ function convertZodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
 }
 
 /**
- * Convert a single Zod type to JSON Schema format
+ * Type name handler map for faster lookups
+ */
+const typeHandlers: ReadonlyMap<string, (def: any) => Record<string, unknown>> = new Map([
+  ['ZodString', (def) => {
+    const schema: Record<string, unknown> = { type: 'string' };
+    if (def.minLength !== undefined) schema.minLength = def.minLength;
+    if (def.maxLength !== undefined) schema.maxLength = def.maxLength;
+    return schema;
+  }],
+  ['ZodNumber', (def) => {
+    const schema: Record<string, unknown> = { type: 'number' };
+    if (def.min !== undefined) schema.minimum = def.min;
+    if (def.max !== undefined) schema.maximum = def.max;
+    return schema;
+  }],
+  ['ZodInt', (def) => {
+    const schema: Record<string, unknown> = { type: 'number' };
+    if (def.min !== undefined) schema.minimum = def.min;
+    if (def.max !== undefined) schema.maximum = def.max;
+    return schema;
+  }],
+  ['ZodFloat', (def) => {
+    const schema: Record<string, unknown> = { type: 'number' };
+    if (def.min !== undefined) schema.minimum = def.min;
+    if (def.max !== undefined) schema.maximum = def.max;
+    return schema;
+  }],
+  ['ZodBoolean', () => ({ type: 'boolean' })],
+  ['ZodArray', (def) => ({
+    type: 'array',
+    items: convertZodTypeToJsonSchema(def.element as z.ZodTypeAny),
+  })],
+  ['ZodObject', (def, zodType) => convertZodToJsonSchema(zodType)],
+  ['ZodRecord', (def) => ({
+    type: 'object',
+    additionalProperties: convertZodTypeToJsonSchema(def.valueType as z.ZodTypeAny),
+  })],
+  ['ZodLiteral', (def) => ({ const: def.value })],
+  ['ZodEnum', (def) => ({
+    type: typeof def.values[0] === 'number' ? 'number' : 'string',
+    enum: def.values,
+  })],
+  ['ZodUnion', (def) => ({
+    oneOf: def.options.map((opt: z.ZodTypeAny) => convertZodTypeToJsonSchema(opt)),
+  })],
+  ['ZodDiscriminatedUnion', (def) => ({
+    oneOf: def.options.map((opt: z.ZodTypeAny) => convertZodTypeToJsonSchema(opt)),
+  })],
+  ['ZodOptional', (def) => convertZodTypeToJsonSchema(def.innerType as z.ZodTypeAny)],
+  ['ZodNullable', (def) => convertZodTypeToJsonSchema(def.innerType as z.ZodTypeAny)],
+  ['ZodDefault', (def) => {
+    const schema = convertZodTypeToJsonSchema(def.innerType as z.ZodTypeAny);
+    schema.default = def.defaultValue();
+    return schema;
+  }],
+  ['ZodEffects', (def) => convertZodTypeToJsonSchema(def.innerType as z.ZodTypeAny)],
+  ['ZodAny', () => ({})],
+  ['ZodUnknown', () => ({})],
+]);
+
+/**
+ * Convert a single Zod type to JSON Schema format (optimized with handler map)
  */
 function convertZodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unknown> {
   // Handle undefined types (fallback)
@@ -81,102 +148,12 @@ function convertZodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unkno
   }
 
   const def = zodType._def;
+  const typeName = def.typeName;
 
-  // Handle string types
-  if (def.typeName === 'ZodString') {
-    const schema: Record<string, unknown> = { type: 'string' };
-
-    // Handle min/max length
-    if (def.minLength !== undefined) {
-      schema.minLength = def.minLength;
-    }
-    if (def.maxLength !== undefined) {
-      schema.maxLength = def.maxLength;
-    }
-
-    return schema;
-  }
-
-  // Handle number types
-  if (def.typeName === 'ZodNumber' || def.typeName === 'ZodInt' || def.typeName === 'ZodFloat') {
-    const schema: Record<string, unknown> = { type: 'number' };
-
-    if (def.min !== undefined) {
-      schema.minimum = def.min;
-    }
-    if (def.max !== undefined) {
-      schema.maximum = def.max;
-    }
-
-    return schema;
-  }
-
-  // Handle boolean
-  if (def.typeName === 'ZodBoolean') {
-    return { type: 'boolean' };
-  }
-
-  // Handle arrays
-  if (def.typeName === 'ZodArray') {
-    return {
-      type: 'array',
-      items: convertZodTypeToJsonSchema(def.element as z.ZodTypeAny),
-    };
-  }
-
-  // Handle objects
-  if (def.typeName === 'ZodObject') {
-    return convertZodToJsonSchema(zodType);
-  }
-
-  // Handle records (dictionaries)
-  if (def.typeName === 'ZodRecord') {
-    return {
-      type: 'object',
-      additionalProperties: convertZodTypeToJsonSchema(def.valueType as z.ZodTypeAny),
-    };
-  }
-
-  // Handle literals
-  if (def.typeName === 'ZodLiteral') {
-    return { const: def.value };
-  }
-
-  // Handle enums
-  if (def.typeName === 'ZodEnum') {
-    return {
-      type: typeof def.values[0] === 'number' ? 'number' : 'string',
-      enum: def.values
-    };
-  }
-
-  // Handle unions (oneOf)
-  if (def.typeName === 'ZodUnion' || def.typeName === 'ZodDiscriminatedUnion') {
-    return {
-      oneOf: def.options.map((opt: z.ZodTypeAny) => convertZodTypeToJsonSchema(opt)),
-    };
-  }
-
-  // Handle optional/nullable
-  if (def.typeName === 'ZodOptional' || def.typeName === 'ZodNullable') {
-    return convertZodTypeToJsonSchema(def.innerType as z.ZodTypeAny);
-  }
-
-  // Handle defaults
-  if (def.typeName === 'ZodDefault') {
-    const schema = convertZodTypeToJsonSchema(def.innerType as z.ZodTypeAny);
-    schema.default = def.defaultValue();
-    return schema;
-  }
-
-  // Handle effects (transformations, refinements)
-  if (def.typeName === 'ZodEffects') {
-    return convertZodTypeToJsonSchema(def.innerType as z.ZodTypeAny);
-  }
-
-  // Handle any/unknown
-  if (def.typeName === 'ZodAny' || def.typeName === 'ZodUnknown') {
-    return {};
+  // Fast path using handler map
+  const handler = typeHandlers.get(typeName);
+  if (handler) {
+    return handler(def, zodType);
   }
 
   // Fallback for unknown types
@@ -184,51 +161,65 @@ function convertZodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unkno
 }
 
 /**
- * Create a oneOf schema for action-based tools
- * Useful for tools that support multiple actions with different schemas
+ * Create a oneOf schema for action-based tools (optimized)
  */
 export function createOneOfSchema(
-  actions: Array<{
+  actions: ReadonlyArray<{
     description: string;
     properties: Record<string, unknown>;
     required?: string[];
   }>
 ): Record<string, unknown> {
-  return {
-    type: 'object',
-    oneOf: actions.map((action) => ({
+  // Pre-allocate array for better performance
+  const oneOf = new Array(actions.length);
+
+  for (let i = 0; i < actions.length; i++) {
+    const action = actions[i];
+    oneOf[i] = {
       description: action.description,
       properties: action.properties,
-      required: action.required || [],
-    })),
+      required: action.required ? action.required : [],
+    };
+  }
+
+  return {
+    type: 'object',
+    oneOf,
   };
 }
 
 /**
- * Merge multiple JSON Schema objects into one
+ * Merge multiple JSON Schema objects into one (optimized)
  */
-export function mergeJsonSchemas(...schemas: Record<string, unknown>[]): Record<string, unknown> {
-  const merged: Record<string, unknown> = {
-    type: 'object',
-    properties: {},
-  };
+export function mergeJsonSchemas(...schemas: Readonly<Record<string, unknown>[]>): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  const requiredSet = new Set<string>();
 
-  const allRequired: string[] = [];
-
-  for (const schema of schemas) {
+  for (let i = 0; i < schemas.length; i++) {
+    const schema = schemas[i];
     if (schema.properties) {
-      Object.assign(merged.properties, schema.properties);
+      const props = schema.properties as Record<string, unknown>;
+      const keys = Object.keys(props);
+      for (let j = 0; j < keys.length; j++) {
+        properties[keys[j]] = props[keys[j]];
+      }
     }
     if (schema.required) {
-      allRequired.push(...(schema.required as string[]));
+      const req = schema.required as string[];
+      for (let k = 0; k < req.length; k++) {
+        requiredSet.add(req[k]);
+      }
     }
   }
 
-  if (allRequired.length > 0) {
-    // Remove duplicates while maintaining array
-    const uniqueSet = new Set(allRequired);
-    merged.required = Array.from(uniqueSet);
+  const result: Record<string, unknown> = {
+    type: 'object',
+    properties,
+  };
+
+  if (requiredSet.size > 0) {
+    result.required = Array.from(requiredSet);
   }
 
-  return merged;
+  return result;
 }
