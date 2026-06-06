@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { ElectronWebView } from '@/components/electron/ElectronWebView';
-import { X, Plus, Maximize2, Minimize2, RefreshCw, ExternalLink, Globe, XCircle } from 'lucide-react';
+import { X, Plus, Maximize2, Minimize2, RefreshCw, ExternalLink, Globe, XCircle, Upload, FileText } from 'lucide-react';
 import { Button } from '@/components/shared/Button';
 import { useSandboxStore } from '@/stores/useSandboxStore';
 import { SkillRecordingControls } from '@/components/skills/SkillRecordingControls';
@@ -11,6 +11,12 @@ interface Tab {
   title: string;
   url: string;
   isActive: boolean;
+}
+
+interface UploadedFile {
+  name: string;
+  path: string;
+  size: number;
 }
 
 export function SandboxPanel() {
@@ -25,6 +31,10 @@ export function SandboxPanel() {
   const [tabs, setTabs] = useState<Tab[]>([
     { id: '1', title: 'Browser', url: 'https://www.google.com', isActive: true }
   ]);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [showFilePicker, setShowFilePicker] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const apiBaseUrl = 'http://localhost:3001';
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (isFullscreen) return;
@@ -82,6 +92,40 @@ export function SandboxPanel() {
 
   const switchTab = (tabId: string) => {
     setTabs(prev => prev.map(t => ({ ...t, isActive: t.id === tabId })));
+  };
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+      formData.append('files', files[i]);
+    }
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/files/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.uploaded) {
+          setUploadedFiles(prev => [...prev, ...result.uploaded]);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to upload files:', error);
+    }
+  };
+
+  const handleRemoveFile = (fileName: string) => {
+    setUploadedFiles(prev => prev.filter(f => f.name !== fileName));
+  };
+
+  const handleOpenFilePicker = () => {
+    fileInputRef.current?.click();
   };
 
   if (!isOpen) {
@@ -202,6 +246,69 @@ export function SandboxPanel() {
               />
             </div>
           </div>
+
+          {/* File Workspace Section */}
+          {uploadedFiles.length > 0 && (
+            <div className="border-b border-border bg-muted/30 px-3 py-2">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 text-sm">
+                  <FileText className="w-4 h-4 text-muted-foreground" />
+                  <span className="font-medium">Workspace Files</span>
+                  <span className="text-xs text-muted-foreground">({uploadedFiles.length})</span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleOpenFilePicker}
+                  className="h-7 px-2 text-xs"
+                >
+                  <Upload className="w-3 h-3 mr-1" />
+                  Add Files
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {uploadedFiles.map((file) => (
+                  <div
+                    key={file.name}
+                    className="flex items-center gap-2 bg-background border border-input rounded-md px-2 py-1 text-sm"
+                  >
+                    <FileText className="w-3 h-3 text-muted-foreground" />
+                    <span className="max-w-[150px] truncate">{file.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      ({(file.size / 1024).toFixed(1)} KB)
+                    </span>
+                    <button
+                      onClick={() => handleRemoveFile(file.name)}
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {uploadedFiles.length === 0 && (
+            <div className="border-b border-border px-3 py-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleOpenFilePicker}
+                className="w-full text-xs"
+              >
+                <Upload className="w-3 h-3 mr-2" />
+                Upload Files to Workspace
+              </Button>
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            onChange={handleFileSelect}
+            className="hidden"
+          />
         </div>
 
         <div className="flex-1 relative bg-background">

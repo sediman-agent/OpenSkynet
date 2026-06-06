@@ -9,6 +9,7 @@ export { WebProvider } from "./providers/web-provider.js";
 export { MediaProvider } from "./providers/media-provider.js";
 export { SkillsProvider } from "./providers/skills-provider.js";
 export { MiscProvider } from "./providers/misc-provider.js";
+export { FileToolsProvider } from "./providers/file-tools-provider.js";
 export { ExecuteCodeTool } from "./execute-code.js";
 export { MessagingTool, type MessagingConfig, type MessagingIntegration } from "./messaging.js";
 export { OrchestrateTool } from "./orchestrate.js";
@@ -22,6 +23,7 @@ import { WebProvider } from "./providers/web-provider.js";
 import { MediaProvider } from "./providers/media-provider.js";
 import { SkillsProvider } from "./providers/skills-provider.js";
 import { MiscProvider } from "./providers/misc-provider.js";
+import { FileToolsProvider } from "./providers/file-tools-provider.js";
 import { registerBrowserTools } from "./browser-tools.js";
 
 export function createAgentToolRegistry(opts?: {
@@ -29,6 +31,7 @@ export function createAgentToolRegistry(opts?: {
   memoryManager?: unknown;
   skillEngine?: unknown;
   enableBrowserTools?: boolean;
+  enableFileTools?: boolean;
 }): ToolBus {
   const bus = new ToolBus();
 
@@ -39,6 +42,11 @@ export function createAgentToolRegistry(opts?: {
   new MediaProvider().register(bus);
   new SkillsProvider(opts?.skillEngine).register(bus);
   new MiscProvider(opts?.memoryManager).register(bus);
+
+  // Register file tools for workspace
+  if (opts?.enableFileTools !== false) {
+    new FileToolsProvider().register(bus);
+  }
 
   // Register browser automation tools
   if (opts?.enableBrowserTools !== false) {
