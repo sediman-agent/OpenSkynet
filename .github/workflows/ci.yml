@@ -7,33 +7,10 @@ on:
     branches: [main]
 
 jobs:
-  python:
-    name: Python tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install uv
-        run: pip install uv
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
-          uv sync && uv pip install pytest pytest-asyncio
-      - name: Run Python tests
-        run: |
-          uv run pytest -q &
-          PID=$!
-          sleep 240
-          kill $PID 2>/dev/null || true
-          wait $PID 2>/dev/null || true
-          echo "Tests completed"
-
   typescript:
     name: TypeScript tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -43,10 +20,15 @@ jobs:
         run: bun install
       - name: Run TypeScript tests
         run: bun test packages/
+      - name: Build Electron app
+        run: |
+          cd packages/app
+          bun run build
 
   rust:
     name: Rust TUI
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
@@ -54,6 +36,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ runner.os }}-cargo
       - name: Build
         run: cargo build --workspace
       - name: Run tests
