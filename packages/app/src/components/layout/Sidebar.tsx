@@ -20,6 +20,18 @@ import { SidebarAgent } from './SidebarAgent';
 import { SidebarStatus } from './SidebarStatus';
 import { Button } from '@/elements/actions/Button';
 
+const navItems = [
+  { id: 'agent' as const, label: 'Chat', icon: MessageSquare, shortcut: '1' },
+  { id: 'projects' as const, label: 'Projects', icon: FolderOpen, shortcut: '2' },
+  { id: 'models' as const, label: 'Models', icon: Bot, shortcut: '3' },
+  { id: 'provider' as const, label: 'Provider', icon: Server, shortcut: '4' },
+  { id: 'memory' as const, label: 'Memory', icon: Database, shortcut: '5' },
+  { id: 'sessions' as const, label: 'Sessions', icon: History, shortcut: '6' },
+  { id: 'skills' as const, label: 'Skills', icon: Package, shortcut: '7' },
+  { id: 'logs' as const, label: 'Logs', icon: FileText, shortcut: '8' },
+  { id: 'settings' as const, label: 'Settings', icon: Settings, shortcut: '9' },
+];
+
 export function Sidebar() {
   const sidebarOpen = useAppStore((state) => state.sidebarOpen);
   const setSidebarOpen = useAppStore((state) => state.setSidebarOpen);
@@ -34,14 +46,14 @@ export function Sidebar() {
       <aside
         className={cn(
           'h-full flex flex-col',
-          'transition-all duration-200 ease-out',
-          'bg-background text-foreground border-r border-border',
-          sidebarOpen ? 'w-56' : 'w-12'
+          'transition-all duration-300 ease-out',
+          'bg-card text-foreground border-r border-border/50',
+          sidebarOpen ? 'w-56' : 'w-16'
         )}
         role="navigation"
         aria-label="Main navigation"
       >
-        <div className="h-10 flex items-center justify-between px-3 border-b border-border flex-shrink-0">
+        <div className="h-10 flex items-center justify-between px-3 border-b border-border/50 flex-shrink-0">
           <div className="flex items-center gap-2">
             {sidebarOpen && (
               <span className="text-sm font-medium whitespace-nowrap">
@@ -54,26 +66,26 @@ export function Sidebar() {
               variant="ghost"
               size="sm"
               onClick={toggleTheme}
-              className="h-6 w-6 shrink-0 p-0 rounded"
+              className="h-7 w-7 shrink-0 p-0 rounded-lg hover:bg-muted transition-all duration-200"
               aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             >
               {theme === 'dark' ? (
-                <Sun className="w-3 h-3 text-foreground" />
+                <Sun className="w-3.5 h-3.5 text-foreground" />
               ) : (
-                <Moon className="w-3 h-3 text-foreground" />
+                <Moon className="w-3.5 h-3.5 text-foreground" />
               )}
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="h-6 w-6 shrink-0 p-0 rounded"
+              className="h-7 w-7 shrink-0 p-0 rounded-lg hover:bg-muted transition-all duration-200"
               aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
             >
               {sidebarOpen ? (
-                <ChevronLeft className="w-3 h-3 text-foreground" />
+                <ChevronLeft className="w-3.5 h-3.5 text-foreground" />
               ) : (
-                <ChevronRight className="w-3 h-3 text-foreground" />
+                <ChevronRight className="w-3.5 h-3.5 text-foreground" />
               )}
             </Button>
           </div>
@@ -86,30 +98,30 @@ export function Sidebar() {
                 <SidebarNav />
               </div>
 
-              <div className="mx-4 my-2 h-px bg-border" />
+              <div className="mx-4 my-2 h-px bg-border/50" />
 
               <div className="px-2">
                 <SidebarAgent />
               </div>
             </nav>
 
-            <div className="flex items-center p-2 border-t border-border min-h-[38px] flex-shrink-0">
+            <div className="flex items-center p-2 border-t border-border/50 min-h-[38px] flex-shrink-0">
               <SidebarStatus />
             </div>
           </>
         )}
 
         {!sidebarOpen && (
-          <nav className="flex-1 flex flex-col items-center py-2 gap-0.5" aria-label="Page navigation (collapsed)">
-            <CollapsedNavItem icon={MessageSquare} label="Chat" page="agent" />
-            <CollapsedNavItem icon={FolderOpen} label="Projects" page="projects" />
-            <CollapsedNavItem icon={Bot} label="Models" page="models" />
-            <CollapsedNavItem icon={Server} label="Provider" page="provider" />
-            <CollapsedNavItem icon={Database} label="Memory" page="memory" />
-            <CollapsedNavItem icon={History} label="Sessions" page="sessions" />
-            <CollapsedNavItem icon={Package} label="Skills" page="skills" />
-            <CollapsedNavItem icon={FileText} label="Logs" page="logs" />
-            <CollapsedNavItem icon={Settings} label="Settings" page="settings" />
+          <nav className="flex-1 flex flex-col items-center py-3 gap-1" aria-label="Page navigation (collapsed)">
+            {navItems.map((item) => (
+              <CollapsedNavItem
+                key={item.id}
+                icon={item.icon}
+                label={item.label}
+                page={item.id}
+                shortcut={item.shortcut}
+              />
+            ))}
           </nav>
         )}
       </aside>
@@ -121,28 +133,39 @@ interface CollapsedNavItemProps {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   page: string;
+  shortcut?: string;
 }
 
-function CollapsedNavItem({ icon: Icon, label, page }: CollapsedNavItemProps) {
+function CollapsedNavItem({ icon: Icon, label, page, shortcut }: CollapsedNavItemProps) {
   const currentPage = useAppStore((state) => state.currentPage);
   const setCurrentPage = useAppStore((state) => state.setCurrentPage);
   const isActive = currentPage === page;
 
   return (
-    <button
-      onClick={() => setCurrentPage(page as any)}
-      className={cn(
-        'w-8 h-8 rounded flex items-center justify-center',
-        'transition-colors duration-150',
-        isActive
-          ? 'bg-primary text-primary-foreground'
-          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-      )}
-      title={label}
-      aria-label={label}
-      aria-current={isActive ? 'page' : undefined}
-    >
-      <Icon className="w-3.5 h-3.5" />
-    </button>
+    <div className="group relative">
+      <button
+        onClick={() => setCurrentPage(page as any)}
+        className={cn(
+          'sidebar-icon-btn',
+          'w-12 h-12',
+          isActive && 'active'
+        )}
+        title={label}
+        aria-label={label}
+        aria-current={isActive ? 'page' : undefined}
+      >
+        <Icon className="w-5 h-5" />
+      </button>
+
+      {/* Elegant tooltip */}
+      <div className="sidebar-tooltip">
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-medium">{label}</span>
+          {shortcut && (
+            <kbd className="tooltip-shortcut">{shortcut}</kbd>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
