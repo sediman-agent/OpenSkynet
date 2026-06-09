@@ -330,16 +330,21 @@ export function apiStream(
    * Flush queued chunks via microtask (VS Code Layer 1 batching)
    */
   const flushChunks = () => {
+    console.log('[apiStream] flushChunks called, queue size:', chunkQueue.length);
+    // Reset flag immediately to allow new chunks to schedule another flush
+    isFlushScheduled = false;
+
     if (chunkQueue.length === 0) {
-      isFlushScheduled = false;
       return;
     }
 
     const chunks = chunkQueue.splice(0);
+    console.log('[apiStream] Processing', chunks.length, 'chunks');
 
     // Batch process chunks
     for (const chunk of chunks) {
       try {
+        console.log('[apiStream] Calling onEvent with:', chunk.type, chunk.data);
         options.onEvent(chunk);
       } catch (error) {
         console.error('[apiStream] Event callback error:', error);
@@ -357,10 +362,12 @@ export function apiStream(
    * Schedule chunk flush via microtask
    */
   const scheduleFlush = (type: string, data: any) => {
+    console.log('[apiStream] scheduleFlush called:', type, 'data:', data);
     chunkQueue.push({ type, data });
 
     if (!isFlushScheduled) {
       isFlushScheduled = true;
+      console.log('[apiStream] Scheduling flush via microtask');
       queueMicrotask(flushChunks);
     }
   };
@@ -411,6 +418,7 @@ export function apiStream(
             }
 
             if (data) {
+              console.log('[apiStream] SSE event:', event, 'data:', data.substring(0, 100));
               try {
                 const parsed = JSON.parse(data);
                 scheduleFlush(event, parsed);

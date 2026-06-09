@@ -199,6 +199,9 @@ export class AgentExecutor {
       const tc = tool_calls[i];
       const convTc = formattedCalls[i];
 
+      // Emit step start event
+      this.context.streamEmitter.emitStepStart('executing', tc.name, JSON.stringify(tc.arguments));
+
       const result = await this.context.toolBus.execute(tc.name, tc.arguments);
       const output = result.success ? result.output : result.error ?? 'Tool failed';
 
@@ -212,6 +215,9 @@ export class AgentExecutor {
       });
 
       this.messageHandler.addToolResult(convTc?.id || tc.id, tc.name, output);
+
+      // Emit step complete event
+      this.context.streamEmitter.emitStepComplete('executing', tc.name, output, result.success);
 
       // Check for browser_end
       if (tc.name === 'browser_end') {
@@ -250,6 +256,9 @@ export class AgentExecutor {
       const action = batchResult.executed[i];
       const result = batchResult.results[i];
 
+      // Emit step start event
+      this.context.streamEmitter.emitStepStart('executing', action.name, JSON.stringify(action.arguments));
+
       this.context.recordAction(action.name);
       this.context.steps.push({
         phase: 'executing',
@@ -264,6 +273,9 @@ export class AgentExecutor {
         action.name,
         result.success ? result.output : result.error ?? 'Tool failed'
       );
+
+      // Emit step complete event
+      this.context.streamEmitter.emitStepComplete('executing', action.name, result.success ? result.output : result.error, result.success);
 
       // Check for browser_end
       if (action.name === 'browser_end') {

@@ -39,7 +39,7 @@ export function AgentPage() {
   } = useConversationManager();
 
   // Chat store for message operations
-  const { addMessage, updateMessage } = useChatStore();
+  const { addMessage, updateMessage, addToolCall, updateToolCall } = useChatStore();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -115,12 +115,16 @@ export function AgentPage() {
   async function handleSend(inputText: string) {
     if (!inputText.trim() || isStreaming) return;
 
+    console.log('[AgentPage] handleSend called with:', inputText);
+    console.log('[AgentPage] Current conversationId:', conversationId);
+
     if (!conversationId) {
       console.error('[AgentPage] No active conversation');
       return;
     }
 
     // Start streaming and clear previous steps
+    console.log('[AgentPage] Starting streaming...');
     startStreaming();
     clearExecutionSteps();
 
@@ -154,6 +158,7 @@ export function AgentPage() {
     // Run task with streaming
     await chatService.runTask(inputText, {
       onChunk: (delta, phase) => {
+        console.log('[AgentPage] onChunk called:', { delta, phase });
         // Update streaming phase - cast phase to StreamingPhase if valid
         if (phase && phase !== streamingPhase) {
           const validPhases: (typeof phase)[] = ['thinking', 'planning', 'executing', 'reflecting', 'retrying', 'responding'];
@@ -162,16 +167,18 @@ export function AgentPage() {
           }
         }
 
-        // Only add to message content if in 'responding' phase (not thinking/planning/etc)
-        // This prevents tool outputs and internal reasoning from appearing in user messages
-        if (delta && (!phase || phase === 'responding')) {
+        // Show content during all phases so user can see real-time response
+        // This improves UX by showing the agent's thinking process as it happens
+        if (delta) {
           accumulatedContent += delta;
+          console.log('[AgentPage] Updating message with content length:', accumulatedContent.length);
           updateMessage(conversationId, actualAssistantId, {
             content: accumulatedContent
           });
         }
       },
       onProgress: (progress) => {
+        console.log('[AgentPage] onProgress called:', progress);
         // Update streaming phase from progress if available
         if (progress.phase && progress.phase !== streamingPhase) {
           const validPhases: string[] = ['thinking', 'planning', 'executing', 'reflecting', 'retrying', 'responding'];
@@ -179,8 +186,75 @@ export function AgentPage() {
             updatePhase(progress.phase as any);
           }
         }
+
+        // Create execution step from tool call information
+        if (progress.action && progress.phase === 'executing') {
+          const stepId = crypto.randomUUID();
+          const startTime = Date.now();
+
+          // Add to active tool calls tracker
+          activeToolCalls.set(stepId, {
+            startTime,
+            action: progress.action,
+            detail: progress.detail
+          });
+
+          // Add execution step for streaming display
+          addExecutionStep({
+            id: stepId,
+            type: 'tool',
+            timestamp: startTime,
+            action: progress.action,
+            detail: progress.detail || '',
+            status: 'running'
+          });
+
+          // If this is completing a step (has observation), update it and add to message
+          if (progress.observation !== undefined) {
+            updateLastExecutionStep({
+              status: progress.success ? 'success' : 'error',
+              observation: progress.observation,
+              duration: Date.now() - startTime
+            });
+
+            // Add tool call to message for persistence
+            addToolCall(conversationId, actualAssistantId, {
+              id: stepId,
+              action: progress.action,
+              detail: progress.detail,
+              observation: progress.observation,
+              status: progress.success ? 'success' : 'error',
+              startedAt: startTime,
+              completedAt: Date.now()
+            });
+
+            activeToolCalls.delete(stepId);
+          }
+        } else if (progress.observation !== undefined && progress.action) {
+          // Handle step completion that comes separately
+          const stepId = crypto.randomUUID();
+          const startTime = activeToolCalls.values().next().value?.startTime || Date.now();
+
+          updateLastExecutionStep({
+            status: progress.success ? 'success' : 'error',
+            observation: progress.observation,
+            duration: Date.now() - startTime
+          });
+
+          // Add tool call to message for persistence
+          addToolCall(conversationId, actualAssistantId, {
+            id: stepId,
+            action: progress.action,
+            detail: progress.detail,
+            observation: progress.observation,
+            status: progress.success ? 'success' : 'error',
+            startedAt: startTime,
+            completedAt: Date.now()
+          });
+        }
       },
       onDone: () => {
+        console.log('[AgentPage] onDone called, accumulatedContent length:', accumulatedContent.length);
         // Finalize assistant message
         updateMessage(conversationId, actualAssistantId, {
           status: 'done',
@@ -329,7 +403,6 @@ export function AgentPage() {
           <AgentMessages
             messages={messages}
             isStreaming={isStreaming}
-            executionSteps={executionSteps}
             scrollRef={scrollRef}
             messagesEndRef={messagesEndRef}
             showScrollButton={showScrollButton}

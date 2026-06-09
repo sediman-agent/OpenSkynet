@@ -14,7 +14,6 @@ import type { ExecutionStep } from './ExecutionDisplay';
 interface AgentMessagesProps {
   messages: Message[];
   isStreaming?: boolean;
-  executionSteps?: ExecutionStep[];
   scrollRef?: React.RefObject<HTMLDivElement>;
   messagesEndRef?: React.RefObject<HTMLDivElement>;
   onScroll?: () => void;
@@ -27,7 +26,6 @@ interface AgentMessagesProps {
 export function AgentMessages({
   messages,
   isStreaming = false,
-  executionSteps = [],
   scrollRef,
   messagesEndRef,
   onScroll,
@@ -80,10 +78,7 @@ export function AgentMessages({
             />
           ))}
 
-          {/* Execution Steps (historical) */}
-          {executionSteps.length > 0 && (
-            <ExecutionDisplay steps={executionSteps} />
-          )}
+          {/* Execution Steps are now handled by parent component to avoid duplicates */}
 
           {/* Scroll Anchor */}
           <div ref={messagesEndRef} className="h-4" />

@@ -267,6 +267,7 @@ export const useChatStore = create<ChatState>()(
       },
 
       updateMessage: async (conversationId, messageId, updates) => {
+        console.log('[ChatStore] updateMessage called:', { conversationId, messageId, updates });
         // Optimistic update
         set((state) => ({
           conversations: state.conversations.map((c) => {
@@ -274,6 +275,7 @@ export const useChatStore = create<ChatState>()(
               const updated = c.messages.map((m) =>
                 m.id === messageId ? { ...m, ...updates } : m
               );
+              console.log('[ChatStore] Updated conversation', conversationId, 'message', messageId, 'with', Object.keys(updates));
               return {
                 ...c,
                 messages: updated,

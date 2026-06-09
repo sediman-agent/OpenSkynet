@@ -13,7 +13,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { useState, memo, useCallback } from 'react';
 import { ExecutionDisplay } from './ExecutionDisplay';
-import { formatThinkLabel } from '@/utils/thinkTagParser';
+import { formatThinkLabel, parseThinkTags } from '@/utils/thinkTagParser';
 import { VS_CODES, SPACING, TYPOGRAPHY, RADIUS } from '@/styles/vscode-constants';
 
 // ============================================================================
@@ -160,6 +160,16 @@ export const MessageBubble = memo(function MessageBubble({
   const [copied, setCopied] = useState(false);
   const [localThinkingExpanded, setLocalThinkingExpanded] = useState(isThinkingExpanded);
 
+  // Debug logging
+  console.log('[MessageBubble] Rendering message:', {
+    id: message.id,
+    role: message.role,
+    content: message.content?.substring(0, 50),
+    contentLength: message.content?.length,
+    status: message.status,
+    isStreaming
+  });
+
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(message.content);
     setCopied(true);
@@ -175,9 +185,12 @@ export const MessageBubble = memo(function MessageBubble({
   const attachments = message.attachments;
   const content = message.content || (isStreaming ? '▊' : '');
 
-  // Parse thinking content
+  // Parse thinking content from message.thinking OR from message.content
   let thinkBlocks: Array<{ content: string; label?: string }> = [];
+  let visibleContent = content;
+
   if (message.thinking) {
+    // Use stored thinking if available
     if (typeof message.thinking === 'string') {
       thinkBlocks = [{ content: message.thinking, label: 'Thinking' }];
     } else {
@@ -185,6 +198,16 @@ export const MessageBubble = memo(function MessageBubble({
         content: tb.content,
         label: formatThinkLabel(tb),
       }));
+    }
+  } else if (content && content.includes('<think')) {
+    // Extract think tags from content if not already stored
+    const parsed = parseThinkTags(content);
+    if (parsed.hasThinking) {
+      thinkBlocks = parsed.thinking.map(tb => ({
+        content: tb.content,
+        label: formatThinkLabel(tb),
+      }));
+      visibleContent = parsed.visible;
     }
   }
 
@@ -328,7 +351,7 @@ export const MessageBubble = memo(function MessageBubble({
               }}
             >
               <div className="whitespace-pre-wrap break-words">
-                {content}
+                {visibleContent}
               </div>
             </div>
 
@@ -433,7 +456,7 @@ export const MessageBubble = memo(function MessageBubble({
                   )
                 }}
               >
-                {content}
+                {visibleContent}
               </ReactMarkdown>
             </div>
 

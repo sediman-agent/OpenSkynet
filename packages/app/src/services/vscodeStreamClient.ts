@@ -192,7 +192,7 @@ class VSCodeStreamProcessor {
           // Handle tool call - map to correct progress structure
           this.callbacks.onProgress?.({
             phase: 'executing',
-            message: parsed.data?.action || 'tool',
+            action: parsed.data?.action || 'tool',
             detail: parsed.data?.detail,
           });
         } else if (parsed.type === 'error') {

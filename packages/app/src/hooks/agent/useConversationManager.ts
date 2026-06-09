@@ -15,9 +15,14 @@ export function useConversationManager() {
   // Get active conversation using store's activeConversationId
   // This ensures we re-render when activeConversationId changes
   const activeConversation = useChatStore((state) => {
-    return state.conversations.find((c) => c.id === state.activeConversationId) || null;
+    const conv = state.conversations.find((c) => c.id === state.activeConversationId) || null;
+    console.log('[useConversationManager] Active conversation:', conv?.id, 'with', conv?.messages?.length, 'messages');
+    return conv;
   });
   const messages = activeConversation?.messages || [];
+
+  // Debug logging for messages changes
+  console.log('[useConversationManager] Messages count:', messages.length, 'Active ID:', activeConversationId);
 
   // Handle when active conversation is deleted
   useEffect(() => {

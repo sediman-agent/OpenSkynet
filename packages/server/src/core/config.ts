@@ -240,8 +240,8 @@ export function getConfig(): Config {
     // P2: Flash mode
     enableFlashMode: _envBool("SEDIMAN_FLASH_MODE", "true"),
     flashModeKeywords: (process.env.SEDIMAN_FLASH_MODE_KEYWORDS ?? "navigate to,go to,open,click,screenshot,scroll,type,fill form").split(",").map(k => k.trim()).filter(Boolean),
-    flashModeSkipThinking: _envBool("SEDIMAN_FLASH_SKIP_THINKING", "true"),
-    flashModeSkipEvaluation: _envBool("SEDIMAN_FLASH_SKIP_EVALUATION", "true"),
+    flashModeSkipThinking: _envBool("SEDIMAN_FLASH_SKIP_THINKING", "false"),
+    flashModeSkipEvaluation: _envBool("SEDIMAN_FLASH_SKIP_EVALUATION", "false"),
 
     // P3: Conversation persistence
     autoExportConversations: _envBool("SEDIMAN_AUTO_EXPORT_CONVERSATIONS", "false"),

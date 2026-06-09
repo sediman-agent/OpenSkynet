@@ -2,7 +2,16 @@ import { apiPost, apiStream } from './apiClient';
 
 export interface ChatStreamOptions {
   onChunk: (delta: string, phase?: string) => void;
-  onProgress?: (progress: { phase: string; message: string; detail?: string }) => void;
+  onProgress?: (progress: {
+    phase: string;
+    action?: string;
+    detail?: string;
+    observation?: string;
+    success?: boolean;
+    url?: string;
+    iteration?: number;
+    maxIterations?: number;
+  }) => void;
   onDone?: (result?: any) => void;
   onError?: (error: string) => void;
   onIntervention?: (message: string, id: number) => void;
@@ -167,11 +176,14 @@ class ChatService {
           requestBody,
           {
             onEvent: (event) => {
+              console.log('[chatService] SSE event received:', event.type, event.data);
               switch (event.type) {
                 case 'chunk':
+                  console.log('[chatService] Chunk received:', event.data.delta?.substring(0, 50), 'phase:', event.data.phase);
                   options.onChunk(event.data.delta, event.data.phase);
                   break;
                 case 'progress':
+                  console.log('[chatService] Progress received:', event.data);
                   options.onProgress?.(event.data);
                   break;
                 case 'done':
