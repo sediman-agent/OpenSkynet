@@ -3,7 +3,7 @@
  * Comprehensive test coverage for useSandboxStore
  */
 
-import { describe, it, expect, , beforeEach } from '@jest/globals';
+import { describe, it, expect,  beforeEach } from '@jest/globals';
 import { renderHook, act } from '@testing-library/react';
 import { useSandboxStore } from '@/stores/useSandboxStore';
 

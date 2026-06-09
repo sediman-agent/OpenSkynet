@@ -298,7 +298,7 @@ export class AgentExecutor {
    */
   private async injectBrowserVision(): Promise<void> {
     const { visionInjector } = await import('../../vision/index.js');
-    await visionInjector.injectAfterBrowserVision(
+    await visionInjector.injectAfterBrowserAction(
       (content) => this.messageHandler.addUserMessage(content),
       { url: this.context.currentUrl, title: this.context.currentTitle }
     );

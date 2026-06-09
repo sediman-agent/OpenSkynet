@@ -69,8 +69,14 @@ export function SandboxPanel() {
     if (node) {
       webviewRef.current = node;
       node.src = webviewSrc;
+      // Register with BrowserService immediately when webview mounts
+      if (isOpen) {
+        browserService.registerWebview(node);
+        browserService.activate();
+        console.log('[SandboxPanel] Webview registered and activated');
+      }
     }
-  }, [webviewSrc]);
+  }, [webviewSrc, isOpen]);
 
   // Set webview src directly when webviewSrc state changes
   useEffect(() => {
@@ -190,9 +196,9 @@ export function SandboxPanel() {
           </div>
         </div>
 
-        {/* Content Area - Enhanced */}
+        {/* Content Area */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Browser View */}
+          {/* Browser View - Renderer webview is the actual browser */}
           <div
             className="flex-1 relative overflow-hidden"
             style={{
@@ -200,6 +206,7 @@ export function SandboxPanel() {
               transition: `width ${VS_CODES.transition} ease-out`
             }}
           >
+            {/* Webview - this IS the browser that agent controls via IPC */}
             <webview
               ref={setWebviewRef}
               id="embedded-browser"

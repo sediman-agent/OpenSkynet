@@ -94,10 +94,10 @@ function setupBrowserView() {
     }
   });
 
-  // Load a starter page instead of about:blank
+  // Load a clean starter page (minimal HTML without text)
   // This ensures the CDP endpoint is properly initialized
   console.log('[BrowserView] Loading starter page...');
-  browserView.webContents.loadURL('data:text/html,<html><head><title>Browser</title></head><body><h2>Browser Ready</h2><p>Navigate to a URL to begin</p></body></html>');
+  browserView.webContents.loadURL('data:text/html,<html><head><title>Browser</title><style>body{margin:0;padding:0;}</style></head><body></body></html>');
 
   // Listen for navigation events
   browserView.webContents.on('did-navigate', (event, url) => {
@@ -144,48 +144,13 @@ function setupBrowserView() {
 }
 
 function showBrowserPanel() {
-  console.log('[BrowserPanel] Showing browser panel...');
+  console.log('[BrowserPanel] Browser panel shown - using renderer webview (no BrowserView)');
 
-  try {
-    // Ensure BrowserView exists
-    const view = setupBrowserView();
+  // Don't use BrowserView - renderer webview IS the browser
+  // This avoids coordinate positioning issues and layout conflicts
+  // The renderer will handle the browser display
 
-    if (!mainWindow) {
-      console.error('[BrowserPanel] No main window');
-      return { success: false, error: 'No main window' };
-    }
-
-    // Get window bounds
-    const bounds = mainWindow.getBounds();
-    const panelWidth = 600;
-
-    // Calculate BrowserView bounds
-    // Header height is approximately 100px (URL bar + controls)
-    // BrowserView should start BELOW the header to not block UI
-    const headerHeight = 100;
-
-    view.setBounds({
-      x: bounds.width - panelWidth,
-      y: headerHeight,  // Start below the header
-      width: panelWidth,
-      height: bounds.height - headerHeight  // Fill remaining height
-    });
-
-    // Add BrowserView to main window
-    mainWindow.setBrowserView(view);
-
-    console.log('[BrowserPanel] Browser panel shown with bounds:', {
-      x: bounds.width - panelWidth,
-      y: headerHeight,
-      width: panelWidth,
-      height: bounds.height - headerHeight
-    });
-
-    return { success: true };
-  } catch (err) {
-    console.error('[BrowserPanel] Failed to show:', err);
-    return { success: false, error: err.message };
-  }
+  return { success: true };
 }
 
 function hideBrowserPanel() {
@@ -206,13 +171,12 @@ function resizeBrowserPanel(panelWidth) {
   if (!browserView || !mainWindow) return;
 
   const bounds = mainWindow.getBounds();
-  const headerHeight = 100;
 
   browserView.setBounds({
     x: bounds.width - panelWidth,
-    y: headerHeight,
+    y: 0,  // Start from top
     width: panelWidth,
-    height: bounds.height - headerHeight
+    height: bounds.height  // Full height
   });
 }
 

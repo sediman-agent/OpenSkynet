@@ -3,11 +3,11 @@
  * Handles injection of screenshots and vision content into conversations
  */
 
-import type { Message } from '../../../llm/provider.js';
+import type { Message } from '../../../../llm/provider.js';
 import { captureScreenshot } from './screenshot-manager.js';
-import { getConfig } from '../../../core/config.js';
-import { createLogger } from '../../../core/logging.js';
-import { createUserMessage, MessageBuilder } from '../../../core/utils/message-builder.js';
+import { getConfig } from '../../core/config.js';
+import { createLogger } from '../../core/logging.js';
+import { createUserMessage, MessageBuilder } from '../../core/utils/message-builder.js';
 
 const logger = createLogger('VisionInjector');
 

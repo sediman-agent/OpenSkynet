@@ -19,9 +19,33 @@ export class BrowserRouteHandlers {
    */
   async handleExec(c: Context): Promise<Response> {
     try {
-      const { action, ...args } = await c.req.json();
+      const requestBody = await c.req.json();
+      const { action, ...args } = requestBody;
       logger.info(`[BrowserAPI] Executing: ${action}`);
+      logger.info(`[BrowserAPI] Request body: ${JSON.stringify(requestBody)}`);
+      logger.info(`[BrowserAPI] Extracted action: ${action}`);
+      logger.info(`[BrowserAPI] Extracted args: ${JSON.stringify(args)}`);
 
+      const RUNNING_IN_ELECTRON = process.env.SEDIMAN_MODE === 'electron';
+
+      // In Electron mode, browser commands are executed by the frontend
+      // Add command to pending queue for frontend to poll and execute via Electron IPC
+      if (RUNNING_IN_ELECTRON) {
+        logger.info(`[BrowserAPI] Electron mode - queuing ${action} command for frontend`);
+        logger.info(`[BrowserAPI] Args to queue: ${JSON.stringify(args)}`);
+
+        // Import here to avoid circular dependency
+        const { addPendingCommand } = require('./browser-route-handlers.js');
+        addPendingCommand(action, args);
+
+        // Return immediately - frontend will poll and execute
+        return c.json({
+          success: true,
+          result: `Command ${action} queued for execution via Electron IPC`
+        });
+      }
+
+      // Non-Electron mode: Use browser controller
       const controller = getBrowserController();
       if (!controller) {
         return c.json({ success: false, error: 'Browser not available' }, 503);
@@ -228,4 +252,45 @@ export class BrowserRouteHandlers {
     this.state.resetCdpConnection();
     return c.json({ success: true, message: 'CDP connection reset' });
   }
+
+  /**
+   * Handle pending browser commands
+   */
+  async handlePendingCommands(c: Context): Promise<Response> {
+    const RUNNING_IN_ELECTRON = process.env.SEDIMAN_MODE === 'electron';
+
+    if (!RUNNING_IN_ELECTRON) {
+      return c.json({ success: true, commands: [] });
+    }
+
+    // Get all pending commands and clear them
+    const commands = [...pendingCommands];
+    pendingCommands = [];
+
+    logger.info(`[BrowserAPI] Sending ${commands.length} pending commands to frontend`);
+
+    return c.json({
+      success: true,
+      commands: commands.map(cmd => ({
+        action: cmd.action,
+        params: cmd.params,
+        timestamp: cmd.timestamp
+      }))
+    });
+  }
+}
+
+// Global pending commands array for Electron mode
+let pendingCommands: Array<{ action: string; params: Record<string, any>; timestamp: number }> = [];
+
+/**
+ * Add a browser command to the pending queue (called by handleExec)
+ */
+export function addPendingCommand(action: string, params: Record<string, any>): void {
+  pendingCommands.push({
+    action,
+    params,
+    timestamp: Date.now()
+  });
+  logger.info(`[BrowserAPI] Added pending command: ${action}`);
 }

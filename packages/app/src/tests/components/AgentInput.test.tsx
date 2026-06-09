@@ -451,7 +451,7 @@ describe('AgentInput Component', () => {
   });
 
   describe('Ref Handling', () => {
-    it('should use forwarded ref when projest.ed', () => {
+    it('should use forwarded ref when provided', () => {
       const TestComponent = () => {
         const ref = jest.fn() as any;
         return <AgentInput {...defaultProps} textareaRef={ref} />;
@@ -462,7 +462,7 @@ describe('AgentInput Component', () => {
       expect(screen.getByRole('textbox')).toBeInTheDocument();
     });
 
-    it('should use custom textareaRef when projest.ed', () => {
+    it('should use custom textareaRef when provided', () => {
       const customRef = { current: null };
       render(<AgentInput {...defaultProps} textareaRef={customRef as any} />);
       expect(customRef.current).toBeInstanceOf(HTMLTextAreaElement);

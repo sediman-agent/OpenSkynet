@@ -31,6 +31,14 @@ export function useCdpConnection(isBrowserPanelOpen: boolean) {
       // Give BrowserView a moment to initialize
       await new Promise(resolve => setTimeout(resolve, 1000));
 
+      // In Electron mode, skip CDP connection - use IPC execution instead
+      console.log('[CdpConnection] Skipping CDP connection - using IPC execution');
+      setIsConnected(true);
+      setIsConnecting(false);
+      setRetryCount(0);
+      return;
+
+      // Below code is not used in Electron mode
       // Step 1: Get CDP target from Electron main process
       // Note: getCdpTarget is nested under browser object in preload script
       console.log('[CdpConnection] Getting CDP target from Electron...');
@@ -44,12 +52,15 @@ export function useCdpConnection(isBrowserPanelOpen: boolean) {
         targetId: cdpTarget.targetId
       });
 
+      // Below code is not used in Electron mode - kept for reference
+      /*
       // Step 2: Connect backend to the CDP endpoint
       console.log('[CdpConnection] Connecting backend to CDP...');
-      const response = await fetch(`${API_BASE}/browser/connect-cdp`, {
+      const response = await fetch(`${API_BASE}/browser/cdp/connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          url: cdpTarget.webSocketDebuggerUrl,
           webSocketDebuggerUrl: cdpTarget.webSocketDebuggerUrl,
           targetId: cdpTarget.targetId
         })
@@ -69,6 +80,7 @@ export function useCdpConnection(isBrowserPanelOpen: boolean) {
       setIsConnected(true);
       setIsConnecting(false);
       setRetryCount(0);
+      */
 
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);

@@ -7,6 +7,7 @@ import type { WSDeps } from "./ws-app";
 import { getConfig } from "../core/config";
 import logger from "../core/logging";
 import type { RPCHandlerDeps } from "../rpc/deps";
+import { setGlobalBrowserSession } from "../browser/global-session.js";
 
 export type { ApiDeps } from "./app";
 
@@ -23,6 +24,12 @@ export interface ApiServerOptions {
 export function startApiServer(opts: ApiServerOptions) {
   getConfig();
   const port = opts.port ?? parseInt(process.env.SEDIMAN_API_PORT ?? "3001", 10);
+
+  // Register global browser session for CDP connection
+  if (opts.deps.browserSession) {
+    setGlobalBrowserSession(opts.deps.browserSession);
+    logger.info("[GlobalSession] Browser session registered globally (API mode)");
+  }
 
   const wsDeps: WSDeps = { ...opts.deps, rpcDeps: opts.rpcDeps };
 

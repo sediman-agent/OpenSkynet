@@ -3,7 +3,7 @@
  * Parses JSON responses from LLMs
  */
 
-import { createLogger } from '../../../core/logging.js';
+import { createLogger } from '../../core/logging.js';
 
 const logger = createLogger('JsonParser');
 

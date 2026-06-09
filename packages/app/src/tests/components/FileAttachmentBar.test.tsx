@@ -3,7 +3,7 @@
  * Comprehensive test coverage for FileAttachmentBar component
  */
 
-import { describe, it, expect, , beforeEach } from '@jest/globals';
+import { describe, it, expect,  beforeEach } from '@jest/globals';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FileAttachmentBar } from '@/components/agent/FileAttachmentBar';

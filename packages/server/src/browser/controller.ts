@@ -129,6 +129,12 @@ export class BrowserController {
     this.onStep?.(action, detail);
   }
 
+  // Check if running in Electron mode with no Playwright context
+  private isElectronModeNoContext(): boolean {
+    const RUNNING_IN_ELECTRON = process.env.SEDIMAN_MODE === 'electron';
+    return RUNNING_IN_ELECTRON && (!this.session.context || this.session.context.pages().length === 0);
+  }
+
   // Lifecycle
   async start(): Promise<void> {
     await this.session.start();
@@ -149,6 +155,14 @@ export class BrowserController {
   // Browser actions
   async navigate(url: string): Promise<string> {
     try {
+      // Check if running in Electron mode with no Playwright context
+      const RUNNING_IN_ELECTRON = process.env.SEDIMAN_MODE === 'electron';
+      if (RUNNING_IN_ELECTRON && (!this.session.context || this.session.context.pages().length === 0)) {
+        console.log('[BrowserController] Electron mode - navigation handled via BrowserView IPC');
+        this.emit("navigate", url);
+        return `Navigated to ${url} (via Electron IPC)`;
+      }
+
       const page = this.page();
       console.log('[BrowserController] Navigating to:', url);
 
@@ -196,6 +210,12 @@ export class BrowserController {
 
   async click(refId: number): Promise<string> {
     try {
+      if (this.isElectronModeNoContext()) {
+        console.log('[BrowserController] Electron mode - click handled via BrowserView IPC');
+        this.emit("click", `refId=${refId}`);
+        return `Clicked element ${refId} (via Electron IPC)`;
+      }
+
       const page = this.page();
       const el = await this.resolveElement(page, refId);
       if (!el) return `Element with refId ${refId} not found`;
@@ -209,6 +229,12 @@ export class BrowserController {
 
   async typeText(refId: number, text: string, submit?: boolean): Promise<string> {
     try {
+      if (this.isElectronModeNoContext()) {
+        console.log('[BrowserController] Electron mode - type handled via BrowserView IPC');
+        this.emit("type", `refId=${refId} text=${text.slice(0, 50)}`);
+        return `Typed "${text.slice(0, 50)}" into element ${refId}${submit ? " and submitted" : ""} (via Electron IPC)`;
+      }
+
       const page = this.page();
       const el = await this.resolveElement(page, refId);
       if (!el) return `Element with refId ${refId} not found`;
@@ -224,6 +250,12 @@ export class BrowserController {
 
   async hover(refId: number): Promise<string> {
     try {
+      if (this.isElectronModeNoContext()) {
+        console.log('[BrowserController] Electron mode - hover handled via BrowserView IPC');
+        this.emit("hover", `refId=${refId}`);
+        return `Hovered over element ${refId} (via Electron IPC)`;
+      }
+
       const page = this.page();
       const el = await this.resolveElement(page, refId);
       if (!el) return `Element with refId ${refId} not found`;
@@ -237,6 +269,12 @@ export class BrowserController {
 
   async selectOption(refId: number, value: string): Promise<string> {
     try {
+      if (this.isElectronModeNoContext()) {
+        console.log('[BrowserController] Electron mode - select handled via BrowserView IPC');
+        this.emit("select", `refId=${refId} value=${value}`);
+        return `Selected "${value}" in element ${refId} (via Electron IPC)`;
+      }
+
       const page = this.page();
       const el = await this.resolveElement(page, refId);
       if (!el) return `Element with refId ${refId} not found`;
@@ -250,6 +288,12 @@ export class BrowserController {
 
   async scroll(direction: string, amount?: number): Promise<string> {
     try {
+      if (this.isElectronModeNoContext()) {
+        console.log('[BrowserController] Electron mode - scroll handled via BrowserView IPC');
+        this.emit("scroll", `${direction} ${amount ?? 500}px`);
+        return `Scrolled ${direction} by ${amount ?? 500}px (via Electron IPC)`;
+      }
+
       const page = this.page();
       const delta = amount ?? 500;
       const deltaWithSign = direction === "up" ? -delta : delta;
@@ -267,6 +311,12 @@ export class BrowserController {
 
   async pressKey(key: string): Promise<string> {
     try {
+      if (this.isElectronModeNoContext()) {
+        console.log('[BrowserController] Electron mode - press key handled via BrowserView IPC');
+        this.emit("press_key", key);
+        return `Pressed key: ${key} (via Electron IPC)`;
+      }
+
       const page = this.page();
       await page.keyboard.press(key);
       this.emit("press_key", key);
@@ -278,6 +328,12 @@ export class BrowserController {
 
   async goBack(): Promise<string> {
     try {
+      if (this.isElectronModeNoContext()) {
+        console.log('[BrowserController] Electron mode - go back handled via BrowserView IPC');
+        this.emit("go_back", "");
+        return "Navigated back (via Electron IPC)";
+      }
+
       const page = this.page();
       await page.goBack({ waitUntil: "domcontentloaded", timeout: 15000 });
       this.emit("go_back", "");
@@ -289,6 +345,12 @@ export class BrowserController {
 
   async goForward(): Promise<string> {
     try {
+      if (this.isElectronModeNoContext()) {
+        console.log('[BrowserController] Electron mode - go forward handled via BrowserView IPC');
+        this.emit("go_forward", "");
+        return "Navigated forward (via Electron IPC)";
+      }
+
       const page = this.page();
       await page.goForward({ waitUntil: "domcontentloaded", timeout: 15000 });
       this.emit("go_forward", "");
@@ -300,6 +362,12 @@ export class BrowserController {
 
   async refresh(): Promise<string> {
     try {
+      if (this.isElectronModeNoContext()) {
+        console.log('[BrowserController] Electron mode - refresh handled via BrowserView IPC');
+        this.emit("refresh", "");
+        return "Page refreshed (via Electron IPC)";
+      }
+
       const page = this.page();
       await page.reload({ waitUntil: "domcontentloaded", timeout: 15000 });
       this.emit("refresh", "");
@@ -339,6 +407,24 @@ export class BrowserController {
   }
 
   async snapshot(): Promise<PageSnapshot> {
+    if (this.isElectronModeNoContext()) {
+      console.log('[BrowserController] Electron mode - snapshot handled via BrowserView IPC');
+      this.emit("snapshot", "0 elements (via Electron IPC)");
+      return {
+        url: '',
+        title: '',
+        elements: [],
+        textPreview: "",
+        output: "Snapshot not available in Electron mode",
+        scrollPosition: { x: 0, y: 0 },
+        viewport: { width: 600, height: 800 },
+        pageSize: { width: 600, height: 800 },
+        stats: { links: 0, interactive: 0, iframes: 0, images: 0, total: 0, textChars: 0 },
+        pagesAbove: 0,
+        pagesBelow: 0,
+      };
+    }
+
     const page = this.page();
 
     // Dismiss overlays

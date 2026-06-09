@@ -83,6 +83,9 @@ export class IPCBrowserExecutor {
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
+      // Check if we should use the backend API or Electron IPC
+      // For now, we still call the backend API which will acknowledge in Electron mode
+      // The actual Electron IPC execution is handled by the frontend
       const response = await fetch(this.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -21,6 +21,39 @@ export function handleChatClose(ws: WSContext): void {
   }
 }
 
+/**
+ * Broadcast browser command to all connected clients for Electron IPC execution
+ */
+export async function broadcastBrowserCommand(command: { action: string; [key: string]: any }): Promise<string> {
+  return new Promise((resolve) => {
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        resolve(`Command ${command.action} sent (timeout waiting for execution)`);
+      }
+    }, 5000);
+
+    const message = JSON.stringify({ type: 'browser-command', ...command });
+
+    for (const client of clients) {
+      try {
+        client.ws.send(message);
+      } catch (err) {
+        console.error('[Chat] Failed to send browser command:', err);
+      }
+    }
+
+    // Resolve immediately after sending (fire and forget)
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        resolve(`Command ${command.action} sent to frontend`);
+      }
+    }, 100);
+  });
+}
+
 export async function handleChatMessage(
   ws: WSContext,
   message: WSMessageReceive,

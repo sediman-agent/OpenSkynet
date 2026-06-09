@@ -31,6 +31,12 @@ export interface BrowserEvent {
   data: unknown;
 }
 
+export interface BrowserCommand {
+  action: string;
+  params: Record<string, any>;
+  timestamp: number;
+}
+
 class BrowserService extends EventEmitter {
   private currentState: BrowserState = {
     url: '',
@@ -46,10 +52,13 @@ class BrowserService extends EventEmitter {
   private eventHistory: BrowserEvent[] = [];
   private maxHistorySize = 100;
   private isWebviewRegistered = false;
+  private pendingCommands: BrowserCommand[] = [];
+  private isPollingCommands = false;
 
   constructor() {
     super();
     this.setupEventListeners();
+    this.startCommandPolling();
   }
 
   /**
@@ -65,6 +74,160 @@ class BrowserService extends EventEmitter {
     this.setupWebviewListeners(webview);
     this.isWebviewRegistered = true;
     console.log('[BrowserService] Webview registered');
+  }
+
+  /**
+   * Start polling for pending browser commands from backend
+   */
+  private startCommandPolling(): void {
+    if (this.isPollingCommands) return;
+    this.isPollingCommands = true;
+
+    // Poll every 500ms for pending commands
+    setInterval(async () => {
+      if (!this.isWebviewRegistered) return;
+
+      try {
+        const response = await fetch('http://localhost:3001/api/browser/pending-commands');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.commands && data.commands.length > 0) {
+            console.log('[BrowserService] Received commands:', data.commands);
+            await this.executeCommands(data.commands);
+          }
+        }
+      } catch (err) {
+        // Ignore polling errors
+      }
+    }, 500);
+  }
+
+  /**
+   * Execute browser commands via Electron IPC
+   */
+  private async executeCommands(commands: BrowserCommand[]): Promise<void> {
+    for (const command of commands) {
+      try {
+        console.log('[BrowserService] Executing:', command.action, command.params);
+
+        switch (command.action) {
+          case 'navigate':
+            // Navigate directly using webview ref
+            if (this.webviewRef) {
+              const url = command.params?.url;
+              console.log('[BrowserService] Navigating webview to:', url);
+              console.log('[BrowserService] Command params:', JSON.stringify(command.params));
+              console.log('[BrowserService] Full command:', JSON.stringify(command));
+              if (url) {
+                this.webviewRef.src = url;
+              } else {
+                console.error('[BrowserService] No URL found in command');
+              }
+            } else {
+              console.error('[BrowserService] No webview registered for navigation');
+            }
+            break;
+          case 'click':
+            // Execute click directly on webview
+            if (this.webviewRef) {
+              console.log('[BrowserService] Clicking at:', command.params.x, command.params.y);
+              await this.webviewRef.executeJavaScript(`
+                (async () => {
+                  const element = document.elementFromPoint(${command.params.x}, ${command.params.y});
+                  if (element) {
+                    element.click();
+                    return { success: true, tagName: element.tagName };
+                  }
+                  return { success: false, error: 'No element at point' };
+                })()
+              `);
+            }
+            break;
+          case 'type':
+            // Execute type directly on webview
+            if (this.webviewRef && command.params.selector) {
+              console.log('[BrowserService] Typing into:', command.params.selector);
+              await this.webviewRef.executeJavaScript(`
+                (async () => {
+                  const element = document.querySelector('${command.params.selector}');
+                  if (element) {
+                    element.value = '${command.params.text}';
+                    element.dispatchEvent(new Event('input', { bubbles: true }));
+                    return { success: true };
+                  }
+                  return { success: false, error: 'Element not found' };
+                })()
+              `);
+            }
+            break;
+          case 'snapshot':
+            // Execute snapshot directly on webview
+            if (this.webviewRef) {
+              console.log('[BrowserService] Taking snapshot...');
+              const result = await this.webviewRef.executeJavaScript(`
+                (async () => {
+                  const interactive = document.querySelectorAll('button, a, input, textarea, select, [onclick], [role="button"]');
+                  const results = [];
+                  interactive.forEach((el, idx) => {
+                    const rect = el.getBoundingClientRect();
+                    results.push({
+                      refId: idx,
+                      tag: el.tagName.toLowerCase(),
+                      type: el.type || '',
+                      text: el.textContent?.slice(0, 50) || el.placeholder || '',
+                      x: rect.left + rect.width / 2,
+                      y: rect.top + rect.height / 2
+                    });
+                  });
+                  return {
+                    success: true,
+                    elements: results,
+                    url: window.location.href,
+                    title: document.title
+                  };
+                })()
+              `);
+              console.log('[BrowserService] Snapshot result:', result);
+              this.emit('snapshot', result);
+            }
+            break;
+          case 'screenshot':
+            // Execute screenshot directly on webview
+            if (this.webviewRef) {
+              console.log('[BrowserService] Taking screenshot...');
+              try {
+                const result = await this.webviewRef.executeJavaScript(`
+                  (async () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    // Simple capture - in production use html2canvas
+                    ctx.drawWindow(window, 0, 0, canvas.width, canvas.height, 'rgb(255,255,255)');
+                    return canvas.toDataURL('image/png', 0.9);
+                  })()
+                `);
+                console.log('[BrowserService] Screenshot result:', result ? 'success' : 'failed');
+                this.emit('screenshot', result);
+              } catch (err) {
+                console.error('[BrowserService] Screenshot failed:', err);
+              }
+            }
+            break;
+          case 'refresh':
+            // Execute refresh directly on webview
+            if (this.webviewRef) {
+              console.log('[BrowserService] Refreshing webview...');
+              this.webviewRef.reload();
+            }
+            break;
+        }
+      } catch (err) {
+        console.error('[BrowserService] Command execution error:', err);
+      }
+    }
   }
 
   /**

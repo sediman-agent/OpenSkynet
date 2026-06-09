@@ -3,10 +3,10 @@
  * Centralizes screenshot capture and storage with throttling
  */
 
-import { createLogger } from '../../../core/logging.js';
-import type { BrowserController } from '../../../browser/controller.js';
-import { getBrowserController } from '../../tools/browser-tools.js';
-import { setLatestScreenshot, waitForCdpConnection } from '../../../api/routes/browser.js';
+import { createLogger } from '../../core/logging.js';
+import type { BrowserController } from '../../browser/controller.js';
+import { getBrowserController } from '../tools/browser-tools.js';
+import { setLatestScreenshot, waitForCdpConnection } from '../../api/routes/browser.js';
 
 const logger = createLogger('ScreenshotManager');
 

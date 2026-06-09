@@ -5,7 +5,7 @@
 
 import type { ToolBus } from '../../tools/bus';
 import type { ToolCall } from '../../schemas';
-import { createLogger } from '../../../core/logging';
+import { createLogger } from '../../core/logging';
 
 const logger = createLogger('enhanced-loop-tool-executor');
 

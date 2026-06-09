@@ -23,6 +23,7 @@ export function createBrowserRoutes(browserSession: any): Hono {
   // === Core Browser Commands ===
   app.post('/exec', async (c) => handlers.handleExec(c));
   app.get('/exec/poll', async (c) => handlers.handleExecPoll(c));
+  app.get('/pending-commands', async (c) => handlers.handlePendingCommands(c));
 
   // === State Queries ===
   app.get('/screenshot', async (c) => handlers.handleScreenshot(c));
@@ -49,6 +50,7 @@ const handlers = new BrowserRouteHandlers(browserStateService);
 // === Core Browser Commands ===
 app.post('/api/browser/exec', async (c) => handlers.handleExec(c));
 app.get('/api/browser/exec/poll', async (c) => handlers.handleExecPoll(c));
+app.get('/api/browser/pending-commands', async (c) => handlers.handlePendingCommands(c));
 
 // === State Queries ===
 app.get('/api/browser/screenshot', async (c) => handlers.handleScreenshot(c));
