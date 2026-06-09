@@ -28,6 +28,9 @@ interface ElectronAPI {
   browserGetState: () => Promise<object>;
   browserScreenshot: () => Promise<object>;
 
+  // CDP connection for shared browser
+  getCdpTarget: () => Promise<{ success: boolean; webSocketDebuggerUrl?: string; targetId?: string; error?: string }>;
+
   // Agent action listener
   onAgentAction: (callback: (action: AgentAction) => void) => () => void;
 

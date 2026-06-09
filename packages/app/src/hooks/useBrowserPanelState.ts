@@ -1,5 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { browserService } from '@/services/BrowserService';
+import { useState, useCallback } from 'react';
 
 export type BrowserStatus = 'idle' | 'connecting' | 'ready' | 'error';
 

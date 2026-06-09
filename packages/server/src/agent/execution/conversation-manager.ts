@@ -3,7 +3,7 @@
  * Manages agent conversation history and message construction
  */
 
-import type { Message } from '../../core/types';
+import type { Message } from '../../llm/provider';
 import logger from '../../core/logging';
 
 export interface ConversationManagerOptions {

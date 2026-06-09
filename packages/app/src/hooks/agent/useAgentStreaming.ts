@@ -6,7 +6,7 @@
 import { useState, useCallback } from 'react';
 import type { ExecutionStep } from '@/components/agent/ExecutionDisplay';
 
-export type StreamingPhase = 'thinking' | 'planning' | 'executing' | 'reflecting' | 'retrying';
+export type StreamingPhase = 'thinking' | 'planning' | 'executing' | 'reflecting' | 'retrying' | 'responding';
 
 export interface RetryProgress {
   attempt: number;
@@ -68,12 +68,12 @@ export function useAgentStreaming() {
   }, []);
 
   // Update the last execution step
-  const updateLastExecutionStep = useCallback((updates: Partial<ExecutionStep>) => {
+  const updateLastExecutionStep = useCallback((updates: any) => {
     setExecutionSteps(prev => {
       if (prev.length === 0) return prev;
-      const newSteps = [...prev];
-      newSteps[newSteps.length - 1] = { ...newSteps[newSteps.length - 1], ...updates };
-      return newSteps;
+      const last = prev[prev.length - 1];
+      const updated = { ...last, ...updates };
+      return [...prev.slice(0, -1), updated];
     });
   }, []);
 

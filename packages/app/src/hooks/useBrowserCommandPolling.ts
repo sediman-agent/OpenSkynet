@@ -1,5 +1,4 @@
-import { useEffect, useRef } from 'react';
-import { browserService } from '@/services/BrowserService';
+import { useEffect } from 'react';
 
 export interface BrowserCommand {
   id: string;
@@ -253,7 +252,6 @@ function generateClickJS(cmd: BrowserCommand): string {
   const { params } = cmd;
   const x = params?.x;
   const y = params?.y;
-  const text = params?.text;
   const selector = params?.selector;
 
   return `
@@ -285,9 +283,10 @@ function generateClickJS(cmd: BrowserCommand): string {
       }
 
       // Strategy 3: Use text selector
-      if (!el && ${text}) {
-        const escapedText = ${text}.replace(/[.*+?^${}()|[\]\\]/g, '\\\\$&');
-        const xpath = \`//*\[contains(text(), \${escapedText})]\`;
+      if (!el && \${text}) {
+        const textVal = String(\${text});
+        const escapedText = textVal.replace(/[.*+?^\\$\{\}()|[\\]\\\\]/g, '\\\\$&');
+        const xpath = '//*[' + 'contains(text(), ' + JSON.stringify(\${text}) + ')]';
         el = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
         if (el) {
           strategy = 'text-match';
@@ -371,9 +370,10 @@ function generateTypeJS(cmd: BrowserCommand): string {
       }
 
       // Strategy 3: Use text selector
-      if (!el && ${text}) {
-        const escapedText = ${text}.replace(/[.*+?^${}()|[\]\\]/g, '\\\\$&');
-        const xpath = \`//*\[contains(text(), \${escapedText})]\`;
+      if (!el && \${text}) {
+        const textVal = String(\${text});
+        const escapedText = textVal.replace(/[.*+?^\\$\{\}()|[\\]\\\\]/g, '\\\\$&');
+        const xpath = '//*[' + 'contains(text(), ' + JSON.stringify(\${text}) + ')]';
         const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
         el = result.singleNodeValue;
         if (el) {

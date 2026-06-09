@@ -6,18 +6,14 @@
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
-import { StreamingIndicator } from './StreamingIndicator';
 import { ExecutionDisplay } from './ExecutionDisplay';
 import { cn } from '@/lib/utils';
-import type { Message, ExecutionStep } from '@/types';
+import type { Message } from '@/types';
+import type { ExecutionStep } from './ExecutionDisplay';
 
 interface AgentMessagesProps {
   messages: Message[];
   isStreaming?: boolean;
-  streamingPhase?: string;
-  currentAction?: string;
-  currentDetail?: string;
-  retryProgress?: { attempt: number; max: number; countdown: number } | null;
   executionSteps?: ExecutionStep[];
   scrollRef?: React.RefObject<HTMLDivElement>;
   messagesEndRef?: React.RefObject<HTMLDivElement>;
@@ -31,10 +27,6 @@ interface AgentMessagesProps {
 export function AgentMessages({
   messages,
   isStreaming = false,
-  streamingPhase = 'thinking',
-  currentAction,
-  currentDetail,
-  retryProgress,
   executionSteps = [],
   scrollRef,
   messagesEndRef,
@@ -78,22 +70,12 @@ export function AgentMessages({
             <MessageBubble
               key={message.id}
               message={message}
-              isExpanded={expandedThinkingMessages.has(message.id)}
+              isThinkingExpanded={expandedThinkingMessages.has(message.id)}
               onToggleThinking={() => onToggleThinking?.(message.id)}
             />
           ))}
 
-          {/* Streaming Indicator */}
-          {isStreaming && (
-            <StreamingIndicator
-              phase={streamingPhase as any}
-              currentAction={currentAction}
-              currentDetail={currentDetail}
-              retryProgress={retryProgress}
-            />
-          )}
-
-          {/* Execution Steps */}
+          {/* Execution Steps (historical) */}
           {executionSteps.length > 0 && (
             <ExecutionDisplay steps={executionSteps} />
           )}

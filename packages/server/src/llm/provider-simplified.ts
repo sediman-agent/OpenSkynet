@@ -216,15 +216,15 @@ export class OpenAICompatibleProvider extends LLMProvider {
   protected buildOpenAIMessages(
     messages: Message[],
     system?: string
-  ): OpenAI.Chat.ChatCompletionMessageParam[] {
-    const out: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+  ): OpenAI.Chat.CompletionMessageParam[] {
+    const out: OpenAI.Chat.CompletionMessageParam[] = [];
 
     if (system) {
       out.push({ role: "system", content: system });
     }
 
     for (const m of messages) {
-      out.push(m as OpenAI.Chat.ChatCompletionMessageParam);
+      out.push(m as OpenAI.Chat.CompletionMessageParam);
     }
 
     return out;

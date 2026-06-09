@@ -1,14 +1,28 @@
 /**
  * AgentInput Component
- * Premium input area with modern design and smooth interactions
+ * Copilot-style compact input - minimal, functional, professional
+ * Matches VS Code design tokens: 26px height, sharp corners, #007fd4 focus
  */
 
-import { forwardRef, useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import { forwardRef, useEffect, useRef, useCallback, useState } from 'react';
 import { Send, Square, AlertCircle, Paperclip, Upload, Sparkles } from 'lucide-react';
-import { Button } from '@/elements/actions/Button';
 import { cn } from '@/lib/utils';
 import { SuggestionChip } from '@/components/ui/SuggestionChip';
-import { useAgentInput, SLASH_COMMANDS } from '@/hooks/agent/useAgentInput';
+import type { SLASH_COMMANDS } from '@/hooks/agent/useAgentInput';
+import { VS_CODE_DESIGN, spacing, borderRadius, vscodeStyles } from '@/styles/vscode-design-system';
+
+// ============================================================================
+// VS Code Design Tokens (using CSS variables for theme support)
+// ============================================================================
+const VS_CODES = {
+  inputHeight: 26,             // EXACT 26px from design tokens
+  cornerRadius: 0,             // Sharp corners
+  borderWidth: 1,
+  fontSize: 13,                // typeRampBaseFontSize
+  designUnit: 4,               // Base spacing unit
+  buttonIconPadding: 3,        // Exact from tokens
+  buttonIconCornerRadius: 5,    // Exact from tokens
+} as const;
 
 // ============================================================================
 // Component
@@ -54,7 +68,7 @@ export const AgentInput = forwardRef<HTMLTextAreaElement, AgentInputProps>(
     const activeTextareaRef = (ref as any) || textareaRef || internalTextareaRef;
     const [isFocused, setIsFocused] = useState(false);
 
-    // Auto-resize textarea
+    // Auto-resize textarea - Copilot compact style
     useEffect(() => {
       const textarea = activeTextareaRef.current;
       if (!textarea) return;
@@ -62,7 +76,9 @@ export const AgentInput = forwardRef<HTMLTextAreaElement, AgentInputProps>(
       const autoResize = () => {
         textarea.style.height = 'auto';
         const scrollHeight = textarea.scrollHeight;
-        const newHeight = Math.min(Math.max(scrollHeight, 44), 180);
+        const minHeight = VS_CODES.inputHeight;
+        const maxHeight = 180 - VS_CODES.designUnit * 2;
+        const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
         textarea.style.height = `${newHeight}px`;
       };
 
@@ -83,163 +99,199 @@ export const AgentInput = forwardRef<HTMLTextAreaElement, AgentInputProps>(
     const hasContent = value.trim().length > 0;
 
     return (
-      <div className="relative group">
+      <div className="relative group font-mono">
         {/* Slash Commands Dropdown */}
         {showSlashCommands && filteredSlashCommands.length > 0 && (
-          <div className="absolute bottom-full left-0 right-0 mb-3 bg-[#1a1a2e] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50">
-            <div className="p-2">
-              <div className="text-xs text-white/40 px-3 py-2 mb-1 font-medium">Quick Actions</div>
+          <div
+            className="absolute bottom-full left-0 right-0 mb-2 shadow-lg overflow-hidden z-50"
+            style={{
+              backgroundColor: 'var(--vscode-input-background)',
+              border: '1px solid var(--vscode-divider-color)',
+              borderRadius: `${VS_CODES.buttonIconCornerRadius}px`
+            }}
+          >
+            <div style={{ padding: `${VS_CODES.designUnit}px` }}>
+              <div
+                className="font-medium mb-0.5"
+                style={{
+                  color: 'var(--vscode-input-placeholder)',
+                  fontSize: `${VS_CODES.fontSize}px`,
+                  paddingLeft: `${VS_CODES.designUnit}px`,
+                  paddingRight: `${VS_CODES.designUnit}px`,
+                  paddingTop: `${VS_CODES.designUnit}px`,
+                  paddingBottom: `${VS_CODES.designUnit / 2}px`
+                }}
+              >
+                QUICK ACTIONS
+              </div>
               {filteredSlashCommands.map(cmd => (
                 <SuggestionChip
                   key={cmd.id}
-                  icon={cmd.icon}
                   label={cmd.label}
-                  description={cmd.description}
                   onClick={() => onSelectSlashCommand?.(cmd)}
+                  className="w-full text-left"
                 />
               ))}
             </div>
           </div>
         )}
 
-        {/* Input Container */}
+        {/* Input Container - VS Code Exact Style */}
         <div
           className={cn(
-            "relative flex items-end gap-2 p-3 rounded-2xl",
-            "transition-all duration-300 ease-out",
-            "backdrop-blur-xl",
-            // Background gradient
-            "bg-gradient-to-br from-white/5 to-white/[0.02]",
-            // Border
-            "border",
-            sendError
-              ? "border-red-500/30 shadow-[0_0_0_4px_rgba(239,68,68,0.1)]"
-              : cn(
-                  "border-white/10",
-                  isFocused && "border-primary/50 shadow-[0_0_0_4px_rgba(139,92,246,0.15)]",
-                  !isFocused && "hover:border-white/20"
-                ),
-            // Shadow
-            !sendError && !isFocused && "shadow-xl shadow-black/20",
-            isFocused && "shadow-2xl shadow-primary/20"
+            "relative flex items-center gap-1",
+            "transition-colors duration-150"
           )}
+          style={{
+            height: 'auto',
+            minHeight: `${VS_CODES.inputHeight + VS_CODES.designUnit * 2}px`,
+            maxHeight: `${180}px`,
+          }}
         >
-          {/* Ambient glow effect */}
-          <div className={cn(
-            "absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-500",
-            "bg-gradient-to-r from-violet-500/20 via-purple-500/20 to-fuchsia-500/20 blur-xl",
-            isFocused && "opacity-100"
-          )} />
-
-          {/* File Upload Button */}
-          <button
-            onClick={onToggleFileUpload}
-            disabled={disabled}
+          {/* Border Container */}
+          <div
             className={cn(
-              "relative z-10 h-10 w-10 shrink-0 rounded-xl",
-              "flex items-center justify-center",
-              "transition-all duration-200",
-              "disabled:opacity-40",
-              showFileUpload
-                ? "bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-lg"
-                : cn(
-                    "text-white/40 hover:text-white/70",
-                    "hover:bg-white/5"
-                  )
+              "flex-1 flex items-center gap-1 px-1",
+              "border",
+              sendError
+                ? "border-red-500/50"
+                : (isFocused ? "border-[var(--vscode-focus-border)]" : "border-[var(--vscode-input-border)]"),
+              // Focus ring - exact VS Code style
+              isFocused && "shadow-[0_0_0_1px_var(--vscode-focus-border)]"
             )}
+            style={{
+              borderRadius: `${VS_CODES.cornerRadius}px`,
+              borderColor: sendError ? 'rgba(239, 68, 68, 0.5)' : (
+                isFocused ? 'var(--vscode-focus-border)' : 'var(--vscode-input-border)'
+              )
+            }}
           >
-            {showFileUpload ? (
-              <Upload className="w-4 h-4" />
-            ) : (
-              <Paperclip className="w-4 h-4" />
-            )}
-          </button>
+            {/* File Upload Button - VS Code Icon Button Style */}
+            <button
+              onClick={onToggleFileUpload}
+              disabled={disabled}
+              className={cn(
+                "shrink-0 flex items-center justify-center",
+                "transition-colors duration-150",
+                "disabled:opacity-40",
+                showFileUpload
+                  ? "text-[var(--vscode-focus-border)]"
+                  : "text-[var(--vscode-secondary-text)]"
+              )}
+              style={{
+                width: `${VS_CODES.inputHeight - 2}px`,
+                height: `${VS_CODES.inputHeight - 2}px`,
+                padding: `${VS_CODES.buttonIconPadding}px`,
+                borderRadius: `${VS_CODES.buttonIconCornerRadius}px`,
+                backgroundColor: 'transparent',
+                border: 'none',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+              }}
+              onMouseEnter={(e) => {
+                if (!disabled && !showFileUpload) {
+                  e.currentTarget.style.backgroundColor = 'var(--vscode-list-hover-background)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              title={showFileUpload ? "Upload" : "Attach file"}
+            >
+              {showFileUpload ? (
+                <Upload className="w-3.5 h-3.5" />
+              ) : (
+                <Paperclip className="w-3.5 h-3.5" />
+              )}
+            </button>
 
-          {/* Textarea */}
-          <textarea
-            ref={activeTextareaRef}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            disabled={disabled || isSending}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            className={cn(
-              "relative z-10 flex-1 bg-transparent outline-none resize-none",
-              "text-white placeholder:text-white/30",
-              "text-[15px] leading-relaxed",
-              "min-h-[44px] max-h-[180px] py-2.5",
-              "transition-all duration-200",
-              disabled && "cursor-not-allowed opacity-50"
-            )}
-            style={{ height: 44 }}
-          />
+            {/* Textarea - VS Code Style */}
+            <textarea
+              ref={activeTextareaRef}
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder}
+              disabled={disabled || isSending}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              className={cn(
+                "flex-1 bg-transparent outline-none resize-none",
+                "font-mono",
+                disabled && "cursor-not-allowed opacity-50"
+              )}
+              style={{
+                color: 'var(--vscode-input-foreground)',
+                fontSize: `${VS_CODES.fontSize}px`,
+                lineHeight: 1.4,
+                fontFamily: VS_CODE_DESIGN.fontFamily,
+                minHeight: `${VS_CODES.inputHeight}px`,
+                maxHeight: `${180 - VS_CODES.designUnit * 2}px`,
+                padding: `${VS_CODES.designUnit - 1}px 0`,
+                height: 'auto',
+              }}
+            />
 
-          {/* Send Button */}
-          <button
-            onClick={isSending ? onStop : onSend}
-            disabled={disabled || (!hasContent && !isSending)}
-            className={cn(
-              "relative z-10 h-10 px-4 shrink-0 rounded-xl",
-              "flex items-center justify-center gap-2",
-              "font-semibold text-sm",
-              "transition-all duration-200",
-              "disabled:opacity-40 disabled:cursor-not-allowed",
-              // Active/Sending state
-              isSending
-                ? cn(
-                    "bg-gradient-to-r from-red-500 to-orange-500",
-                    "text-white shadow-lg",
-                    "hover:shadow-xl hover:scale-105"
-                  )
-                : cn(
-                    // Has content
-                    hasContent
-                      ? cn(
-                          "bg-gradient-to-r from-violet-500 to-purple-600",
-                          "text-white shadow-lg",
-                          "hover:shadow-xl hover:scale-105 hover:from-violet-600 hover:to-purple-700"
-                        )
-                      : cn(
-                          // Empty state
-                          "bg-white/5 text-white/40",
-                          "hover:bg-white/10"
-                        )
-                  )
-            )}
-          >
-            {isSending ? (
-              <>
-                <Square className="w-4 h-4" fill="currentColor" />
-                <span className="hidden sm:inline">Stop</span>
-              </>
-            ) : (
-              <>
-                {hasContent ? (
-                  <>
-                    <Send className="w-4 h-4" />
-                    <span className="hidden sm:inline">Send</span>
-                  </>
-                ) : (
-                  <Sparkles className="w-4 h-4" />
-                )}
-              </>
-            )}
-          </button>
+            {/* Send Button - VS Code Primary Button Style */}
+            <button
+              onClick={isSending ? onStop : onSend}
+              disabled={disabled || (!hasContent && !isSending)}
+              className={cn(
+                "shrink-0 flex items-center justify-center",
+                "transition-colors duration-150",
+                "disabled:opacity-40 disabled:cursor-not-allowed"
+              )}
+              style={{
+                width: `${VS_CODES.inputHeight + VS_CODES.designUnit}px`,
+                height: `${VS_CODES.inputHeight - 2}px`,
+                padding: `${VS_CODES.buttonIconPadding}px`,
+                borderRadius: `${VS_CODES.buttonIconCornerRadius}px`,
+                backgroundColor: hasContent && !isSending ? 'var(--vscode-button-primary-background)' : 'transparent',
+                border: 'none',
+                color: hasContent && !isSending ? 'var(--vscode-button-primary-foreground)' : (
+                  isSending ? 'var(--vscode-error-foreground)' : 'var(--vscode-secondary-text)'
+                ),
+                cursor: disabled || (!hasContent && !isSending) ? 'not-allowed' : 'pointer',
+                fontFamily: VS_CODE_DESIGN.fontFamily,
+                fontSize: `${VS_CODES.fontSize}px`,
+              }}
+              onMouseEnter={(e) => {
+                if (!disabled && hasContent && !isSending) {
+                  e.currentTarget.style.backgroundColor = 'var(--vscode-button-primary-hover-background)';
+                } else if (!disabled && !hasContent && !isSending) {
+                  e.currentTarget.style.backgroundColor = 'var(--vscode-list-hover-background)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (hasContent && !isSending) {
+                  e.currentTarget.style.backgroundColor = 'var(--vscode-button-primary-background)';
+                } else {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }
+              }}
+              title={isSending ? "Stop" : hasContent ? "Send" : "Ask Copilot"}
+            >
+              {isSending ? (
+                <Square className="w-3.5 h-3.5" fill="currentColor" />
+              ) : hasContent ? (
+                <Send className="w-3.5 h-3.5" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* Error Indicator */}
+        {/* Error Indicator - Compact */}
         {sendError && (
-          <div className="absolute -top-12 left-0 flex items-center gap-2 text-red-400 text-sm animate-slideDown">
-            <AlertCircle className="w-4 h-4" />
-            <span>Failed to send. Please try again.</span>
+          <div className="absolute -top-6 left-0 flex items-center gap-1.5 text-red-400 text-[11px] font-mono">
+            <AlertCircle className="w-3 h-3" />
+            <span>FAILED TO SEND</span>
           </div>
         )}
 
-        {/* Character Counter */}
+        {/* Character Counter - Compact */}
         {value.length > 800 && (
-          <div className="absolute -bottom-8 right-0 text-xs text-white/30">
+          <div className="absolute -bottom-5 right-0 text-[10px] font-mono" style={{ color: 'var(--vscode-secondary-text)' }}>
             {value.length.toLocaleString()}
           </div>
         )}

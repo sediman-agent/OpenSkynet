@@ -19,7 +19,7 @@ interface UseConversationManagerReturn {
   // Actions
   initializeConversation: () => void;
   selectLatestConversation: () => void;
-  createNewConversation: (title?: string) => Promise<void>;
+  createNewConversation: (title?: string) => Promise<any>;
   addMessageToConversation: (conversationId: string, message: Message) => Promise<void>;
   updateMessageInConversation: (conversationId: string, messageId: string, updates: Partial<Message>) => Promise<void>;
 }
@@ -32,8 +32,7 @@ export function useConversationManager(options: UseConversationManagerOptions = 
     selectConversation,
     conversations,
     addMessage,
-    updateMessage,
-    syncWithServer
+    updateMessage
   } = useChatStore();
 
   const [conversationId, setConversationId] = useState<string | null>(null);

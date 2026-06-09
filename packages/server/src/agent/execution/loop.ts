@@ -8,127 +8,21 @@ import { ContextCompressor } from "../memory/compressor";
 import { ProgressTracker } from "../memory/progress";
 import { AuditLog, SharedScratchpad, checkBudget, type Budget } from "../monitoring/guardrails";
 import { loadSoul } from "../prompts/soul";
-import { takeBrowserScreenshot, setOnInterventionRequested, detectPageChange, updatePageState, getLastPageState } from "../tools/browser-tools";
-import { setLatestScreenshot } from "../../api/routes/browser";
 import logger from "../../core/logging";
 import { getConfig } from "../../core/config";
 
 import { StreamEmitter } from "../streaming";
 import { LoopDetector } from "../monitoring/loop-detector";
 import { CheckpointManager } from "../monitoring/checkpoint";
+import { ConversationManager } from "./conversation-manager";
+import { BrowserOperations } from "./browser-operations";
+import { buildSystemPrompt, buildFlashBrowserPrompt } from "./system-prompt-builder";
+import { detectLoop, reflect, generateRecoveryHint } from "./reflection-handler";
+import { processLLMResponse, extractToolCalls, formatToolResult, buildAssistantMessage, hasBrowserCommands } from "./llm-response-handler";
+import { classifyTask, createPlan, detectFlashMode } from "./task-classifier";
+import { setOnInterventionRequested } from "../tools/browser-tools";
 
-const BROWSER_SYSTEM_PROMPT = `You are an expert web browsing agent. You operate a real Chromium browser to accomplish tasks. You can see the page through screenshots AND interact with elements using refId numbers from browser_snapshot.
-
-<language>
-Respond in the same language as the user request. Default: English.
-</language>
-
-<workflow>
-Follow this loop for EVERY step:
-1. OBSERVE — Check the screenshot (injected after each action) and/or call browser_snapshot to get interactive elements with their refId numbers.
-2. THINK — Reason about what you see, what the user wants, and what to do next.
-3. ACT — Call the appropriate tool. You may call multiple tools in one response when they are independent.
-4. VERIFY — After your action, check the next screenshot/snapshot to confirm the action succeeded.
-
-ALWAYS call browser_snapshot after navigation, scrolling, or when you need to find elements.
-NEVER guess refId numbers — always get them from a fresh snapshot.
-</workflow>
-
-<element_interaction>
-Elements are identified by refId numbers from browser_snapshot. Example snapshot output:
-  [1]<input name="q" placeholder="Search..." />
-  [2]<button>Search</button>
-  [5]<a href="/about">About Us</a>
-
-To interact: use the number in brackets. Example: browser_click with refId=2 clicks the Search button.
-
-Rules:
-- Only use refId numbers that appear in the MOST RECENT snapshot. Old refIds may be stale after page changes.
-- If a snapshot returns 0 elements, try scrolling or waiting — some pages load dynamically.
-- For iframes: elements inside iframes may not appear in snapshots. Try clicking into the iframe area first.
-- For shadow DOM: elements inside shadow roots may not be directly accessible. Try interacting with the host element.
-</element_interaction>
-
-<action_strategies>
-Navigation:
-- browser_navigate(url) — always start with https:// unless the user specifies otherwise.
-- After navigation, ALWAYS call browser_snapshot to see what loaded.
-
-Searching:
-- Navigate to search engine → snapshot → browser_type in search box → submit (use submit=true or browser_press_key "Enter") → snapshot results.
-
-Form filling:
-- Snapshot to find fields → browser_type each field → browser_click submit button.
-- For dropdowns: browser_select_option with the option value.
-- For autocomplete: browser_type text, WAIT for suggestions, then click the suggestion.
-
-Scrolling:
-- Use browser_scroll("down") to reveal more content. Default scroll: 500px.
-- Check if there is content below fold with browser_snapshot after scrolling.
-
-Keyboard:
-- browser_press_key for Enter, Tab, Escape, ArrowDown, Backspace, etc.
-- Use Tab to move between form fields. Use Enter to submit forms.
-- Use Escape to close modals/popups.
-
-Tab management:
-- If a click opens a new tab, use browser_list_tabs then browser_switch_tab.
-- Some sites open popups — close unwanted tabs with browser_switch_tab back to the main tab.
-
-Hover:
-- Use browser_hover to trigger dropdown menus, tooltips, hover cards.
-- After hovering, call browser_snapshot to see newly revealed elements.
-</action_strategies>
-
-<error_recovery>
-If an action fails:
-1. Element not found → Take a fresh browser_snapshot. The page may have changed or not finished loading.
-2. Click had no effect → The element might be obscured by a popup/modal/cookie banner. Dismiss overlays first.
-3. Navigation failed / 403 / blocked → Do NOT retry the same URL. Try an alternative URL or approach.
-4. Timeout / page loading → Use browser_wait with a CSS selector to wait for content.
-5. Login required → Use request_human_help to ask the user to log in manually.
-
-Loop detection — if you take the same action 3 times with the same result:
-- STOP and change approach.
-- Try a different element, different URL, scroll to find alternatives, or use request_human_help.
-</error_recovery>
-
-<popups_and_overlays>
-Many websites show these on first visit. Handle them FIRST:
-- Cookie consent: Click "Accept" or "Reject All" button.
-- Newsletter popups: Close with X button or press Escape.
-- Login walls: Try dismissing, or use request_human_help.
-- Ad overlays: Close or scroll past.
-</popups_and_overlays>
-
-<task_completion>
-Call browser_end when:
-- The task is FULLY completed (all parts done).
-- It is impossible to continue (explain why in summary).
-- You've reached your iteration limit.
-
-Before calling browser_end, verify:
-- Did you find the correct number of items?
-- Did you apply all specified filters?
-- Can you confirm results from what you SEE on the page?
-
-In browser_end summary: include ALL relevant findings — URLs, text, data, counts. Be specific.
-</task_completion>
-
-<common_patterns>
-"Go to X and find Y" → navigate → snapshot → type search → submit → snapshot → extract results → browser_end
-"Fill out this form" → navigate → snapshot → type each field → select dropdowns → click submit → verify → browser_end
-"Compare X and Y on site Z" → navigate → search for X → extract → go back → search for Y → extract → compare → browser_end
-"Take a screenshot of X" → navigate → wait for load → browser_screenshot → browser_end
-"Download X from Y" → navigate → find download button → click → handle any prompts → browser_end
-</common_patterns>
-
-IMPORTANT: You MUST keep executing tools until the task is complete. DO NOT stop after one action. DO NOT respond with text when you should be calling tools. Keep going until browser_end.
-`;
-
-type Message = { role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string };
-type TaskCategory = "simple" | "complex" | "browser" | "research" | "creative";
-type TaskPlan = { steps: Array<{ description: string; strategy: string }> };
+import type { AgentMessage, TaskCategory, TaskPlan } from "./types";
 
 export interface AgentLoopOpts {
   llmProvider: LLMProvider;
@@ -146,7 +40,7 @@ export class AgentLoop {
   private memory: BaseMemoryStrategy | null;
   private skillEngine: SkillEngine | null;
   private toolBus: ToolBus;
-  private conversation: Message[];
+  private conversationManager: ConversationManager;
   private interrupt: InterruptSignal;
   private auditLog: AuditLog;
   private scratchpad: SharedScratchpad;
@@ -169,6 +63,7 @@ export class AgentLoop {
   private currentTitle: string = '';
   private conversationExporter: any = null;
   private historyManager: any = null;
+  private browserOps: BrowserOperations;
 
   constructor(opts: AgentLoopOpts) {
     const config = getConfig();
@@ -182,7 +77,7 @@ export class AgentLoop {
       maxRetries: 3,
       defaultTimeoutMs: 30000
     });
-    this.conversation = [];
+    this.conversationManager = new ConversationManager();
     this.interrupt = new InterruptSignal();
     this.auditLog = new AuditLog();
     this.scratchpad = new SharedScratchpad();
@@ -209,6 +104,13 @@ export class AgentLoop {
     this.checkpointManager = new CheckpointManager({
       enabled: true,
       checkpointInterval: 1 // Save after every step
+    });
+
+    // Initialize browser operations
+    this.browserOps = new BrowserOperations({
+      onInterventionRequested: (message, id) => {
+        this.streamEmitter.emitIntervention(message, id);
+      }
     });
   }
 
@@ -245,7 +147,9 @@ export class AgentLoop {
     let success = false;
 
     // Store conversation history for context
-    this.conversation = conversationHistory || [];
+    this.conversationManager = new ConversationManager({
+      initialHistory: conversationHistory || []
+    });
 
     try {
       // Initialize exporters if needed
@@ -317,7 +221,7 @@ export class AgentLoop {
 
         const systemPrompt = this.buildSystemPrompt(task, category, plan, iteration);
         // Re-enable compression with conservative threshold for MiniMax
-        const messages = this.compressor.compress(this.conversation, 15_000);
+        const messages = this.compressor.compress(this.conversationManager.getHistory(), 15_000);
         const tools = this.toolBus.getDefinitions();
 
         // Debug: Log conversation being sent to MiniMax (detailed)
@@ -425,12 +329,12 @@ export class AgentLoop {
             assistantMessage.content = 'Executing browser action...';
           }
 
-          this.conversation.push(assistantMessage);
+          this.conversationManager.addToolCallMessage(assistantMessage.content || '', assistantMessage.tool_calls || []);
 
           logger.info(`[AgentLoop] Assistant message fields: ${Object.keys(assistantMessage).join(', ')}`);
           logger.info(`[AgentLoop] Assistant content length: ${assistantMessage.content?.length || 0}`);
-          logger.info(`[AgentLoop] Conversation length: ${this.conversation.length}`);
-          logger.info(`[AgentLoop] Last message role: ${(this.conversation[this.conversation.length - 1] as any).role}`);
+          logger.info(`[AgentLoop] Conversation length: ${this.conversationManager.length}`);
+          logger.info(`[AgentLoop] Last message role: ${(this.conversationManager.getHistory()[this.conversationManager.length - 1] as any).role}`);
           logger.info(`[AgentLoop] Conversation tool_calls count: ${toolCallsForConversation.length}`);
           logger.info(`[AgentLoop] Execution tool_calls count: ${toolCallsForExecution.length}`);
 
@@ -522,8 +426,15 @@ export class AgentLoop {
               this.addSystemMessage(`<batch_execution>\nExecuted ${batchResult.executed.length} action(s)\n${batchResult.stopReason ? `Stopped: ${batchResult.stopReason}` : ''}\n</batch_execution>`);
 
               // Check if browser_end was called in batch execution
-              if (batchResult.executed.some((result: any) => result.action === 'browser_end')) {
-                finalResult = 'Task completed by agent (browser_end called)';
+              if (batchResult.executed.some((result: any) => result.name === 'browser_end')) {
+                // Extract the actual summary from browser_end result
+                const browserEndResult = batchResult.results.find((r: any, i: number) =>
+                  batchResult.executed[i]?.name === 'browser_end'
+                );
+                const endOutput = typeof browserEndResult?.output === 'string' ? browserEndResult.output : '';
+                // Extract summary from "Task completed: <summary>" format or use as-is
+                const summaryMatch = endOutput.match(/Task completed:\s*(.*)/s);
+                finalResult = summaryMatch ? summaryMatch[1].trim() : (endOutput || 'Task completed');
                 done = true;
 
                 this.steps.push({
@@ -533,6 +444,7 @@ export class AgentLoop {
                 });
 
                 logger.info("[AgentLoop] Agent called browser_end in batch - stopping loop");
+                logger.info(`[AgentLoop] Extracted summary: ${finalResult.slice(0, 100)}...`);
               }
 
             } catch (error) {
@@ -550,25 +462,63 @@ export class AgentLoop {
 
           } else {
             // SEQUENTIAL EXECUTION MODE - Execute one at a time
+            let seqCombinedOutput = '';
             for (let i = 0; i < toolCallsForExecution.length; i++) {
               const tc = toolCallsForExecution[i];
               const convTc = toolCallsForConversation[i];
-              await this.executeToolCall(tc, iteration, actionsTaken, convTc?.id);
+
+              // Execute tool and capture result
+              const result = await this.toolBus.execute(tc.name, tc.arguments);
+              const output = result.success ? result.output : result.error ?? 'Tool failed';
+              seqCombinedOutput += `[${tc.name}]: ${output}\n`;
+
+              // Add to conversation and emit events
+              this.streamEmitter.emitStepStart("executing", tc.name, JSON.stringify(tc.arguments));
+              this.streamEmitter.emitStepComplete("executing", tc.name, output, result.success);
+
+              // Record action
+              actionsTaken.push(tc.name);
+              this.steps.push({
+                phase: "executing",
+                action: tc.name,
+                detail: JSON.stringify(tc.arguments),
+                observation: output,
+              });
+
+              // Use the conversation tool_call ID for tool results
+              const resultToolCallId = convTc?.id || tc.id;
+              this.addToolResult(resultToolCallId, tc.name, output);
+
+              // Update URL if browser action
+              if (result.success && tc.name === 'browser_navigate' && tc.arguments.url) {
+                this.currentUrl = tc.arguments.url as string;
+              }
             }
-          }
 
-          // Check if browser_end was called - if so, the agent has completed the task
-          if (actionsTaken.some(action => action === 'browser_end')) {
-            finalResult = 'Task completed by agent (browser_end called)';
-            done = true;
+            // Check if browser_end was called in sequential execution
+            if (actionsTaken.some(action => action === 'browser_end')) {
+              // Extract the actual summary from seqCombinedOutput
+              const endMatch = seqCombinedOutput.match(/\[browser_end\]:\s*(.*)/);
+              let extractedSummary = '';
+              if (endMatch) {
+                const endOutput = endMatch[1].trim();
+                // Extract summary from "Task completed: <summary>" format or use as-is
+                const summaryMatch = endOutput.match(/Task completed:\s*(.*)/s);
+                extractedSummary = summaryMatch ? summaryMatch[1].trim() : endOutput;
+              }
 
-            this.steps.push({
-              phase: "done",
-              action: "task_complete",
-              detail: finalResult,
-            });
+              finalResult = extractedSummary || 'Task completed';
+              done = true;
 
-            logger.info("[AgentLoop] Agent called browser_end - stopping loop");
+              this.steps.push({
+                phase: "done",
+                action: "task_complete",
+                detail: finalResult,
+              });
+
+              logger.info("[AgentLoop] Agent called browser_end in sequential mode - stopping loop");
+              logger.info(`[AgentLoop] Extracted summary: ${finalResult.slice(0, 100)}...`);
+            }
           }
 
           // Save checkpoint after executing tools
@@ -576,7 +526,7 @@ export class AgentLoop {
             await this.checkpointManager.save({
               iteration,
               timestamp: Date.now(),
-              conversation: [...this.conversation],
+              conversation: [...this.conversationManager.getHistory()],
               lastAction: actionsTaken[actionsTaken.length - 1],
               task: this.currentTask,
               metadata: {
@@ -624,9 +574,15 @@ export class AgentLoop {
         this.budget.usedIterations = iteration;
         this.budget.usedTimeMs = Date.now() - startTime;
 
-        if (iteration % this.compressThreshold === 0 && this.conversation.length > this.compressThreshold) {
-          this.conversation = this.compressor.compress(this.conversation, 10_000);
-          logger.info({ conversationLength: this.conversation.length }, "conversation_compressed");
+        if (iteration % this.compressThreshold === 0 && this.conversationManager.length > this.compressThreshold) {
+          const compressed = this.compressor.compress(this.conversationManager.getHistory(), 10_000);
+          this.conversationManager = new ConversationManager();
+          compressed.forEach(msg => {
+            if (msg.role === 'user') this.conversationManager.addUserMessage(msg.content);
+            else if (msg.role === 'assistant') this.conversationManager.addAssistantMessage(msg.content);
+            else if (msg.role === 'system') this.conversationManager.addSystemMessage(msg.content);
+          });
+          logger.info({ conversationLength: this.conversationManager.length }, "conversation_compressed");
         }
 
         if (!done && iteration < this.maxIterations) {
@@ -663,7 +619,7 @@ export class AgentLoop {
           const exportedFiles = await this.conversationExporter.exportConversation({
             sessionId,
             task,
-            conversation: this.conversation,
+            conversation: this.conversationManager.getHistory(),
             result: finalResult,
             success,
             iterations: this.budget.usedIterations || 0,
@@ -699,7 +655,7 @@ export class AgentLoop {
             strategyUsed,
             elapsedSecs: Math.round(elapsedSecs),
             actionsTaken,
-            conversation: this.conversation,
+            conversation: this.conversationManager.getHistory(),
             metadata: {
               category,
               mode,
@@ -763,15 +719,17 @@ export class AgentLoop {
   }
 
   getConversation(): Message[] {
-    return [...this.conversation];
+    return [...this.conversationManager.getHistory()];
   }
 
   setConversation(messages: Message[]): void {
-    this.conversation = [...messages];
+    this.conversationManager = new ConversationManager({
+      initialHistory: messages
+    });
   }
 
   clearConversation(): void {
-    this.conversation = [];
+    this.conversationManager = new ConversationManager();
   }
 
   private async tryTurboPath(task: string): Promise<AgentResult | null> {
@@ -779,9 +737,18 @@ export class AgentLoop {
     // Browser tasks need to: navigate → snapshot → interact → verify → continue
     if (!this.isSimple(task)) return null;
 
+    // Check if browser tools are available - if so, this might be a browser task
+    // Browser tools include: browser_navigate, browser_click, browser_type, etc.
+    const toolDefinitions = this.toolBus.getDefinitions();
+    const hasBrowserTools = toolDefinitions.some(tool => tool.name.startsWith('browser_'));
+    if (hasBrowserTools) {
+      console.log('[AgentLoop] Browser tools available - skipping turbo path to allow full iterations for browser tasks');
+      return null;
+    }
+
     // Check if this is a browser task - if so, don't use turbo path
     const lowerTask = task.toLowerCase();
-    const browserKeywords = ["browse", "navigate", "click", "open website", "open page", "web page", "screenshot", "scroll", "visit", "go to", "search", "google", "find", "type", "input", "browser_navigate", "browser_click", "browser_type"];
+    const browserKeywords = ["browse", "navigate", "click", "open website", "open page", "web page", "screenshot", "scroll", "visit", "go to", "search", "google", "find", "type", "input", "browser_navigate", "browser_click", "browser_type", "stock price", "quote", "ticker"];
     if (browserKeywords.some(k => lowerTask.includes(k))) {
       console.log('[AgentLoop] Browser task detected - skipping turbo path to allow full iterations');
       return null;
@@ -1008,30 +975,7 @@ export class AgentLoop {
   }
 
   private classifyTask(task: string, mode?: string): TaskCategory {
-    if (mode) {
-      const modeMap: Record<string, TaskCategory> = {
-        browser: "browser",
-        research: "research",
-        creative: "creative",
-        simple: "simple",
-        complex: "complex",
-      };
-      const mapped = modeMap[mode];
-      if (mapped) return mapped;
-    }
-
-    const lower = task.toLowerCase();
-    // Enhanced browser keyword detection
-    const browserKeywords = ["browse", "navigate", "click", "open website", "open page", "web page", "screenshot", "scroll", "visit", "go to", "search", "google", "find", "type", "input"];
-    const researchKeywords = ["research", "find information", "compare", "analyze", "gather data", "summarize"];
-    const creativeKeywords = ["write", "create", "compose", "design", "draft", "generate content"];
-
-    // Check for browser/search tasks first (more specific)
-    if (browserKeywords.some((k) => lower.includes(k))) return "browser";
-    if (researchKeywords.some((k) => lower.includes(k))) return "research";
-    if (creativeKeywords.some((k) => lower.includes(k))) return "creative";
-    if (this.isSimple(task)) return "simple";
-    return "complex";
+    return classifyTask(task, mode);
   }
 
   private isSimple(task: string): boolean {
@@ -1134,189 +1078,53 @@ export class AgentLoop {
   private buildSystemPrompt(task: string, category: TaskCategory, plan: TaskPlan, iteration: number): string {
     const config = getConfig();
     const flashMode = this.detectFlashMode(task);
-    const parts: string[] = [];
 
-    if (this.soul) {
-      parts.push(this.soul);
+    // For browser tasks in flash mode, use the specialized prompt
+    if (category === "browser" && flashMode) {
+      return buildFlashBrowserPrompt();
     }
 
-    parts.push(`\nTask category: ${category}`);
-    parts.push(`Current iteration: ${iteration}/${this.maxIterations}`);
-
-    // Add flash mode instructions if enabled
-    if (flashMode) {
-      parts.push(`\n<flash_mode>`);
-      parts.push(`SIMPLIFIED MODE - Skip verbose reasoning for faster execution`);
-      if (config.flashModeSkipThinking) {
-        parts.push(`- Skip the <thinking> tag (reason about actions silently)`);
-      }
-      if (config.flashModeSkipEvaluation) {
-        parts.push(`- Skip the <evaluation> tag (assume actions succeed unless obvious failure)`);
-      }
-      parts.push(`- Focus on direct action execution`);
-      parts.push(`- Only use <memory> and <next_goal> tags`);
-      parts.push(`</flash_mode>`);
-    }
-
-    const planSummary = plan.steps.map((s, i) => `${i + 1}. ${s.description}`).join("\n");
-    parts.push(`\nPlan:\n${planSummary}`);
-
-    if (category === "browser") {
-      if (flashMode) {
-        // Use simplified browser prompt in flash mode
-        parts.push(this.buildFlashBrowserPrompt());
-      } else {
-        parts.push(BROWSER_SYSTEM_PROMPT);
-      }
-    }
-
-    if (this.memory) {
-      const memoryContext = this.memory.context(task);
-      if (memoryContext) {
-        parts.push(`\nRelevant memories:\n${memoryContext}`);
-      }
-    }
-
-    if (this.skillEngine) {
-      const skillSummaries = this.skillEngine.getSkillSummaries();
-      if (skillSummaries && skillSummaries !== "No skills available.") {
-        parts.push(`\nAvailable skills:\n${skillSummaries}`);
-      }
-    }
-
-    const progressInfo = this.progress.getProgress();
-    if (progressInfo.total > 0) {
-      parts.push(`\nProgress: ${progressInfo.completed}/${progressInfo.total} milestones (${progressInfo.percentage}%)`);
-    }
-
-    return parts.join("\n");
+    // For other cases, use the standard prompt builder
+    return buildSystemPrompt({
+      task,
+      category,
+      plan,
+      iteration,
+      soul: this.soul || loadSoul()
+    });
   }
 
   /**
    * Build simplified browser prompt for flash mode
-   * Skips verbose reasoning and focuses on direct action execution
    */
   private buildFlashBrowserPrompt(): string {
-    const config = getConfig();
-
-    return `You are an expert web browsing agent. You operate a real Chromium browser to accomplish tasks.
-
-<language>
-Respond in the same language as the user request. Default: English.
-</language>
-
-<flash_mode_workflow>
-FLASH MODE - Simplified execution:
-1. OBSERVE - Check the page state (screenshot or browser_snapshot)
-2. ACT - Call the appropriate tool directly without verbose reasoning
-3. VERIFY - Continue until task complete
-</flash_mode_workflow>
-
-<output_format>
-${config.flashModeSkipThinking ? `
-Skip <thinking> tag - reason silently about actions.
-` : `
-<thinking>
-Brief reasoning about your next action (keep it under 20 words).
-</thinking>
-`}
-${config.flashModeSkipEvaluation ? `
-Skip <evaluation> tag - assume actions succeed unless obvious failure.
-` : `
-<evaluation>
-Quick success/failure check (one word: "Success", "Failure", or "Uncertain").
-</evaluation>
-`}
-<memory>
-1-2 sentences tracking progress (what you did, what remains).
-</memory>
-
-<next_goal>
-What you will accomplish next (one sentence).
-</next_goal>
-
-Then call the appropriate tool(s).
-</output_format>
-
-<browser_interaction>
-Use browser_snapshot to get element refIds, then click/type using those IDs.
-For simple tasks: navigate → snapshot → act → done.
-No need for detailed analysis - just get it done.
-</browser_interaction>
-
-<error_recovery>
-If action fails:
-1. Take a fresh browser_snapshot
-2. Try alternative approach
-3. After 2 failures, use different strategy
-</error_recovery>
-
-IMPORTANT: In flash mode, focus on completing the task efficiently. Minimize verbose output.`;
+    return buildFlashBrowserPrompt();
   }
 
   private reflect(task: string, steps: StepEvent[], iteration: number): { success: boolean; recoveryHint?: string } {
-    const recentSteps = steps.slice(-3);
-    const failedSteps = recentSteps.filter((s) => s.observation && s.observation.includes("Error"));
-
-    if (failedSteps.length >= 2) {
-      return {
-        success: false,
-        recoveryHint: `Multiple errors detected in recent steps. Consider changing approach or breaking task down differently.`,
-      };
-    }
-
-    const lastStep = recentSteps[recentSteps.length - 1];
-    if (lastStep?.observation?.includes("not found") || lastStep?.observation?.includes("failed")) {
-      return {
-        success: false,
-        recoveryHint: `Last action had issues: ${lastStep.observation}. Try an alternative approach.`,
-      };
-    }
-
-    return { success: true };
+    return reflect(task, steps, iteration);
   }
 
   private detectLoop(actionsTaken: string[]): string | null {
-    if (actionsTaken.length < 3) return null;
-    const last6 = actionsTaken.slice(-6);
-    const key = (a: string, i: number) => `${a}:${last6[i + 1] ?? ''}`;
-    for (let i = 0; i < last6.length - 2; i++) {
-      const pat = key(last6[i], i);
-      const count = this.actionHistory.get(pat) ?? 0;
-      this.actionHistory.set(pat, count + 1);
-      if (count + 1 >= 3) {
-        return `Action "${last6[i]}" repeated ${count + 1} times in a similar pattern`;
+    const result = detectLoop(actionsTaken);
+    if (result) {
+      // Update action history for tracking
+      for (let i = 0; i < actionsTaken.length; i++) {
+        const key = actionsTaken[i];
+        const count = this.actionHistory.get(key) || 0;
+        this.actionHistory.set(key, count + 1);
       }
     }
-    const last3 = last6.slice(-3);
-    if (last3.length === 3 && last3[0] === last3[2] && last3[0] === last3[1]) {
-      return `Same action "${last3[0]}" repeated 3 consecutive times`;
-    }
-    return null;
+    return result;
   }
 
   /**
    * Fire-and-forget screenshot for frontend panel (non-vision path).
    */
   private captureBrowserState(): void {
-    (async () => {
-      try {
-        // In Electron mode, screenshot is handled by the webview
-        // Just store a placeholder to indicate browser is active
-        const RUNNING_IN_ELECTRON = process.env.SEDIMAN_MODE === 'electron';
-        if (!RUNNING_IN_ELECTRON) {
-          const screenshot = await takeBrowserScreenshot();
-          if (screenshot && screenshot.length > 100) {
-            let url = 'unknown';
-            try {
-              const pages = (this.browserSession as any)?.context?.pages?.();
-              if (pages && pages.length > 0) url = pages[0].url();
-            } catch {}
-            setLatestScreenshot(screenshot, url);
-          }
-        }
-      } catch {}
-    })();
+    this.browserOps.takeScreenshot().catch(err => {
+      logger.warn({ err: err?.message }, "capture_browser_state_failed");
+    });
   }
 
   /**
@@ -1324,80 +1132,13 @@ IMPORTANT: In flash mode, focus on completing the task efficiently. Minimize ver
    * AND inject as vision message so the LLM can see the current page state.
    */
   private async injectBrowserVision(): Promise<void> {
-    try {
-      // In Electron mode, the webview handles screenshots and stores them in latestScreenshot
-      // We need to get the screenshot from the browser API route instead of Playwright
-      const RUNNING_IN_ELECTRON = process.env.SEDIMAN_MODE === 'electron';
+    await this.browserOps.injectBrowserVision((content) => {
+      this.conversationManager.addUserMessage(content);
+    });
 
-      let screenshot: string | null = null;
-      let url = 'unknown';
-      let title = '';
-
-      if (RUNNING_IN_ELECTRON) {
-        // In Electron mode, get the latest screenshot from the webview
-        try {
-          const response = await fetch('http://localhost:3001/api/browser/screenshot');
-          if (response.ok) {
-            const data = await response.json();
-            screenshot = data.data || null;
-            url = data.url || 'unknown';
-          }
-        } catch (e) {
-          console.warn('[AgentLoop] Failed to get screenshot from webview:', e);
-        }
-      } else {
-        // In non-Electron mode, use Playwright to take screenshot
-        screenshot = await takeBrowserScreenshot();
-        if (!screenshot || screenshot.length < 100) return;
-
-        try {
-          const pages = (this.browserSession as any)?.context?.pages?.();
-          if (pages && pages.length > 0) {
-            url = pages[0].url();
-            title = await pages[0].title();
-            // Update current URL for loop detection
-            this.currentUrl = url;
-            this.currentTitle = title;
-          }
-        } catch {}
-        setLatestScreenshot(screenshot, url);
-      }
-
-      if (!screenshot || screenshot.length < 100) {
-        console.warn('[AgentLoop] No valid screenshot available, skipping vision injection');
-        return;
-      }
-
-      // Inject vision into conversation so LLM can see the page
-      // TEMPORARILY DISABLE IMAGE FOR MINIMAX TESTING
-      // MiniMax might not support image_url content type or has issues with base64 images
-      this.conversation.push({
-        role: 'user',
-        content: '[Browser screenshot available - Current URL: ' + url + '. Use browser_snapshot for element refIds.]'
-      });
-
-      /*
-      this.conversation.push({
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: '[Browser screenshot after your last action. Use browser_snapshot for element refIds. Current URL: ' + url + ']'
-          },
-          {
-            type: 'image_url',
-            image_url: {
-              url: 'data:image/jpeg;base64,' + screenshot,
-              detail: 'low',
-            },
-          },
-        ],
-      } as any);
-      */
-    } catch (err) {
-      console.warn('[AgentLoop] Failed to inject browser vision:', err);
-      // Best effort — don't block the loop
-    }
+    // Update current URL and title
+    this.currentUrl = this.browserOps.getCurrentUrl();
+    this.currentTitle = this.browserOps.getCurrentTitle();
   }
 
   private async runPostTask(task: string, result: string, success: boolean, category: TaskCategory): Promise<void> {
@@ -1556,33 +1297,23 @@ IMPORTANT: In flash mode, focus on completing the task efficiently. Minimize ver
   }
 
   private addUserMessage(content: string): void {
-    this.conversation.push({ role: "user", content });
+    this.conversationManager.addUserMessage(content);
   }
 
   private addAssistantMessage(content: string): void {
-    this.conversation.push({ role: "assistant", content });
+    this.conversationManager.addAssistantMessage(content);
   }
 
   private addSystemMessage(content: string): void {
-    this.conversation.push({ role: "system", content });
+    this.conversationManager.addSystemMessage(content);
   }
 
   private addToolResult(toolCallId: string, toolName: string, content: string): void {
-    // Try multiple formats for minimax compatibility
-    // Minimax may require specific fields in tool results
-    logger.info(`[AgentLoop] Adding tool result for ${toolName} (id: ${toolCallId})`);
-    logger.info(`[AgentLoop] Tool result content: ${JSON.stringify(content).slice(0, 200)}...`);
+    this.conversationManager.addToolResult(toolCallId, toolName, content);
+  }
 
-    // Use standard OpenAI format (MiniMax is OpenAI-compatible)
-    this.conversation.push({
-      role: "tool",
-      tool_call_id: toolCallId,
-      name: toolName,
-      content: content || "",
-    } as any);
-
-    logger.info(`[AgentLoop] Conversation now has ${this.conversation.length} messages`);
-    logger.info(`[AgentLoop] Last 2 messages preview: ${JSON.stringify(this.conversation.slice(-2)).slice(0, 500)}...`);
+  private addToolCallMessage(content: string, toolCalls: any[]): void {
+    this.conversationManager.addToolCallMessage(content, toolCalls);
   }
 }
 

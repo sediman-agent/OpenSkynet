@@ -467,4 +467,130 @@ export class BrowserController {
 
     return null;
   }
+
+  // === Advanced browser interactions ===
+
+  async dragAndDrop(sourceRefId: number, targetRefId: number): Promise<string> {
+    try {
+      const page = this.page();
+      const sourceElement = await this.resolveElement(page, sourceRefId);
+      const targetElement = await this.resolveElement(page, targetRefId);
+
+      if (!sourceElement || !targetElement) {
+        return `Failed to resolve elements: source=${sourceRefId}, target=${targetRefId}`;
+      }
+
+      // Get bounding boxes
+      const sourceBox = await sourceElement.boundingBox();
+      const targetBox = await targetElement.boundingBox();
+
+      if (!sourceBox || !targetBox) {
+        return 'Failed to get element bounding boxes';
+      }
+
+      // Calculate center points
+      const sourceX = sourceBox.x + sourceBox.width / 2;
+      const sourceY = sourceBox.y + sourceBox.height / 2;
+      const targetX = targetBox.x + targetBox.width / 2;
+      const targetY = targetBox.y + targetBox.height / 2;
+
+      // Perform drag and drop using CDP
+      const cdp = await page.context().newCDPSession(page);
+
+      // Mouse down on source
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x: sourceX,
+        y: sourceY,
+        button: 'left',
+        buttons: 1,
+        clickCount: 1,
+      } as any);
+
+      // Wait a bit
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Move to target
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: targetX,
+        y: targetY,
+        button: 'left',
+        buttons: 1,
+        clickCount: 0,
+      } as any);
+
+      // Wait for drag animation
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Mouse up
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x: targetX,
+        y: targetY,
+        button: 'left',
+        buttons: 0,
+        clickCount: 1,
+      } as any);
+
+      return `Dragged element ${sourceRefId} to element ${targetRefId}`;
+    } catch (error: any) {
+      return `Drag and drop failed: ${error.message}`;
+    }
+  }
+
+  async uploadFile(refId: number, filePath: string): Promise<string> {
+    try {
+      const page = this.page();
+      const element = await this.resolveElement(page, refId);
+
+      if (!element) {
+        return `Failed to resolve element: ${refId}`;
+      }
+
+      // Use Playwright's setInputFiles for file upload
+      await element.setInputFiles(filePath);
+
+      return `Uploaded file "${filePath}" to element ${refId}`;
+    } catch (error: any) {
+      return `File upload failed: ${error.message}`;
+    }
+  }
+
+  async evaluate(script: string): Promise<any> {
+    try {
+      const page = this.page();
+      const result = await page.evaluate(script);
+      return result;
+    } catch (error: any) {
+      return `Script execution failed: ${error.message}`;
+    }
+  }
+
+  async closeTab(index?: number): Promise<string> {
+    try {
+      const context = this.session.context;
+      const pages = context.pages();
+
+      if (pages.length === 0) {
+        return 'No tabs to close';
+      }
+
+      if (index === undefined) {
+        // Close current page (last one)
+        const currentPage = this.page();
+        await currentPage.close();
+        return 'Closed current tab';
+      } else {
+        // Close specific tab by index
+        if (index < 0 || index >= pages.length) {
+          return `Invalid tab index: ${index}. Available tabs: ${pages.length}`;
+        }
+        await pages[index].close();
+        return `Closed tab ${index}`;
+      }
+    } catch (error: any) {
+      return `Failed to close tab: ${error.message}`;
+    }
+  }
 }

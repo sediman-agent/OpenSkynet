@@ -38,9 +38,9 @@ export function useBrowserCommands(
       case 'snapshot':
         return await executeSnapshot(webview, onSnapshotUpdate);
       case 'click':
-        return await executeClick(webview, params, snapshot);
+        return await executeClick(webview, params, snapshot || null);
       case 'type':
-        return await executeType(webview, params, snapshot, onSnapshotUpdate);
+        return await executeType(webview, params, snapshot || null, onSnapshotUpdate);
       case 'screenshot':
         return await executeScreenshot(webview);
       case 'wait':

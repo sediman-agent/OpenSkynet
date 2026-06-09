@@ -1,10 +1,33 @@
 /**
- * BrowserHeader Component
- * Header section with controls and URL bar
+ * VS Code-Style BrowserHeader Component
+ * Header with navigation controls and URL bar - matching VS Code browser UI
  */
 
-import { X, Maximize2, Minimize2, RefreshCw, Globe } from 'lucide-react';
-import { Button } from '@/elements/actions/Button';
+import { X, Maximize2, RefreshCw, Globe, ArrowLeft, ArrowRight } from 'lucide-react';
+
+// ============================================================================
+// VS Code Design Tokens
+// ============================================================================
+const VS_CODES = {
+  border: '#3c3c3c',
+  bg: '#252526',
+  bgHover: '#2a2d2e',
+  bgInput: '#3c3c3c',
+  text: '#cccccc',
+  textMuted: '#858585',
+  textDim: '#6e6e6e',
+  success: '#4ec9b0',
+  warning: '#dcdcaa',
+  error: '#f48771',
+  info: '#3794ff',
+  focusBorder: '#007fd4',
+  radius: '2px',
+  radiusSm: '3px',
+} as const;
+
+// ============================================================================
+// Types
+// ============================================================================
 import { BrowserStatus } from '@/hooks/browser/types';
 
 interface BrowserHeaderProps {
@@ -19,6 +42,80 @@ interface BrowserHeaderProps {
   onClose: () => void;
 }
 
+// ============================================================================
+// Status Indicator Component
+// ============================================================================
+function StatusIndicator({ status }: { status: BrowserStatus }) {
+  const getStatusStyle = () => {
+    switch (status) {
+      case 'connecting':
+        return { color: VS_CODES.warning, icon: '🔄', label: 'CONNECTING' };
+      case 'ready':
+        return { color: VS_CODES.success, icon: '●', label: 'READY' };
+      case 'error':
+        return { color: VS_CODES.error, icon: '●', label: 'ERROR' };
+      default:
+        return { color: VS_CODES.textDim, icon: '○', label: 'IDLE' };
+    }
+  };
+
+  const style = getStatusStyle();
+
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className="text-xs animate-spin"
+        style={{
+          color: style.color,
+          display: status === 'connecting' ? 'inline' : 'none'
+        }}
+      >
+        {style.icon}
+      </span>
+      <span className="text-xs font-mono" style={{ color: style.color }}>
+        {style.label}
+      </span>
+    </div>
+  );
+}
+
+// ============================================================================
+// Navigation Button Component
+// ============================================================================
+interface NavButtonProps {
+  icon: React.ReactNode;
+  title: string;
+  onClick: () => void;
+  disabled?: boolean;
+}
+
+function NavButton({ icon, title, onClick, disabled = false }: NavButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="p-1 transition-colors disabled:opacity-40"
+      style={{
+        backgroundColor: 'transparent',
+        border: 'none',
+        borderRadius: VS_CODES.radius
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled) e.currentTarget.style.backgroundColor = VS_CODES.bgHover;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = 'transparent';
+      }}
+      title={title}
+    >
+      {icon}
+    </button>
+  );
+}
+
+// ============================================================================
+// Main Component
+// ============================================================================
 export function BrowserHeader({
   browserStatus,
   inputUrl,
@@ -31,67 +128,69 @@ export function BrowserHeader({
   onClose
 }: BrowserHeaderProps) {
   return (
-    <div className="bg-muted/30 border-b border-border backdrop-blur-md z-50">
-      <div className="flex items-center justify-between px-3 py-2">
-        <div className="flex items-center gap-2">
-          {browserStatus === 'connecting' ? (
-            <div className="w-4 h-4 animate-spin text-yellow-500 border-2 border-current border-t-transparent rounded-full" />
-          ) : browserStatus === 'ready' ? (
-            <div className="w-4 h-4 rounded-full bg-green-500" />
-          ) : browserStatus === 'error' ? (
-            <Globe className="w-4 h-4 text-red-500" />
-          ) : (
-            <div className="w-4 h-4 rounded-full bg-muted-foreground/50" />
-          )}
-          <span className="text-sm font-medium">Browser</span>
-          {browserStatus === 'ready' && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-600">
-              Ready
-            </span>
-          )}
-        </div>
+    <div
+      className="border-b font-mono text-xs"
+      style={{ borderColor: VS_CODES.border, backgroundColor: VS_CODES.bg }}
+    >
+      {/* Top Bar - Status & Controls */}
+      <div className="flex items-center justify-between px-2 py-1">
+        <StatusIndicator status={browserStatus} />
+
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" onClick={onBack} className="h-7 w-7 p-0" title="Back">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onForward} className="h-7 w-7 p-0" title="Forward">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onRefresh} className="h-7 w-7 p-0" title="Refresh">
-            <RefreshCw className="w-3.5 h-3.5" />
-          </Button>
-          <button
-            onClick={onToggleFullscreen}
-            className="p-1.5 hover:bg-muted-foreground/20 rounded transition-all"
+          <NavButton
+            icon={<ArrowLeft size={12} style={{ color: VS_CODES.text }} />}
+            title="Back"
+            onClick={onBack}
+          />
+          <NavButton
+            icon={<ArrowRight size={12} style={{ color: VS_CODES.text }} />}
+            title="Forward"
+            onClick={onForward}
+          />
+          <NavButton
+            icon={<RefreshCw size={12} style={{ color: VS_CODES.text }} />}
+            title="Refresh"
+            onClick={onRefresh}
+          />
+          <NavButton
+            icon={<Maximize2 size={12} style={{ color: VS_CODES.text }} />}
             title="Toggle fullscreen"
-          >
-            <Maximize2 className="w-4 h-4" />
-          </button>
-          <button
-            onClick={onClose}
-            className="p-1.5 hover:bg-destructive/20 hover:text-destructive rounded transition-all"
+            onClick={onToggleFullscreen}
+          />
+          <div style={{ width: '1px', height: '16px', backgroundColor: VS_CODES.border, margin: '0 4px' }} />
+          <NavButton
+            icon={<X size={12} style={{ color: VS_CODES.error }} />}
             title="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
+            onClick={onClose}
+          />
         </div>
       </div>
 
       {/* URL Bar */}
-      <div className="flex items-center gap-2 px-3 pb-2">
-        <div className="flex-1 flex items-center bg-background border border-input rounded-md px-3 py-1.5 shadow-sm">
-          <Globe className="w-3 h-3 text-muted-foreground mr-2 shrink-0" />
+      <div className="flex items-center px-2 py-1">
+        <div
+          className="flex-1 flex items-center px-2 py-0.5 border transition-colors"
+          style={{
+            backgroundColor: VS_CODES.bgInput,
+            borderColor: VS_CODES.border,
+            borderRadius: VS_CODES.radiusSm,
+            minHeight: '22px'
+          }}
+          onFocus={(e) => (e.currentTarget as HTMLElement).style.borderColor = VS_CODES.focusBorder}
+          onBlur={(e) => (e.currentTarget as HTMLElement).style.borderColor = VS_CODES.border}
+        >
+          <Globe size={10} className="mr-2" style={{ color: VS_CODES.textMuted, flexShrink: 0 }} />
           <input
             type="text"
             value={inputUrl}
             onChange={(e) => setInputUrl(e.target.value)}
             onKeyDown={onUrlKeyDown}
-            placeholder="Search or enter URL..."
-            className="flex-1 bg-transparent text-sm outline-none text-foreground min-w-0"
+            placeholder="Enter URL..."
+            className="flex-1 bg-transparent outline-none text-xs"
+            style={{
+              color: VS_CODES.text,
+              minHeight: '20px'
+            }}
             spellCheck={false}
           />
         </div>
@@ -99,3 +198,5 @@ export function BrowserHeader({
     </div>
   );
 }
+
+export default BrowserHeader;

@@ -1,0 +1,99 @@
+/**
+ * VS Code Theme System
+ * Theme-responsive design tokens that work with the app's light/dark mode
+ */
+
+:root {
+  /* Light Mode Colors */
+  --vscode-background: #ffffff;
+  --vscode-foreground: #323233;
+  --vscode-input-background: #f3f3f3;
+  --vscode-input-foreground: #323233;
+  --vscode-input-placeholder: #767677;
+  --vscode-input-border: #e1e1e1;
+  --vscode-focus-border: #007fd4;
+  --vscode-button-primary-background: #007fd4;
+  --vscode-button-primary-foreground: #ffffff;
+  --vscode-button-primary-hover-background: #006bb3;
+  --vscode-button-secondary-background: #e8e8e8;
+  --vscode-button-secondary-foreground: #323233;
+  --vscode-button-secondary-hover-background: #dcdcdc;
+  --vscode-list-hover-background: #f0f0f0;
+  --vscode-list-active-selection-background: #e4e6f1;
+  --vscode-list-active-selection-foreground: #323233;
+  --vscode-panel-background: #ffffff;
+  --vscode-panel-border: #e1e1e1;
+  --vscode-border-color: #e1e1e1;
+  --vscode-divider-color: #d4d4d4;
+  --vscode-badge-background: #c4c4c4;
+  --vscode-badge-foreground: #323233;
+  --vscode-progress-background: #007fd4;
+  --vscode-link-foreground: #007fd4;
+  --vscode-muted-foreground: #767677;
+  --vscode-secondary-text: #858585;
+  --vscode-error-foreground: #a1260d;
+  --vscode-warning-foreground: #b89500;
+  --vscode-info-foreground: #007fd4;
+  --vscode-success-foreground: #388a34;
+
+  /* User message bubble (light mode) */
+  --vscode-user-message-bg: #e8e8e8;
+  --vscode-user-message-fg: #323233;
+}
+
+.dark {
+  /* Dark Mode Colors (VS Code defaults) */
+  --vscode-background: #1e1e1e;
+  --vscode-foreground: #cccccc;
+  --vscode-input-background: #3c3c3c;
+  --vscode-input-foreground: #cccccc;
+  --vscode-input-placeholder: #858585;
+  --vscode-input-border: #3c3c3c;
+  --vscode-focus-border: #007fd4;
+  --vscode-button-primary-background: #0e639c;
+  --vscode-button-primary-foreground: #ffffff;
+  --vscode-button-primary-hover-background: #1177bb;
+  --vscode-button-secondary-background: #3a3d41;
+  --vscode-button-secondary-foreground: #ffffff;
+  --vscode-button-secondary-hover-background: #45494e;
+  --vscode-list-hover-background: #2a2d2e;
+  --vscode-list-active-selection-background: #094771;
+  --vscode-list-active-selection-foreground: #ffffff;
+  --vscode-panel-background: #1e1e1e;
+  --vscode-panel-border: #80808059;
+  --vscode-border-color: #3c3c3c;
+  --vscode-divider-color: #454545;
+  --vscode-badge-background: #4d4d4d;
+  --vscode-badge-foreground: #ffffff;
+  --vscode-progress-background: #0e70c0;
+  --vscode-link-foreground: #3794ff;
+  --vscode-muted-foreground: #858585;
+  --vscode-secondary-text: #858585;
+  --vscode-error-foreground: #f48771;
+  --vscode-warning-foreground: #cca700;
+  --vscode-info-foreground: #75beff;
+  --vscode-success-foreground: #89d185;
+
+  /* User message bubble (dark mode) */
+  --vscode-user-message-bg: #0e639c;
+  --vscode-user-message-fg: #ffffff;
+}
+
+/* Design constants (same for both modes) */
+:root, .dark {
+  --vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  --vscode-font-size-base: 13px;
+  --vscode-font-size-minus1: 11px;
+  --vscode-font-size-minus2: 9px;
+  --vscode-font-size-plus1: 16px;
+  --vscode-input-height: 26px;
+  --vscode-design-unit: 4px;
+  --vscode-corner-radius: 0px;
+  --vscode-corner-radius-round: 2px;
+  --vscode-corner-radius-button: 5px;
+  --vscode-button-padding-horizontal: 11px;
+  --vscode-button-padding-vertical: 4px;
+  --vscode-button-icon-padding: 3px;
+  --vscode-scrollbar-width: 10px;
+  --vscode-scrollbar-height: 10px;
+}

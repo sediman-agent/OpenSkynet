@@ -35,6 +35,7 @@ export function startApiServer(opts: ApiServerOptions) {
     port,
     fetch: app.fetch,
     websocket,
+    idleTimeout: 255, // Maximum allowed - allow browser agents time to complete
   });
 
   logger.info({ port }, "api_server_started");

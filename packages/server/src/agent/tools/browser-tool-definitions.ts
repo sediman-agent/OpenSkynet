@@ -119,9 +119,50 @@ export const ALL_BROWSER_TOOLS: ToolDefinition[] = [
     },
   },
   {
-    name: 'browser_list_tabs',
-    description: 'List all open browser tabs with their URLs and titles.',
-    parameters: { type: 'object', properties: {}, required: [] },
+    name: 'browser_drag_and_drop',
+    description: 'Drag an element and drop it onto another element. Use this for drag-and-drop interfaces, sortable lists, or file uploads.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sourceRefId: { type: 'number', description: 'The refId of the element to drag' },
+        targetRefId: { type: 'number', description: 'The refId of the element to drop onto' },
+      },
+      required: ['sourceRefId', 'targetRefId'],
+    },
+  },
+  {
+    name: 'browser_upload_file',
+    description: 'Upload a file to a file input element. Use this for file upload forms and attachments.',
+    parameters: {
+      type: 'object',
+      properties: {
+        refId: { type: 'number', description: 'The refId of the file input element' },
+        filePath: { type: 'string', description: 'Path to the file to upload' },
+      },
+      required: ['refId', 'filePath'],
+    },
+  },
+  {
+    name: 'browser_execute_script',
+    description: 'Execute custom JavaScript code on the page. Use this for advanced interactions, shadow DOM, custom selectors, or data extraction.',
+    parameters: {
+      type: 'object',
+      properties: {
+        script: { type: 'string', description: 'JavaScript code to execute' },
+      },
+      required: ['script'],
+    },
+  },
+  {
+    name: 'browser_close_tab',
+    description: 'Close the current browser tab or a specific tab by index.',
+    parameters: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: 'The index of the tab to close (optional, closes current tab if not specified)' },
+      },
+      required: [],
+    },
   },
   {
     name: 'browser_wait',
@@ -144,6 +185,18 @@ export const ALL_BROWSER_TOOLS: ToolDefinition[] = [
     name: 'browser_screenshot',
     description: 'Take a screenshot of the current page. Returns confirmation that a screenshot was captured.',
     parameters: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'browser_extract_data',
+    description: 'Extract specific structured data from the current page. Use this to pull out exact values like stock prices, dates, names, or other information the user requested. Returns the extracted value in a clean format.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'What specific data to extract (e.g., "TSLA stock price", "application deadline", "person name and title")' },
+        format: { type: 'string', enum: ['price', 'date', 'text', 'number', 'email', 'phone'], description: 'Expected format of the data (helps with extraction)' },
+      },
+      required: ['query'],
+    },
   },
   {
     name: 'browser_end',

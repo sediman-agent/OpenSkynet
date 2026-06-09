@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useProjectStore } from '@/stores/useProjectStore';
-import type { ServerProject, ThreadMessage } from '@/types/project';
+import type { Project, ThreadMessage } from '@/types/project';
 
 const API_BASE = 'http://localhost:3001';
 
@@ -19,7 +19,7 @@ export function useProjectManager() {
   const updateThreadStatus = useProjectStore(state => state.updateThreadStatus);
   const updateProjectFiles = useProjectStore(state => state.updateProjectFiles);
 
-  const [serverProjects, setServerProjects] = useState<ServerProject[]>([]);
+  const [serverProjects, setProjects] = useState<Project[]>([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
 
   // Load projects from server
@@ -30,7 +30,7 @@ export function useProjectManager() {
         const response = await fetch(`${API_BASE}/api/projects`);
         if (response.ok) {
           const data = await response.json();
-          setServerProjects(data.projects || []);
+          setProjects(data.projects || []);
         }
       } catch (error) {
         console.error('Failed to load projects:', error);
@@ -56,7 +56,7 @@ export function useProjectManager() {
       const response = await fetch(`${API_BASE}/api/projects`);
       if (response.ok) {
         const data = await response.json();
-        setServerProjects(data.projects || []);
+        setProjects(data.projects || []);
       }
     } catch (error) {
       console.error('Failed to refresh projects:', error);

@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { ExecutionStep } from '@/components/agent/ExecutionDisplay';
 
-export type StreamingPhase = 'thinking' | 'planning' | 'executing' | 'reflecting' | 'retrying';
+export type StreamingPhase = 'thinking' | 'planning' | 'executing' | 'reflecting' | 'retrying' | 'responding';
 
 export interface RetryProgress {
   attempt: number;

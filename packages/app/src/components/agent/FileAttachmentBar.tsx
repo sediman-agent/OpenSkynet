@@ -3,10 +3,10 @@
  * Display and manage file attachments
  */
 
-import { X, FileText, Image } from 'lucide-react';
+import { X, FileText, Image, Upload } from 'lucide-react';
 import { FileChip } from '@/components/ui/FileChip';
 import { cn } from '@/lib/utils';
-import type { AttachedFile } from '@/hooks/agent/useAgentInput';
+import type { AttachedFile } from '@/hooks/agent/useFileAttachments';
 
 interface FileAttachmentBarProps {
   files: AttachedFile[];
@@ -27,11 +27,11 @@ export function FileAttachmentBar({ files, onRemove, isDragOver = false }: FileA
       {files.map(file => (
         <FileChip
           key={file.id}
-          file={{
-            name: file.name,
-            size: file.size,
-            type: file.type
-          }}
+          id={file.id}
+          name={file.name}
+          size={file.size}
+          type={file.type}
+          status={file.status}
           onRemove={() => onRemove(file.id)}
         />
       ))}

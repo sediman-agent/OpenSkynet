@@ -1,0 +1,151 @@
+/**
+ * VS Code-Style Streaming CSS
+ * Smooth transitions and loading states for streaming content
+ */
+
+/* ============================================================================
+   Streaming State Indicator (VS Code: request-in-progress)
+   ============================================================================ */
+.request-in-progress {
+  /* Cursor indicator */
+  cursor: progress;
+}
+
+.request-in-progress .typing-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 16px;
+  background-color: currentColor;
+  animation: blink 1s step-end infinite;
+  vertical-align: text-bottom;
+  margin-left: 2px;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* ============================================================================
+   Progressive Reveal Animation
+   ============================================================================ */
+.streaming-content {
+  /* Smooth reveal of progressively rendered content */
+}
+
+.streaming-content.is-streaming {
+  /* Subtle opacity transition during streaming */
+  transition: opacity 150ms ease-out;
+}
+
+/* ============================================================================
+   VS Code-Style Loading Spinner (minimal)
+   ============================================================================ */
+.vscode-loading-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: vscode-spin 1s linear infinite;
+}
+
+@keyframes vscode-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   Smooth Morphing Transitions (VS Code incremental rendering)
+   ============================================================================ */
+.vscode-morph-transition {
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out,
+    opacity 150ms ease-out,
+    transform 150ms ease-out;
+}
+
+/* ============================================================================
+   Focus States During Streaming (VS Code accessibility)
+   ============================================================================ */
+.request-in-progress *:focus-visible {
+  /* Ensure focus states remain visible during streaming */
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* ============================================================================
+   Stream Rate Indicator (optional debugging)
+   ============================================================================ */
+.stream-rate-indicator {
+  position: fixed;
+  bottom: 8px;
+  left: 8px;
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--vscode-textMuted, #858585);
+  background: var(--vscode-background, #1e1e1e);
+  padding: 2px 6px;
+  border-radius: 2px;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+/* ============================================================================
+   VS Code-Style Progress Bar (minimal, inline)
+   ============================================================================ */
+.vscode-progress-bar {
+  height: 2px;
+  background: var(--vscode-progress-background, #3c3c3c);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.vscode-progress-bar .fill {
+  height: 100%;
+  background: var(--vscode-progress-foreground, #007acc);
+  transition: width 150ms ease-out;
+  animation: vscode-progress-pulse 2s ease-in-out infinite;
+}
+
+@keyframes vscode-progress-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* ============================================================================
+   Streaming Placeholder (VS Code inline chat style)
+   ============================================================================ */
+.streaming-placeholder {
+  color: var(--vscode-textMuted, #858585);
+  font-style: italic;
+  opacity: 0.7;
+  transition: opacity 150ms ease-out;
+}
+
+.request-in-progress .streaming-placeholder {
+  animation: placeholder-pulse 2s ease-in-out infinite;
+}
+
+@keyframes placeholder-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 0.5; }
+}
+
+/* ============================================================================
+   Reduced Motion Support (VS Code accessibility)
+   ============================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .request-in-progress .typing-cursor,
+  .vscode-loading-spinner,
+  .vscode-progress-bar .fill,
+  .streaming-placeholder {
+    animation: none;
+  }
+
+  .vscode-morph-transition,
+  .streaming-content.is-streaming {
+    transition: none;
+  }
+}

@@ -1,14 +1,57 @@
+/**
+ * VS Code-Style ProviderPage
+ * Minimal, professional provider configuration matching VS Code settings UI
+ */
+
 import { useState, useEffect } from 'react';
-import { Server, Check, Key, CheckCircle, AlertCircle, ChevronRight, Search } from 'lucide-react';
-import { PageHeader } from '@/components/layout/PageHeader';
-import { Button } from '@/elements/actions/Button';
-import { Input } from '@/elements/form/Input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/elements/data/Card';
-import { ScrollArea } from '@/elements/data/ScrollArea';
-import { Badge } from '@/elements/feedback/Badge';
+import { Server, Check, CheckCircle, ChevronRight, Search, X } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+
+// ============================================================================
+// VS Code Design Tokens
+// ============================================================================
+const VS_CODES = {
+  // Border colors
+  border: '#3c3c3c',
+  borderLight: '#454545',
+  borderFocus: '#007fd4',
+
+  // Background colors
+  bg: '#1e1e1e',
+  bgHover: '#2a2d2e',
+  bgSecondary: '#252526',
+  bgInput: '#3c3c3c',
+
+  // Text colors
+  text: '#cccccc',
+  textMuted: '#858585',
+  textDim: '#6e6e6e',
+
+  // Status colors
+  success: '#4ec9b0',
+  error: '#f48771',
+  warning: '#dcdcaa',
+  info: '#3794ff',
+
+  // Spacing
+  xs: '2px',
+  sm: '4px',
+  md: '8px',
+  lg: '12px',
+
+  // Typography
+  fontSize: '13px',
+  fontSizeSmall: '11px',
+
+  // Border radius
+  radius: '2px',
+  radiusSm: '3px',
+} as const;
+
+// ============================================================================
+// Types
+// ============================================================================
 
 interface ProviderInfo {
   name: string;
@@ -18,11 +61,199 @@ interface ProviderInfo {
   has_key: boolean;
 }
 
+// ============================================================================
+// VS Code-Style Status Badge
+// ============================================================================
+
+function VSCodeStatusBadge({ status }: { status: 'connected' | 'disconnected' | 'error' | 'default' }) {
+  const styles = {
+    connected: { color: VS_CODES.success, text: 'CONFIGURED' },
+    disconnected: { color: VS_CODES.textMuted, text: 'NOT CONFIGURED' },
+    error: { color: VS_CODES.error, text: 'ERROR' },
+    default: { color: VS_CODES.textMuted, text: 'DEFAULT' }
+  };
+
+  const style = styles[status];
+
+  return (
+    <span
+      className="text-[10px] font-mono uppercase tracking-wider"
+      style={{ color: style.color }}
+    >
+      {style.text}
+    </span>
+  );
+}
+
+// ============================================================================
+// VS Code-Style Provider Item
+// ============================================================================
+
+interface VSCodeProviderItemProps {
+  provider: ProviderInfo;
+  isExpanded: boolean;
+  isSelected: boolean;
+  status: 'connected' | 'disconnected' | 'error' | 'default';
+  apiKey: string;
+  onToggle: () => void;
+  onApiKeyChange: (value: string) => void;
+  onSave: () => void;
+}
+
+function VSCodeProviderItem({
+  provider,
+  isExpanded,
+  isSelected,
+  status,
+  apiKey,
+  onToggle,
+  onApiKeyChange,
+  onSave
+}: VSCodeProviderItemProps) {
+  const needsKey = provider.needs_api_key && !provider.has_key;
+  const hasKey = provider.has_key;
+
+  return (
+    <div
+      className="border font-mono text-sm"
+      style={{
+        borderColor: VS_CODES.border,
+        borderRadius: VS_CODES.radiusSm,
+        backgroundColor: isSelected ? VS_CODES.bgHover : VS_CODES.bg,
+        marginBottom: VS_CODES.sm
+      }}
+    >
+      {/* Main Row */}
+      <button
+        onClick={onToggle}
+        className="w-full px-2 py-1.5 flex items-center gap-2 text-left hover:bg-[#2a2d2e]/50 transition-colors"
+        style={{ minHeight: '32px' }}
+      >
+        {/* Status Indicator */}
+        <div
+          className="w-1.5 h-1.5 rounded-full shrink-0"
+          style={{
+            backgroundColor: status === 'connected' ? VS_CODES.success :
+                         status === 'error' ? VS_CODES.error :
+                         hasKey ? VS_CODES.info :
+                         needsKey ? VS_CODES.warning :
+                         VS_CODES.textDim
+          }}
+        />
+
+        {/* Expand Icon */}
+        <div className="shrink-0" style={{ width: '16px' }}>
+          {isExpanded ? (
+            <ChevronRight size={12} style={{ color: VS_CODES.textMuted, transform: 'rotate(90deg)' }} />
+          ) : (
+            <ChevronRight size={12} style={{ color: VS_CODES.textMuted }} />
+          )}
+        </div>
+
+        {/* Provider Name */}
+        <div className="flex-1 truncate">
+          <span style={{ color: VS_CODES.text, fontWeight: 500 }}>
+            {provider.display_name || provider.name}
+          </span>
+        </div>
+
+        {/* Status Badge */}
+        <VSCodeStatusBadge
+          status={status === 'default' && hasKey ? 'connected' : status}
+        />
+
+        {/* Selection Check */}
+        {isSelected && (
+          <Check size={12} style={{ color: VS_CODES.success }} />
+        )}
+      </button>
+
+      {/* Expanded Content */}
+      {isExpanded && (
+        <div
+          className="px-2 py-2 border-t overflow-hidden"
+          style={{
+            borderColor: VS_CODES.border,
+            backgroundColor: VS_CODES.bgSecondary
+          }}
+        >
+          {/* Category */}
+          <div className="text-[10px] mb-2" style={{ color: VS_CODES.textMuted }}>
+            CATEGORY: <span style={{ color: VS_CODES.text }}>{provider.category.toUpperCase()}</span>
+          </div>
+
+          {/* API Key Input */}
+          {needsKey ? (
+            <div className="space-y-2">
+              <div>
+                <label className="text-[10px] uppercase mb-1 block" style={{ color: VS_CODES.textMuted }}>
+                  API Key
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => onApiKeyChange(e.target.value)}
+                    placeholder="sk-xxx..."
+                    className="flex-1 px-2 py-1 text-xs font-mono outline-none"
+                    style={{
+                      backgroundColor: VS_CODES.bgInput,
+                      border: `1px solid ${VS_CODES.border}`,
+                      borderRadius: VS_CODES.radius,
+                      color: VS_CODES.text,
+                      minHeight: '24px'
+                    }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = VS_CODES.borderFocus}
+                    onBlur={(e) => e.currentTarget.style.borderColor = VS_CODES.border}
+                  />
+                  <button
+                    onClick={onSave}
+                    disabled={!apiKey}
+                    className="px-3 py-1 text-xs font-mono uppercase tracking-wider transition-colors disabled:opacity-40"
+                    style={{
+                      backgroundColor: apiKey ? VS_CODES.info : VS_CODES.bgHover,
+                      color: '#ffffff',
+                      border: `1px solid ${apiKey ? VS_CODES.info : VS_CODES.border}`,
+                      borderRadius: VS_CODES.radius,
+                      minHeight: '24px'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (apiKey) e.currentTarget.style.backgroundColor = '#4da3ff';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (apiKey) e.currentTarget.style.backgroundColor = VS_CODES.info;
+                    }}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : hasKey ? (
+            <div className="flex items-center gap-2 text-xs" style={{ color: VS_CODES.success }}>
+              <CheckCircle size={12} />
+              <span>API key configured</span>
+            </div>
+          ) : (
+            <div className="text-xs" style={{ color: VS_CODES.textMuted }}>
+              No API key required
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Main Component
+// ============================================================================
+
 export function ProviderPage() {
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState('');
-  const [statuses, setStatuses] = useState<Record<string, 'connected' | 'disconnected' | 'error'>>({});
+  const [statuses, setStatuses] = useState<Record<string, 'connected' | 'disconnected' | 'error' | 'default'>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
 
@@ -42,6 +273,13 @@ export function ProviderPage() {
       if (response.ok) {
         const data = await response.json();
         setProviders(data.providers || []);
+
+        // Initialize statuses based on has_key
+        const initialStatuses: Record<string, 'connected' | 'disconnected' | 'error' | 'default'> = {};
+        data.providers?.forEach((p: ProviderInfo) => {
+          initialStatuses[p.name] = p.has_key ? 'connected' : 'default';
+        });
+        setStatuses(initialStatuses);
       }
     } catch {
       console.error('Failed to load providers');
@@ -50,7 +288,6 @@ export function ProviderPage() {
 
   const handleSelectProvider = (providerName: string) => {
     setSelectedProvider(providerName);
-    // Don't set provider in store yet - wait for backend confirmation
     setExpandedProvider(providerName === expandedProvider ? null : providerName);
     setApiKey('');
   };
@@ -70,7 +307,6 @@ export function ProviderPage() {
 
       if (response.ok) {
         const result = await response.json();
-        // Only set provider in store after backend confirms
         setProvider(selectedProvider);
         if (result.model) {
           setModel(result.model);
@@ -88,23 +324,6 @@ export function ProviderPage() {
     }
   };
 
-  const getStatusIcon = (providerName: string) => {
-    const status = statuses[providerName];
-    if (status === 'connected') return <CheckCircle className="w-4 h-4 text-green-500" />;
-    if (status === 'error') return <AlertCircle className="w-4 h-4 text-red-500" />;
-    return <AlertCircle className="w-4 h-4 text-muted-foreground" />;
-  };
-
-  const getStatusBadge = (provider: ProviderInfo) => {
-    if (provider.has_key) {
-      return <Badge variant="success" className="text-xs">Configured</Badge>;
-    } else if (provider.needs_api_key) {
-      return <Badge variant="warning" className="text-xs">Needs Key</Badge>;
-    } else {
-      return <Badge variant="info" className="text-xs">No Key Needed</Badge>;
-    }
-  };
-
   const filteredProviders = providers.filter((provider) => {
     const query = searchQuery.toLowerCase();
     return (
@@ -115,173 +334,88 @@ export function ProviderPage() {
   });
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      <PageHeader
-        icon={Server}
-        title="Provider"
-        subtitle="Configure your LLM provider"
-      />
+    <div className="flex flex-col h-full font-mono text-sm" style={{ backgroundColor: VS_CODES.bg }}>
+      {/* Header - VS Code Style */}
+      <div className="border-b px-4 py-2 flex items-center gap-2" style={{ borderColor: VS_CODES.border }}>
+        <Server size={14} style={{ color: VS_CODES.textMuted }} />
+        <span className="font-medium" style={{ color: VS_CODES.text }}>Provider Configuration</span>
+      </div>
 
-      <ScrollArea className="flex-1">
-        <div className="max-w-2xl mx-auto px-6 py-6 space-y-5">
-          {/* Search Bar - Industrial-level refinement */}
-          <div className="relative">
-            <Search className="absolute left-[14px] top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60 pointer-events-none" />
+      {/* Content Area */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-2xl mx-auto p-4">
+          {/* Search Bar - VS Code Style */}
+          <div className="mb-4 relative">
+            <Search
+              size={12}
+              className="absolute left-2 top-1/2 -translate-y-1/2"
+              style={{ color: VS_CODES.textDim }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5"
+                style={{ color: VS_CODES.textMuted }}
+                onMouseEnter={(e) => e.currentTarget.style.color = VS_CODES.text}
+                onMouseLeave={(e) => e.currentTarget.style.color = VS_CODES.textMuted}
+              >
+                <X size={12} />
+              </button>
+            )}
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search providers..."
-              className={cn(
-                'w-full h-10 pl-10 pr-4 rounded-lg text-sm',
-                'border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.1)]',
-                'bg-background',
-                'placeholder:text-muted-foreground/40',
-                'focus:outline-none',
-                'focus:border-[rgba(0,0,0,0.15)] dark:focus:border-[rgba(255,255,255,0.2)]',
-                'focus:shadow-[0_0_0_1px_rgba(0,0,0,0.05),0_2px_8px_rgba(0,0,0,0.04)]',
-                'transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]'
-              )}
+              className="w-full pl-8 pr-8 py-1 text-xs outline-none font-mono"
+              style={{
+                backgroundColor: VS_CODES.bgInput,
+                border: `1px solid ${VS_CODES.border}`,
+                borderRadius: VS_CODES.radius,
+                color: VS_CODES.text,
+                minHeight: '26px'
+              }}
+              onFocus={(e) => e.currentTarget.style.borderColor = VS_CODES.borderFocus}
+              onBlur={(e) => e.currentTarget.style.borderColor = VS_CODES.border}
             />
           </div>
 
           {/* Providers List */}
-          <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Providers</h2>
-
-            {filteredProviders.length === 0 ? (
-              <div className="py-16 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-muted/20 flex items-center justify-center">
-                  <Search className="w-6 h-6 text-muted-foreground/40" />
-                </div>
-                <p className="text-sm text-muted-foreground/70">
-                  {searchQuery ? 'No providers match your search' : 'No providers available'}
-                </p>
+          {filteredProviders.length === 0 ? (
+            <div className="py-16 text-center">
+              <div className="w-12 h-12 mx-auto mb-3 flex items-center justify-center" style={{ backgroundColor: VS_CODES.bgSecondary, borderRadius: VS_CODES.radius }}>
+                <Search size={20} style={{ color: VS_CODES.textDim }} />
               </div>
-            ) : (
-              <div className="space-y-2">
-                {filteredProviders.map((provider) => {
-                  const isExpanded = expandedProvider === provider.name;
-                  const isSelected = selectedProvider === provider.name;
-                  const status = statuses[provider.name];
-
-                  return (
-                    <div
-                      key={provider.name}
-                      className={cn(
-                        'group relative rounded-lg border bg-card overflow-hidden',
-                        'border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.1)]',
-                        'hover:border-[rgba(0,0,0,0.12)] dark:hover:border-[rgba(255,255,255,0.15)]',
-                        'transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]',
-                        isSelected && 'border-[rgba(0,0,0,0.2)] dark:border-[rgba(255,255,255,0.25)]'
-                      )}
-                    >
-                      {/* Main card content */}
-                      <button
-                        onClick={() => handleSelectProvider(provider.name)}
-                        className="w-full px-4 py-3.5 flex items-start gap-3 text-left"
-                      >
-                        {/* Status indicator */}
-                        <div className={cn(
-                          'mt-1 w-2 h-2 rounded-full flex-shrink-0 transition-colors duration-200',
-                          status === 'connected' ? 'bg-green-500' :
-                          status === 'error' ? 'bg-red-500' :
-                          provider.has_key ? 'bg-blue-500' :
-                          provider.needs_api_key ? 'bg-yellow-500' :
-                          'bg-muted-foreground/40'
-                        )} />
-
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-sm font-medium text-foreground truncate">
-                              {provider.display_name || provider.name}
-                            </span>
-                            {isSelected && (
-                              <Check className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground/70">
-                            <span className="capitalize">{provider.category}</span>
-                            {provider.needs_api_key && !provider.has_key && (
-                              <span>• Requires API key</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Expand icon */}
-                        <ChevronRight
-                          className={cn(
-                            'w-4 h-4 text-muted-foreground/40 flex-shrink-0 transition-transform duration-200',
-                            isExpanded && 'rotate-90'
-                          )}
-                        />
-                      </button>
-
-                      {/* Expanded content */}
-                      {isExpanded && (
-                        <div className="px-4 pb-4 border-t border-[rgba(0,0,0,0.04)] dark:border-[rgba(255,255,255,0.06)]">
-                          {provider.needs_api_key && !provider.has_key ? (
-                            <div className="pt-3 space-y-3">
-                              <div>
-                                <label className="text-xs font-medium text-muted-foreground/80 mb-1.5 block">
-                                  API Key
-                                </label>
-                                <input
-                                  type="password"
-                                  value={apiKey}
-                                  onChange={(e) => setApiKey(e.target.value)}
-                                  placeholder="sk-xxx..."
-                                  className={cn(
-                                    'w-full h-9 px-3 rounded-md text-sm',
-                                    'border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.1)]',
-                                    'bg-background',
-                                    'placeholder:text-muted-foreground/40',
-                                    'focus:outline-none',
-                                    'focus:border-[rgba(0,0,0,0.15)] dark:focus:border-[rgba(255,255,255,0.2)]',
-                                    'transition-colors duration-150'
-                                  )}
-                                />
-                              </div>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSave();
-                                }}
-                                disabled={!apiKey}
-                                className={cn(
-                                  'w-full h-9 px-4 rounded-md text-sm font-medium',
-                                  'flex items-center justify-center gap-2',
-                                  'transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]',
-                                  apiKey
-                                    ? 'bg-foreground text-background hover:bg-foreground/90'
-                                    : 'bg-muted/30 text-muted-foreground cursor-not-allowed'
-                                )}
-                              >
-                                <Key className="w-3.5 h-3.5" />
-                                Save API Key
-                              </button>
-                            </div>
-                          ) : provider.has_key ? (
-                            <div className="pt-3 flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
-                              <CheckCircle className="w-3.5 h-3.5" />
-                              <span>API key configured</span>
-                            </div>
-                          ) : (
-                            <div className="pt-3 text-xs text-muted-foreground/60">
-                              No API key required
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+              <p className="text-xs" style={{ color: VS_CODES.textMuted }}>
+                {searchQuery ? 'No providers match your search' : 'No providers available'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-0">
+              {/* Section Header */}
+              <div className="text-[10px] uppercase mb-2 tracking-wider" style={{ color: VS_CODES.textMuted }}>
+                Providers ({filteredProviders.length})
               </div>
-            )}
-          </div>
+
+              {filteredProviders.map((provider) => (
+                <VSCodeProviderItem
+                  key={provider.name}
+                  provider={provider}
+                  isExpanded={expandedProvider === provider.name}
+                  isSelected={selectedProvider === provider.name}
+                  status={statuses[provider.name] || 'default'}
+                  apiKey={apiKey}
+                  onToggle={() => handleSelectProvider(provider.name)}
+                  onApiKeyChange={setApiKey}
+                  onSave={handleSave}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
+
+export default ProviderPage;

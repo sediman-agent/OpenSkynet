@@ -1,12 +1,14 @@
 /**
  * BrowserAgent — vision-enabled autonomous browser agent
  *
- * Architecture mirrors browser-use's proven approach:
- * - Screenshots injected as vision input so the LLM SEES the page
- * - Tree-style DOM snapshot with scroll context and page stats
- * - Structured output: thinking → eval → memory → next_goal → actions
- * - Self-correction loop via evaluation feedback
- * - Auto-captures state (snapshot + screenshot) after every action
+ * Refactored modular architecture:
+ * - Vision logic → vision-handler.ts
+ * - Memory logic → memory-integration.ts
+ * - Skills → skill-integration.ts
+ * - Loop orchestration → agent-coordinator.ts
+ * - System prompts → system-prompt-builder.ts
+ *
+ * The agent now coordinates specialized modules instead of handling everything directly.
  */
 
 import type { AgentResult, StepEvent, ToolDefinition } from '../core/types';
@@ -16,14 +18,45 @@ import type { SkillEngine } from '../skills/engine';
 import type { SkillSearchEngine } from '../skills/search';
 import type { BrowserController } from '../browser/controller';
 import { ToolBus } from './tools/bus';
-import { loadSoul } from './prompts/soul';
-import { initializeT800Tools } from '../electron/tools';
 import { StreamEmitter } from './streaming';
 import { getConfig } from '../core/config';
-import { captureState } from './execution/state-capture';
-import { buildStateMessage } from './execution/state-message-builder';
+import { buildSystemPrompt } from './execution/system-prompt-builder';
 import { parseAgentResponse } from './execution/response-parser';
 import type { ParsedAgentResponse } from './schemas/parser';
+
+// Vision handling
+import {
+  captureVisionState,
+  buildVisionMessage,
+  extractToolCalls,
+  formatActionResults,
+  injectActionResults
+} from './vision/vision-handler';
+
+// Memory integration
+import {
+  initializeMemory,
+  updateAgentMemory,
+  finalizeMemory as finalizeTaskMemory,
+  hasMemory,
+  getMemoryState
+} from './memory/memory-integration';
+
+// Skill integration
+import {
+  initializeSkillTools,
+  canExecuteSkills,
+  getSkill,
+  searchSkills,
+  listSkills
+} from './skills/skill-integration';
+
+// Loop coordination
+import {
+  executeAgentLoop,
+  type AgentCoordinatorOpts,
+  type ExecutionResult
+} from './execution/agent-coordinator';
 
 type ContentPart =
   | { type: 'text'; text: string }
@@ -55,6 +88,12 @@ export interface BrowserAgentOpts {
   useVision?: boolean;
 }
 
+/**
+ * BrowserAgent - Main coordination class
+ *
+ * Now serves as a lightweight coordinator that delegates to specialized modules.
+ * Much cleaner and easier to understand!
+ */
 export class BrowserAgent {
   private llmProvider: LLMProvider;
   private browserController: BrowserController | null;
@@ -65,19 +104,11 @@ export class BrowserAgent {
   private streamEmitter: StreamEmitter;
   private conversation: AgentMessage[] = [];
   private maxIterations: number;
-  private soul: string;
-  private workingDirectory: string;
   private cancelled = false;
+  private workingDirectory: string;
   private useVision: boolean;
   private agentMemory = '';
   private consecutiveFailures = 0;
-
-  private enableBrowserTools: boolean;
-  private enableShellTools: boolean;
-  private enableFileTools: boolean;
-  private enableCodingTools: boolean;
-  private enableWebTools: boolean;
-  private enableSkillsTools: boolean;
 
   constructor(opts: BrowserAgentOpts) {
     const config = getConfig();
@@ -94,194 +125,159 @@ export class BrowserAgent {
     // Ensure at least 50 iterations
     const calculatedMax = config.compressThreshold * 2 + 10;
     this.maxIterations = Math.max(calculatedMax, 50);
-    this.soul = '';
     this.workingDirectory = opts.workingDirectory ?? process.cwd();
 
-    this.enableBrowserTools = opts.enableBrowserTools ?? true;
-    this.enableShellTools = opts.enableShellTools ?? true;
-    this.enableFileTools = opts.enableFileTools ?? true;
-    this.enableCodingTools = opts.enableCodingTools ?? true;
-    this.enableWebTools = opts.enableWebTools ?? true;
-    this.enableSkillsTools = opts.enableSkillsTools ?? true;
-
-    this.initializeTools();
+    // Initialize tools on the tool bus
+    this.initializeTools(opts);
   }
 
-  private initializeTools(): void {
+  /**
+   * Initialize tools on the tool bus
+   */
+  private initializeTools(opts: BrowserAgentOpts): void {
     if ((this as any).toolsInitialized) return;
 
-    initializeT800Tools(this.toolBus, {
+    // Initialize skill tools
+    initializeSkillTools(this.toolBus, {
+      skillEngine: this.skillEngine ?? undefined,
+      skillSearch: this.skillSearch ?? undefined,
       cwd: this.workingDirectory,
-      enableBrowserTools: this.enableBrowserTools,
-      enableShellTools: this.enableShellTools,
-      enableFileTools: this.enableFileTools,
-      enableCodingTools: this.enableCodingTools,
-      enableWebTools: this.enableWebTools,
-      enableSkillsTools: this.enableSkillsTools,
-      enableDocumentTools: false,
-      skillDeps: {
-        skillEngine: this.skillEngine ?? undefined,
-        skillSearch: this.skillSearch ?? undefined,
-        runSkill: async (name: string) => {
-          if (!this.skillEngine) return null;
-          const skill = this.skillEngine.getSkill(name);
-          return skill;
-        },
-      },
+      enableBrowserTools: opts.enableBrowserTools ?? true,
+      enableShellTools: opts.enableShellTools ?? true,
+      enableFileTools: opts.enableFileTools ?? true,
+      enableCodingTools: opts.enableCodingTools ?? true,
+      enableWebTools: opts.enableWebTools ?? true,
+      enableSkillsTools: opts.enableSkillsTools ?? true,
     });
 
     (this as any).toolsInitialized = true;
   }
 
+  /**
+   * Build system prompt for the agent
+   */
   private buildSystemPrompt(): string {
-    return `You are an AI agent that operates a web browser to accomplish tasks. You see the page via screenshot AND text representation of interactive elements.
-
-<language>
-Default working language: English. Always respond in the same language as the user request.
-</language>
-
-<input_format>
-At each step you receive:
-1. <user_request> — Your ultimate objective. Has highest priority.
-2. <agent_memory> — Your persistent memory across steps (track progress, counters, findings).
-3. <browser_state> — Current URL, page stats, scroll info, and interactive elements in tree format.
-4. A SCREENSHOT of the current page (if vision enabled) — This is your GROUND TRUTH.
-
-Interactive elements format:
-- [index]<tagname attr=value /> for interactive elements
-- Indentation with \\t shows parent/child hierarchy
-- *[index] means an element newly appeared since your last action
-- Pure text lines are content (not interactive)
-</input_format>
-
-<browser_state>
-Current URL: URL of the page you are on.
-<page_stats>: links count, interactive elements, iframes, images, total elements, text chars.
-<page_info>: pages above/below current scroll position.
-Interactive elements: tree-style with [indices].
-[Start of page] and [End of page] mark the visible area.
-</browser_state>
-
-<rules>
-1. Only interact with elements that have a numeric [index].
-2. Use the SCREENSHOT to verify the page state and your action results. It is GROUND TRUTH.
-3. If an action might have failed, check the screenshot to confirm.
-4. For search tasks: navigate → snapshot → type in search box → submit → wait for results.
-5. For form filling: snapshot → type each field → click submit.
-6. If the page has a popup, cookie banner, or modal — dismiss it FIRST before proceeding.
-7. If you get a 403, bot detection, or access denied — do NOT retry the same URL. Try alternatives.
-8. If stuck in a loop (same URL, same action failing 3+ times) — change approach.
-9. When filling autocomplete/combobox fields: type text, then WAIT for suggestions to appear. Click the correct suggestion instead of pressing Enter.
-10. If a click opens a new tab, switch to it.
-11. Use browser_take_and_store_screenshot after major navigation/interaction to update the UI.
-</rules>
-
-<output_format>
-You MUST respond with tools calls (via function calling). Include these fields in your text response BEFORE the tool calls:
-
-<thinking>
-Your reasoning about the current state, what you see in the screenshot, and why you chose these actions.
-</thinking>
-
-<evaluation>
-Success/Failure — evaluate your PREVIOUS action using the screenshot as evidence. Format: "Success: ..." or "Failure: ..." or "Uncertain: ..."
-</evaluation>
-
-<memory>
-1-3 sentences of specific progress tracking. Include: pages visited, items found, steps completed, what remains. This is persisted across steps.
-</memory>
-
-<next_goal>
-One clear sentence stating what you will accomplish next.
-</next_goal>
-
-Then call the appropriate tool(s). You may call multiple tools (they execute sequentially).
-</output_format>
-
-<task_completion>
-Call the browser_end tool when:
-1. The user request is fully completed, OR
-2. It is absolutely impossible to continue, OR
-
-Set success=true only if ALL parts of the request are done. If anything is missing or uncertain, set success=false.
-Put ALL relevant findings in the summary field.
-
-Before claiming success, verify:
-- Did you find/extract the CORRECT number of items requested?
-- Did you apply ALL specified filters?
-- Can you confirm every value from what you SEE on the page?
-</task_completion>
-
-<error_recovery>
-If an action fails:
-1. Check the screenshot to understand the actual page state
-2. If a popup/modal blocks interaction, dismiss it first
-3. If element not found, the page may have changed — take a fresh snapshot
-4. If blocked (403/login), try alternative sites or approaches
-5. After 2-3 repeated failures, explicitly change strategy
-</error_recovery>
-
-IMPORTANT: The SCREENSHOT is your most reliable source of truth. Always check it to verify your actions succeeded.
-`;
-  }
-
-  /**
-   * Capture current browser state: snapshot + screenshot → vision-enhanced message
-   */
-  private async captureState(): Promise<{
-    output: string;
-    screenshot: string | null;
-    url: string;
-    title: string;
-  }> {
-    const ctrl = this.browserController;
-    if (!ctrl) {
-      return { output: '', screenshot: null, url: '', title: '' };
-    }
-
-    try {
-      return await captureState(ctrl, { useVision: this.useVision });
-    } catch (e) {
-      console.error('[BrowserAgent] Failed to capture state:', e);
-      return { output: '', screenshot: null, url: '', title: '' };
-    }
-  }
-
-  /**
-   * Build a vision message with screenshot + DOM text for the LLM
-   */
-  private buildStateMessage(
-    task: string,
-    stateOutput: string,
-    screenshotBase64: string | null,
-    url: string,
-  ): AgentMessage {
-    return buildStateMessage({
-      task,
-      agentMemory: this.agentMemory,
-      url,
-      stateOutput,
-      screenshotBase64,
+    return buildSystemPrompt({
+      task: 'Browser automation',
+      category: 'browser',
+      iteration: 0,
+      soul: '',
       useVision: this.useVision
-    }) as AgentMessage;
+    });
   }
 
   /**
-   * Parse structured output from the LLM text response
-   * Uses StructuredResponseParser for robust parsing with Zod validation
+   * Main execution method - delegates to agent coordinator
    */
-  private parseAgentResponse(text: string, toolCalls?: any[]): ParsedAgentResponse {
-    return parseAgentResponse({ text, toolCalls });
+  async execute(task: string, onEvent?: (event: StepEvent) => void): Promise<AgentResult> {
+    // Wire up event streaming
+    if (onEvent) {
+      this.streamEmitter.onEvent((event: any) => {
+        switch (event.type) {
+          case 'progress':
+            onEvent({
+              phase: 'executing',
+              action: 'progress',
+              detail: `${event.iteration}/${event.maxIterations}`
+            });
+            break;
+          case 'step_start':
+            onEvent({
+              phase: event.phase,
+              action: event.action,
+              detail: event.detail
+            });
+            break;
+          case 'step_complete':
+            onEvent({
+              phase: event.phase,
+              action: event.action,
+              observation: event.observation
+            });
+            break;
+          case 'error':
+            onEvent({
+              phase: 'executing',
+              action: 'error',
+              detail: event.error
+            });
+            break;
+        }
+      });
+    }
+
+    // Initialize memory
+    if (hasMemory({ memory: this.memory })) {
+      await initializeMemory(this.memory);
+    }
+
+    // Prepare coordinator options
+    const coordinatorOpts: AgentCoordinatorOpts = {
+      llmProvider: this.llmProvider,
+      toolBus: this.toolBus,
+      maxIterations: this.maxIterations,
+      systemPrompt: this.buildSystemPrompt(),
+      agentMemory: this.agentMemory,
+      conversation: this.conversation,
+      cancelled: this.cancelled,
+      useVision: this.useVision,
+      browserController: this.browserController
+    };
+
+    // Execute the main loop
+    const result = await executeAgentLoop(
+      coordinatorOpts,
+      task,
+      parseAgentResponse,
+      () => captureVisionState(
+        this.browserController,
+        this.useVision
+      ),
+      (task, state, screenshot, url) => buildVisionMessage(
+        task,
+        state,
+        screenshot,
+        url,
+        {
+          useVision: this.useVision,
+          agentMemory: this.agentMemory
+        }
+      ),
+      (toolName, toolArgs, iteration) => this.executeToolCall(toolName, toolArgs, iteration),
+      this.streamEmitter,
+      [] // steps array - populated during execution
+    );
+
+    // Update state from result
+    this.agentMemory = result.finalResult || '';
+    this.consecutiveFailures = result.consecutiveFailures ?? 0;
+    this.conversation = result.conversation;
+
+    // Finalize memory
+    if (hasMemory({ memory: this.memory })) {
+      await finalizeTaskMemory(this.memory);
+    }
+
+    return {
+      task,
+      result: result.finalResult,
+      success: result.success,
+      actions_taken: result.actionsTaken,
+      steps: [],
+      iterations: result.iterations,
+      strategy_used: 'browser_vision',
+      elapsed_secs: 0,
+    };
   }
 
   /**
-   * Execute a single tool call and return its result
+   * Execute a single tool call
    */
   private async executeToolCall(
     toolName: string,
     toolArgs: Record<string, unknown>,
     actionsTaken: string[],
-    stepNumber: number,
+    stepNumber: number
   ): Promise<{ success: boolean; output: string; error?: string }> {
     this.streamEmitter.emitStepStart('executing', toolName, JSON.stringify(toolArgs));
 
@@ -300,7 +296,7 @@ IMPORTANT: The SCREENSHOT is your most reliable source of truth. Always check it
         'executing',
         toolName,
         result.success ? (result.output || 'Success') : (result.error || 'Failed'),
-        result.success,
+        result.success
       );
 
       return {
@@ -319,297 +315,43 @@ IMPORTANT: The SCREENSHOT is your most reliable source of truth. Always check it
     }
   }
 
-  async execute(task: string, onEvent?: (event: StepEvent) => void): Promise<AgentResult> {
-    if (onEvent) {
-      this.streamEmitter.onEvent((event: import('./streaming').AgentStreamEvent) => {
-          switch (event.type) {
-            case 'progress':
-              onEvent({ 
-                phase: 'executing', 
-                action: 'progress', 
-                detail: `${event.iteration}/${event.maxIterations}` }
-              );
-              break;
-            case 'step_start':
-              onEvent({ 
-                phase: event.phase, 
-                action: event.action, 
-                detail: event.detail }
-              );
-              break;
-            case 'step_complete':
-              onEvent({ 
-                phase: event.phase, 
-                action: event.action, 
-                observation: event.observation });
-              break;
-            case 'error':
-              onEvent({ 
-                phase: 'executing', 
-                action: 'error', 
-                detail: event.error });
-              break;
-          }
-      })
-    }
-
-    const steps: StepEvent[] = [];
-    const actionsTaken: string[] = [];
-    let finalResult = '';
-    let success = false;
-    let iteration = 0;
-    this.consecutiveFailures = 0;
-
-    try {
-      this.soul = loadSoul();
-      this.cancelled = false;
-      this.agentMemory = '';
-
-      if (this.memory) {
-        await this.memory.onTurnStart();
-      }
-
-      const systemPrompt = this.buildSystemPrompt();
-      this.conversation = [];
-
-      // Capture initial state and inject as first user message
-      this.streamEmitter.emitProgress(0, this.maxIterations, 'capturing initial state');
-
-      const initialState = await this.captureState();
-      const initialMsg = this.buildStateMessage(task, initialState.output, initialState.screenshot, initialState.url);
-      this.conversation.push(initialMsg);
-
-      this.streamEmitter.emitProgress(0, this.maxIterations, 'starting');
-
-      const TOOLS = this.toolBus.getDefinitions();
-
-      while (iteration < this.maxIterations && !this.cancelled) {
-        iteration++;
-        this.streamEmitter.emitProgress(iteration, this.maxIterations, 'thinking');
-
-        const messages: any[] = [
-          { role: 'system', content: systemPrompt },
-          ...this.conversation,
-        ];
-
-        let response;
-        let llmRetries = 0;
-        while (llmRetries < 3) {
-          try {
-            response = await this.llmProvider.chat(messages, TOOLS, systemPrompt);
-            break;
-          } catch (error: any) {
-            llmRetries++;
-            console.log(`[BrowserAgent] LLM error (attempt ${llmRetries}/3):`, error.message);
-            if (llmRetries >= 3) {
-              if (this.consecutiveFailures >= 3) {
-                return {
-                  task,
-                  result: `LLM failed after ${llmRetries} retries and ${this.consecutiveFailures} consecutive tool failures`,
-                  success: false,
-                  actions_taken: actionsTaken,
-                  steps,
-                  iterations: iteration,
-                  strategy_used: 'browser_vision',
-                  elapsed_secs: 0,
-                };
-              }
-              throw error;
-            }
-            await new Promise(r => setTimeout(r, 1000 * llmRetries));
-          }
-        }
-
-        if (!response) {
-          finalResult = 'No response from LLM';
-          break;
-        }
-
-        // Parse structured output from text
-        const parsed = this.parseAgentResponse(response.text || '');
-
-        // Update memory from parsed response
-        if (parsed.memory) {
-          this.agentMemory = parsed.memory;
-        }
-
-        // Log thinking and evaluation
-        if (parsed.thinking) {
-          console.log(`[BrowserAgent] Thinking: ${parsed.thinking.slice(0, 150)}...`);
-          this.streamEmitter.emitThinking(parsed.thinking, 'thinking');
-        }
-        if (parsed.evaluationPreviousGoal) {
-          console.log(`[BrowserAgent] Evaluation: ${parsed.evaluationPreviousGoal}`);
-        }
-
-        // Add assistant response to conversation
-        this.conversation.push({
-          role: 'assistant',
-          content: response.text || '',
-        });
-
-        // Done signal — only stop if browser_end was explicitly called or max iterations reached
-        // Don't stop just because LLM naturally finished (response.done=true)
-        const lastAction = actionsTaken[actionsTaken.length - 1];
-        if (lastAction && lastAction.includes('browser_end')) {
-          finalResult = response.text || 'Task completed (browser_end called)';
-          success = true;
-          break;
-        }
-
-        // Only break on done=true if there are no tool calls AND we have some content
-        // This prevents premature stopping when LLM is just pausing between tool calls
-        if ((response.done || parsed.done) && !response.tool_calls?.length) {
-          // Check if this is actual completion or just a pause
-          const hasContent = response.text && response.text.length > 50;
-          const isSuccess = parsed.evaluationPreviousGoal?.toLowerCase().includes('success');
-
-          if (hasContent || isSuccess) {
-            finalResult = response.text || 'Task completed';
-            success = isSuccess || actionsTaken.length > 0;
-            break;
-          }
-          // If no meaningful content, continue the loop
-          console.log('[BrowserAgent] LLM paused without completion - continuing loop');
-        }
-
-        // Execute tool calls
-        if (response.tool_calls && response.tool_calls.length > 0) {
-          let anySuccess = false;
-          let combinedOutput = '';
-
-          for (const toolCall of response.tool_calls) {
-            if (this.cancelled) break;
-
-            const result = await this.executeToolCall(
-              toolCall.name,
-              toolCall.arguments || {},
-              actionsTaken,
-              iteration,
-            );
-
-            if (result.success) {
-              anySuccess = true;
-              combinedOutput += `[${toolCall.name}]: ${result.output}\n`;
-            } else {
-              combinedOutput += `[${toolCall.name}] FAILED: ${result.error || 'Unknown error'}\n`;
-            }
-          }
-
-          // After tool execution, capture new state and inject as vision message
-          if (!this.cancelled) {
-            await new Promise(r => setTimeout(r, 500)); // Brief pause for page updates
-
-            const newState = await this.captureState();
-            const stateMsg = this.buildStateMessage(
-              `Continue working on: ${task}`,
-              newState.output,
-              newState.screenshot,
-              newState.url,
-            );
-
-            // Prefix with action results
-            if (typeof stateMsg.content === 'string') {
-              stateMsg.content = `<action_results>\n${combinedOutput.trim()}\n</action_results>\n\n${stateMsg.content}`;
-            } else if (Array.isArray(stateMsg.content)) {
-              const textPart = stateMsg.content.find(p => p.type === 'text');
-              if (textPart && 'text' in textPart) {
-                textPart.text = `<action_results>\n${combinedOutput.trim()}\n</action_results>\n\n${textPart.text}`;
-              }
-            }
-
-            this.conversation.push(stateMsg);
-          }
-
-          // Check if browser_end was called - if so, the agent has completed the task
-          if (actionsTaken.includes('browser_end')) {
-            console.log('[BrowserAgent] Agent called browser_end - stopping loop');
-            finalResult = combinedOutput || 'Task completed by agent (browser_end called)';
-            success = true;
-            break;
-          }
-
-          // If all actions failed and we're in a failure loop, inject reflection
-          if (!anySuccess && this.consecutiveFailures >= 3) {
-            this.conversation.push({
-              role: 'user',
-              content: '<reflection>\nMultiple consecutive failures. The previous actions did not succeed. Examine the SCREENSHOT carefully to understand the actual page state. Try a completely different approach.\n</reflection>',
-            });
-          }
-        } else {
-          // No tool calls — text-only response
-          // Don't break just because of text response - that might be LLM thinking
-          // Only break if browser_end was explicitly called (checked above) or max iterations reached
-
-          if (iteration >= this.maxIterations) {
-            finalResult = response.text || 'Max iterations reached';
-            success = actionsTaken.length > 0;
-            break;
-          }
-
-          // Prompt to continue
-          this.conversation.push({
-            role: 'user',
-            content: 'Please continue. Take the next action to complete the task.',
-          });
-        }
-
-        // Max iterations check
-        if (iteration >= this.maxIterations) {
-          finalResult = this.agentMemory || `Completed ${actionsTaken.length} actions`;
-          success = actionsTaken.length > 0;
-          break;
-        }
-
-        // Budget warning at 75%
-        if (iteration >= this.maxIterations * 0.75) {
-          this.conversation.push({
-            role: 'user',
-            content: `<budget_warning>You have used ${iteration}/${this.maxIterations} steps. Focus on the most important remaining items and wrap up soon.</budget_warning>`,
-          });
-        }
-      }
-
-      if (!finalResult && !this.cancelled) {
-        finalResult = this.agentMemory || 'Task execution ended without final result';
-        success = actionsTaken.length > 0;
-      }
-
-      if (this.memory) {
-        await this.memory.onSessionEnd();
-      }
-
-      return {
-        task,
-        result: finalResult || 'Task completed',
-        success,
-        actions_taken: actionsTaken,
-        steps,
-        iterations: iteration,
-        strategy_used: 'browser_vision',
-        elapsed_secs: 0,
-      };
-    } catch (error) {
-      console.error('[BrowserAgent] Fatal error:', error);
-      return {
-        task,
-        result: error instanceof Error ? error.message : String(error),
-        success: false,
-        actions_taken: actionsTaken,
-        steps,
-        iterations: iteration,
-        strategy_used: 'browser_vision',
-        elapsed_secs: 0,
-      };
-    }
-  }
-
+  /**
+   * Cancel the current execution
+   */
   cancel(): void {
     this.cancelled = true;
     this.streamEmitter.emitError('Task cancelled', false);
   }
 
+  /**
+   * Get available tool definitions
+   */
   getToolDefinitions(): ToolDefinition[] {
     return this.toolBus.getDefinitions();
+  }
+
+  /**
+   * Get available skills (if skill engine is configured)
+   */
+  getAvailableSkills(): string[] {
+    if (!this.skillEngine) return [];
+    return listSkills({
+      skillEngine: this.skillEngine,
+      skillSearch: this.skillSearch,
+      toolBus: this.toolBus
+    });
+  }
+
+  /**
+   * Search for skills matching query
+   */
+  async searchSkills(query: string): Promise<any[]> {
+    if (!this.skillSearch) return [];
+    return searchSkills(query, {
+      skillEngine: this.skillEngine ?? undefined,
+      skillSearch: this.skillSearch ?? undefined,
+      toolBus: this.toolBus,
+      cwd: this.workingDirectory
+    });
   }
 }

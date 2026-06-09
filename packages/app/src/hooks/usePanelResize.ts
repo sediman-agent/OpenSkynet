@@ -4,8 +4,6 @@ export interface UsePanelResizeOptions {
   defaultWidth?: number;
   minWidth?: number;
   maxWidth?: number;
-  isOpen?: boolean;
-  isFullscreen?: boolean;
 }
 
 export interface UsePanelResizeReturn {
@@ -22,9 +20,7 @@ export function usePanelResize(options: UsePanelResizeOptions = {}): UsePanelRes
   const {
     defaultWidth = 600,
     minWidth = 400,
-    maxWidth = 1200,
-    isOpen = true,
-    isFullscreen = false
+    maxWidth = 1200
   } = options;
 
   const [panelWidth, setPanelWidth] = useState(defaultWidth);

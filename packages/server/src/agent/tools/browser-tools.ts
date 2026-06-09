@@ -270,6 +270,136 @@ export function registerBrowserTools(toolBus: ToolBus, controller?: BrowserContr
           break;
         }
 
+        case 'browser_drag_and_drop':
+          result = await ctrl.dragAndDrop(args.sourceRefId as number, args.targetRefId as number);
+          storeScreenshot();
+          break;
+
+        case 'browser_upload_file':
+          result = await ctrl.uploadFile(args.refId as number, args.filePath as string);
+          storeScreenshot();
+          break;
+
+        case 'browser_execute_script': {
+          const scriptResult = await ctrl.evaluate(args.script as string);
+          result = typeof scriptResult === 'object' ? JSON.stringify(scriptResult) : String(scriptResult);
+          break;
+        }
+
+        case 'browser_close_tab':
+          result = await ctrl.closeTab(args.index as number | undefined);
+          break;
+
+        case 'browser_extract_data': {
+          // Extract specific structured data from the current page
+          const query = (args.query as string) || '';
+          const format = (args.format as string) || 'text';
+
+          logger.info(`[browser_extract_data] Extracting data for query: "${query}", format: "${format}"`);
+
+          try {
+            // Get page text for extraction
+            const pageText = await ctrl.extractText();
+            logger.info(`[browser_extract_data] Page text length: ${pageText.length}, preview: ${pageText.slice(0, 100)}...`);
+
+            // Try to extract based on format hint
+            let extracted = '';
+            let found = false;
+
+            if (format === 'price') {
+              // Extract price patterns: $123.45, USD 123.45, €123.45, etc.
+              const pricePatterns = [
+                /[\$€£¥]\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?/g,  // $123.45, $1,234.56
+                /\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s?(?:USD|EUR|GBP|JPY|CNY)/gi, // 123.45 USD
+              ];
+              for (const pattern of pricePatterns) {
+                const matches = pageText.match(pattern);
+                if (matches && matches.length > 0) {
+                  extracted = matches[0];
+                  found = true;
+                  logger.info(`[browser_extract_data] Found price: ${extracted}`);
+                  break;
+                }
+              }
+            } else if (format === 'date') {
+              // Extract date patterns: June 15, 2027, 15/06/2027, etc.
+              const datePatterns = [
+                /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}\b/gi,
+                /\d{1,2}\/\d{1,2}\/\d{4}/g,
+                /\d{4}-\d{2}-\d{2}/g,
+              ];
+              for (const pattern of datePatterns) {
+                const matches = pageText.match(pattern);
+                if (matches && matches.length > 0) {
+                  extracted = matches[0];
+                  found = true;
+                  logger.info(`[browser_extract_data] Found date: ${extracted}`);
+                  break;
+                }
+              }
+            } else if (format === 'email') {
+              const emailMatch = pageText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g);
+              if (emailMatch && emailMatch.length > 0) {
+                extracted = emailMatch[0];
+                found = true;
+                logger.info(`[browser_extract_data] Found email: ${extracted}`);
+              }
+            } else if (format === 'phone') {
+              const phonePatterns = [
+                /\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/g, // 123-456-7890
+                /\b\+\d{1,3}\s?\d{3,}\s?\d{3,}\s?\d{4}\b/g, // +1 234 567 8900
+              ];
+              for (const pattern of phonePatterns) {
+                const matches = pageText.match(pattern);
+                if (matches && matches.length > 0) {
+                  extracted = matches[0];
+                  found = true;
+                  logger.info(`[browser_extract_data] Found phone: ${extracted}`);
+                  break;
+                }
+              }
+            } else if (format === 'number') {
+              const numberMatch = pageText.match(/\b\d+(?:,\d{3})*(?:\.\d+)?\b/g);
+              if (numberMatch && numberMatch.length > 0) {
+                extracted = numberMatch[0];
+                found = true;
+                logger.info(`[browser_extract_data] Found number: ${extracted}`);
+              }
+            } else {
+              // Default text extraction - look for the query context in page text
+              // Search for relevant sentences containing the query terms
+              const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+              const sentences = pageText.split(/[.!?]+/).filter(s => s.length > 10);
+              for (const sentence of sentences) {
+                const lowerSentence = sentence.toLowerCase();
+                const matchCount = queryWords.filter(w => lowerSentence.includes(w)).length;
+                if (matchCount >= Math.min(2, queryWords.length)) {
+                  extracted = sentence.trim();
+                  found = true;
+                  logger.info(`[browser_extract_data] Found text: ${extracted.slice(0, 100)}...`);
+                  break;
+                }
+              }
+            }
+
+            if (found && extracted) {
+              result = `Extracted: ${extracted}`;
+            } else {
+              // Fallback: return page text snippet around relevant keywords
+              const relevantSnippet = pageText.split('\n').find(line =>
+                query.toLowerCase().split(/\s+/).some((w: string) => w.length > 3 && line.toLowerCase().includes(w))
+              );
+              result = relevantSnippet?.trim() || `Could not extract data for: ${query}. Here's some page content: ${pageText.slice(0, 300)}...`;
+              logger.info(`[browser_extract_data] Using fallback result`);
+            }
+          } catch (error) {
+            const errMsg = error instanceof Error ? error.message : String(error);
+            logger.error(`[browser_extract_data] Error: ${errMsg}`);
+            result = `Error extracting data: ${errMsg}. Please try using browser_snapshot to see page content and extract data manually.`;
+          }
+          break;
+        }
+
         case 'browser_end':
           result = `Task completed: ${(args.summary as string) || 'Done'}`;
           break;

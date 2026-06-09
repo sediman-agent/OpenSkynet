@@ -34,6 +34,10 @@ export async function apiPatch<T>(path: string, body?: any): Promise<T> {
   return res.json()
 }
 
+/**
+ * VS Code-Style Optimized Streaming
+ * Implements microtask batching and efficient chunk processing
+ */
 export function apiStream(
   path: string,
   body: any,
@@ -42,6 +46,54 @@ export function apiStream(
   onError?: (err: Error) => void,
 ): () => void {
   let controller = new AbortController()
+
+  // VS Code-style chunk queue and batch processing
+  const chunkQueue: { type: string; data: any }[] = []
+  let isFlushScheduled = false
+  let isProcessing = false
+
+  /**
+   * Flush queued chunks via microtask (VS Code Layer 1 batching)
+   */
+  const flushChunks = () => {
+    if (chunkQueue.length === 0) {
+      isFlushScheduled = false
+      isProcessing = false
+      return
+    }
+
+    const chunks = chunkQueue.splice(0)
+
+    // Batch process chunks
+    for (const chunk of chunks) {
+      try {
+        onEvent(chunk.type, chunk.data)
+      } catch (e) {
+        console.error('[apiStream] Event callback error:', e)
+      }
+    }
+
+    isFlushScheduled = false
+    isProcessing = false
+
+    // If more chunks arrived during processing, flush again
+    if (chunkQueue.length > 0 && !isFlushScheduled) {
+      isFlushScheduled = true
+      queueMicrotask(flushChunks)
+    }
+  }
+
+  /**
+   * Schedule chunk flush via microtask
+   */
+  const scheduleFlush = (type: string, data: any) => {
+    chunkQueue.push({ type, data })
+
+    if (!isFlushScheduled) {
+      isFlushScheduled = true
+      queueMicrotask(flushChunks)
+    }
+  }
 
   fetch(`${API_BASE}${path}`, {
     method: 'POST',
@@ -89,9 +141,11 @@ export function apiStream(
 
           if (data) {
             try {
-              onEvent(event, JSON.parse(data))
+              const parsed = JSON.parse(data)
+              // Queue for batch processing instead of immediate callback
+              scheduleFlush(event, parsed)
             } catch {
-              onEvent(event, data)
+              scheduleFlush(event, data)
             }
           }
         }
@@ -100,6 +154,8 @@ export function apiStream(
       throw new Error(`Stream reading error: ${err instanceof Error ? err.message : String(err)}`)
     }
 
+    // Final flush before completion
+    flushChunks()
     onDone?.()
   }).catch((err) => {
     if (err.name === 'AbortError') return
