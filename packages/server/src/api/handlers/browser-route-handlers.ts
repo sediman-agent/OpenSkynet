@@ -92,6 +92,43 @@ export class BrowserRouteHandlers {
   }
 
   /**
+   * Handle browser command execution result submission from frontend
+   * This is called by the frontend after executing a command via Electron IPC
+   */
+  async handleExecResult(c: Context): Promise<Response> {
+    try {
+      const requestBody = await c.req.json();
+      const { commandId, result, error } = requestBody;
+
+      logger.info(`[BrowserAPI] Received execution result for ${commandId}:`, {
+        success: !!result,
+        hasError: !!error
+      });
+
+      // Extract action name from commandId (format: "action-timestamp")
+      const action = commandId?.split('-')[0] || commandId;
+
+      // Store the result in the state service so it can be retrieved by the agent
+      if (result) {
+        this.state.setCommandResult(action, result);
+      }
+
+      if (error) {
+        this.state.setCommandError(action, error);
+      }
+
+      return c.json({
+        success: true,
+        message: 'Result received'
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(`[BrowserAPI] Failed to handle exec result: ${message}`);
+      return c.json({ success: false, error: message }, 500);
+    }
+  }
+
+  /**
    * Handle browser exec polling (for execution results)
    */
   async handleExecPoll(c: Context): Promise<Response> {
@@ -99,12 +136,26 @@ export class BrowserRouteHandlers {
     const url = this.state.getScreenshotUrl();
     const snapshot = this.state.getLatestScreenshot();
 
+    // Also check for any command results that have been submitted
+    const commandResults: Record<string, any> = {};
+    const actions = ['navigate', 'snapshot', 'screenshot', 'click', 'type', 'scroll', 'wait', 'hover', 'press_key', 'extract_text'];
+
+    for (const action of actions) {
+      const result = this.state.getCommandResult(action);
+      if (result) {
+        commandResults[action] = result;
+        // Clear the result after reading to prevent stale data
+        this.state.clearCommandResult(action);
+      }
+    }
+
     return c.json({
       success: true,
       ready: true,
       screenshot: screenshot || null,
       url: url || '',
       snapshot: snapshot || null,
+      commandResults: Object.keys(commandResults).length > 0 ? commandResults : undefined,
       timestamp: Date.now()
     });
   }
@@ -272,6 +323,7 @@ export class BrowserRouteHandlers {
     return c.json({
       success: true,
       commands: commands.map(cmd => ({
+        id: cmd.id,
         action: cmd.action,
         params: cmd.params,
         timestamp: cmd.timestamp
@@ -281,16 +333,18 @@ export class BrowserRouteHandlers {
 }
 
 // Global pending commands array for Electron mode
-let pendingCommands: Array<{ action: string; params: Record<string, any>; timestamp: number }> = [];
+let pendingCommands: Array<{ action: string; params: Record<string, any>; timestamp: number; id: string }> = [];
 
 /**
  * Add a browser command to the pending queue (called by handleExec)
  */
 export function addPendingCommand(action: string, params: Record<string, any>): void {
+  const id = `${action}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   pendingCommands.push({
+    id,
     action,
     params,
     timestamp: Date.now()
   });
-  logger.info(`[BrowserAPI] Added pending command: ${action}`);
+  logger.info(`[BrowserAPI] Added pending command: ${action} with id: ${id}`);
 }

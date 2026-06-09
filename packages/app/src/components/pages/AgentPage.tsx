@@ -13,7 +13,6 @@ import { FileUploadZone } from '@/elements/form/FileUploadZone';
 import { AgentMessages } from '@/components/agent/AgentMessages';
 import { AgentInput } from '@/components/agent/AgentInput';
 import { FileAttachmentBar } from '@/components/agent/FileAttachmentBar';
-import { StreamingExecutionDisplay } from '@/components/agent/StreamingExecutionDisplay';
 import { useAgentInput } from '@/hooks/agent/useAgentInput';
 import { useAgentStreaming } from '@/hooks/agent/useAgentStreaming';
 import { useScrollControl } from '@/hooks/agent/useScrollControl';
@@ -377,29 +376,28 @@ export function AgentPage() {
 
       {/* Messages Area - Professional Layout */}
       <div
-        className="flex-1 overflow-hidden"
+        className="flex-1"
         onPaste={handlePaste}
         style={{
           maxWidth: 900,
           margin: '0 auto',
           width: '100%',
-          padding: '0 20px'
+          padding: '0 20px',
+          height: '100%',  // Ensure full height for scrolling
+          minHeight: 0,    // Important for flex scrolling
+          display: 'flex',
+          flexDirection: 'column'
         }}
       >
         {/* Welcome Message - Empty State */}
         {!hasMessages && !isStreaming && (
           <div className="flex flex-col items-center justify-center h-full text-center" style={{ padding: '48px 16px' }}>
-            <div style={{ color: 'var(--vscode-secondary-text)' }}>
-              <p style={{ fontSize: '13px', marginBottom: '8px' }}>Start a conversation with the agent</p>
-              <p style={{ fontSize: '11px', opacity: 0.7 }}>
-                Type your message below or use slash commands for quick actions
-              </p>
-            </div>
+            {/* Empty - no welcome text */}
           </div>
         )}
 
         {/* Messages List - Better Spacing */}
-        <div className="space-y-1">
+        <div className="space-y-1" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <AgentMessages
             messages={messages}
             isStreaming={isStreaming}
@@ -411,25 +409,7 @@ export function AgentPage() {
             onToggleThinking={toggleThinking}
           />
 
-          {/* Streaming Execution Display - Integrated */}
-          {isStreaming && executionSteps.length > 0 && (
-            <div className="mx-1 mb-2">
-              <StreamingExecutionDisplay
-                toolCalls={executionSteps.map(step => ({
-                  id: step.id,
-                  action: step.action || 'Unknown',
-                  detail: step.detail,
-                  status: step.status,
-                  timestamp: step.timestamp,
-                  duration: step.duration,
-                  output: step.observation,
-                  error: step.error?.message
-                }))}
-                phase={streamingPhase}
-                isStreaming={true}
-              />
-            </div>
-          )}
+          {/* Tool calls are now persisted to messages and displayed in MessageBubble */}
         </div>
 
         {/* Scroll to bottom button - Professional */}

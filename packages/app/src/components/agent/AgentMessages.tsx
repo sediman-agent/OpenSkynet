@@ -42,7 +42,7 @@ export function AgentMessages({
   };
 
   return (
-    <div className="flex-1 overflow-hidden" style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
+    <div className="flex-1" style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Messages Container */}
       <div
         ref={scrollRef}
@@ -51,20 +51,15 @@ export function AgentMessages({
         style={{
           position: 'relative',
           width: '100%',
-          overflowY: messages.length === 0 ? 'hidden' : 'auto'
+          overflowY: messages.length === 0 ? 'hidden' : 'auto',
+          minHeight: 0  // Important for flex scrolling
         }}
       >
         <div className="max-w-3xl mx-auto px-4 py-6">
-          {/* Welcome Message */}
+          {/* Welcome Message - Empty */}
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                <div className="w-8 h-8 rounded-full bg-primary/20" />
-              </div>
-              <h2 className="text-lg font-semibold mb-2">Welcome to Agent</h2>
-              <p className="text-sm text-muted-foreground max-w-md">
-                Start a conversation with the AI agent. It can help you browse the web, analyze pages, and complete tasks.
-              </p>
+              {/* Empty state - no text */}
             </div>
           )}
 

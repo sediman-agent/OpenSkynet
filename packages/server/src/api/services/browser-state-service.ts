@@ -50,6 +50,8 @@ export class BrowserStateService {
     message: ''
   };
   private externalCdpUrl: string | null = null;
+  private commandResults: Map<string, any> = new Map();
+  private commandErrors: Map<string, string> = new Map();
 
   // === Screenshot Management ===
 
@@ -215,6 +217,46 @@ export class BrowserStateService {
    */
   setInterventionResolver(resolve: (result: string) => void): void {
     this.intervention.resolve = resolve;
+  }
+
+  // === Command Results ===
+
+  /**
+   * Store command execution result
+   */
+  setCommandResult(action: string, result: any): void {
+    this.commandResults.set(action, result);
+    logger.info(`[BrowserStateService] Stored result for ${action}`);
+  }
+
+  /**
+   * Get command execution result
+   */
+  getCommandResult(action: string): any | null {
+    return this.commandResults.get(action) ?? null;
+  }
+
+  /**
+   * Store command execution error
+   */
+  setCommandError(action: string, error: string): void {
+    this.commandErrors.set(action, error);
+    logger.error(`[BrowserStateService] Stored error for ${action}: ${error}`);
+  }
+
+  /**
+   * Get command execution error
+   */
+  getCommandError(action: string): string | null {
+    return this.commandErrors.get(action) ?? null;
+  }
+
+  /**
+   * Clear command results (after they've been consumed)
+   */
+  clearCommandResult(action: string): void {
+    this.commandResults.delete(action);
+    this.commandErrors.delete(action);
   }
 
   // === External CDP URL ===

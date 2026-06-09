@@ -83,9 +83,7 @@ export class IPCBrowserExecutor {
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      // Check if we should use the backend API or Electron IPC
-      // For now, we still call the backend API which will acknowledge in Electron mode
-      // The actual Electron IPC execution is handled by the frontend
+      // Step 1: Submit command to backend
       const response = await fetch(this.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -100,8 +98,15 @@ export class IPCBrowserExecutor {
 
       if (response.ok) {
         const data = await response.json();
-        logger.info(`[IPC-Browser] Command executed: ${toolName}`, data);
+        logger.info(`[IPC-Browser] Command submitted: ${toolName}`, data);
 
+        // Step 2: If command was queued, poll for actual result
+        if (data.result && data.result.includes('queued for execution')) {
+          logger.info(`[IPC-Browser] Command queued, polling for result...`);
+          return await this.pollForResult(toolName, args);
+        }
+
+        // Step 3: Return direct result if available
         const rawResult = data.result ?? data.message ?? `Executed ${toolName}`;
         const result = this.formatResult(rawResult);
 
@@ -122,6 +127,55 @@ export class IPCBrowserExecutor {
       clearTimeout(timeoutId);
       throw error;
     }
+  }
+
+  /**
+   * Poll for actual command result after it was queued
+   */
+  private async pollForResult(toolName: string, args: Record<string, any>): Promise<IPCExecutionResult> {
+    const pollEndpoint = this.endpoint.replace('/exec', '/exec/poll');
+    const maxPollTime = 10000; // 10 seconds max polling time
+    const pollInterval = 200; // Poll every 200ms
+    const startTime = Date.now();
+    const actionName = toolName.replace('browser_', '');
+
+    while (Date.now() - startTime < maxPollTime) {
+      try {
+        const pollResponse = await fetch(pollEndpoint);
+        if (pollResponse.ok) {
+          const pollData = await pollResponse.json();
+
+          // Check for command results first (highest priority)
+          if (pollData.commandResults && pollData.commandResults[actionName]) {
+            logger.info(`[IPC-Browser] Got command result for ${toolName}:`, pollData.commandResults[actionName]);
+            return { success: true, result: pollData.commandResults[actionName] };
+          }
+
+          // Fallback to checking for snapshot/screenshot if available
+          if (pollData.snapshot && Object.keys(pollData.snapshot).length > 0) {
+            logger.info(`[IPC-Browser] Got snapshot result for ${toolName}`);
+            return { success: true, result: pollData.snapshot };
+          }
+
+          if (pollData.screenshot) {
+            logger.info(`[IPC-Browser] Got screenshot result for ${toolName}`);
+            return { success: true, result: pollData.screenshot };
+          }
+
+          // If no results yet, wait and poll again
+          await this.delay(pollInterval);
+        }
+      } catch (error) {
+        logger.warn(`[IPC-Browser] Poll error: ${error}`);
+        await this.delay(pollInterval);
+      }
+    }
+
+    // Timeout waiting for results
+    return {
+      success: false,
+      error: `Timeout waiting for result from ${toolName}`
+    };
   }
 
   /**

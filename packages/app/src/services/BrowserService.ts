@@ -109,6 +109,10 @@ class BrowserService extends EventEmitter {
     for (const command of commands) {
       try {
         console.log('[BrowserService] Executing:', command.action, command.params);
+        console.log('[BrowserService] Full command:', JSON.stringify(command));
+
+        let result: any = null;
+        let error: string | null = null;
 
         switch (command.action) {
           case 'navigate':
@@ -116,14 +120,17 @@ class BrowserService extends EventEmitter {
             if (this.webviewRef) {
               const url = command.params?.url;
               console.log('[BrowserService] Navigating webview to:', url);
-              console.log('[BrowserService] Command params:', JSON.stringify(command.params));
-              console.log('[BrowserService] Full command:', JSON.stringify(command));
               if (url) {
                 this.webviewRef.src = url;
+                result = { success: true, url };
+                // Wait for navigation to complete
+                await new Promise(resolve => setTimeout(resolve, 2000));
               } else {
+                error = 'No URL found in command';
                 console.error('[BrowserService] No URL found in command');
               }
             } else {
+              error = 'No webview registered for navigation';
               console.error('[BrowserService] No webview registered for navigation');
             }
             break;
@@ -131,7 +138,7 @@ class BrowserService extends EventEmitter {
             // Execute click directly on webview
             if (this.webviewRef) {
               console.log('[BrowserService] Clicking at:', command.params.x, command.params.y);
-              await this.webviewRef.executeJavaScript(`
+              const clickResult = await this.webviewRef.executeJavaScript(`
                 (async () => {
                   const element = document.elementFromPoint(${command.params.x}, ${command.params.y});
                   if (element) {
@@ -141,13 +148,14 @@ class BrowserService extends EventEmitter {
                   return { success: false, error: 'No element at point' };
                 })()
               `);
+              result = clickResult;
             }
             break;
           case 'type':
             // Execute type directly on webview
             if (this.webviewRef && command.params.selector) {
               console.log('[BrowserService] Typing into:', command.params.selector);
-              await this.webviewRef.executeJavaScript(`
+              const typeResult = await this.webviewRef.executeJavaScript(`
                 (async () => {
                   const element = document.querySelector('${command.params.selector}');
                   if (element) {
@@ -158,13 +166,14 @@ class BrowserService extends EventEmitter {
                   return { success: false, error: 'Element not found' };
                 })()
               `);
+              result = typeResult;
             }
             break;
           case 'snapshot':
             // Execute snapshot directly on webview
             if (this.webviewRef) {
               console.log('[BrowserService] Taking snapshot...');
-              const result = await this.webviewRef.executeJavaScript(`
+              const snapResult = await this.webviewRef.executeJavaScript(`
                 (async () => {
                   const interactive = document.querySelectorAll('button, a, input, textarea, select, [onclick], [role="button"]');
                   const results = [];
@@ -187,7 +196,8 @@ class BrowserService extends EventEmitter {
                   };
                 })()
               `);
-              console.log('[BrowserService] Snapshot result:', result);
+              console.log('[BrowserService] Snapshot result:', snapResult);
+              result = snapResult;
               this.emit('snapshot', result);
             }
             break;
@@ -196,7 +206,7 @@ class BrowserService extends EventEmitter {
             if (this.webviewRef) {
               console.log('[BrowserService] Taking screenshot...');
               try {
-                const result = await this.webviewRef.executeJavaScript(`
+                const shotResult = await this.webviewRef.executeJavaScript(`
                   (async () => {
                     const canvas = document.createElement('canvas');
                     canvas.width = window.innerWidth;
@@ -209,9 +219,11 @@ class BrowserService extends EventEmitter {
                     return canvas.toDataURL('image/png', 0.9);
                   })()
                 `);
-                console.log('[BrowserService] Screenshot result:', result ? 'success' : 'failed');
+                console.log('[BrowserService] Screenshot result:', shotResult ? 'success' : 'failed');
+                result = shotResult;
                 this.emit('screenshot', result);
               } catch (err) {
+                error = err instanceof Error ? err.message : String(err);
                 console.error('[BrowserService] Screenshot failed:', err);
               }
             }
@@ -221,12 +233,50 @@ class BrowserService extends EventEmitter {
             if (this.webviewRef) {
               console.log('[BrowserService] Refreshing webview...');
               this.webviewRef.reload();
+              result = { success: true };
             }
             break;
         }
+
+        // Send result back to backend
+        const commandId = (command as any).id;
+        if (commandId) {
+          await this.sendCommandResult(commandId, result, error);
+        } else {
+          console.error('[BrowserService] Command missing ID field:', command);
+        }
       } catch (err) {
         console.error('[BrowserService] Command execution error:', err);
+        // Try to send error result if we have command ID
+        const commandId = (command as any).id;
+        if (commandId) {
+          await this.sendCommandResult(commandId, null, err instanceof Error ? err.message : String(err));
+        }
       }
+    }
+  }
+
+  /**
+   * Send command execution result back to backend
+   */
+  private async sendCommandResult(commandId: string, result: any, error: string | null): Promise<void> {
+    try {
+      const response = await fetch('http://localhost:3001/api/browser/exec/result', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commandId,
+          result,
+          error
+        })
+      });
+      if (response.ok) {
+        console.log('[BrowserService] Result sent for command:', commandId);
+      } else {
+        console.error('[BrowserService] Failed to send result:', response.status);
+      }
+    } catch (err) {
+      console.error('[BrowserService] Error sending result:', err);
     }
   }
 

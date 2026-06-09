@@ -27,20 +27,20 @@
   --vscode-input-height: 26px;
 
   /* Button Components */
-  --vscode-button-primaryBackground: #8b5cf6;
+  --vscode-button-primaryBackground: #007fd4;
   --vscode-button-primaryForeground: #ffffff;
-  --vscode-button-primaryHoverBackground: #7c3aed;
+  --vscode-button-primaryHoverBackground: #006bb3;
   --vscode-button-secondaryBackground: #f3f4f6;
   --vscode-button-secondaryForeground: #374151;
   --vscode-button-secondaryHoverBackground: #e5e7eb;
   --vscode-button-iconBackground: transparent;
-  --vscode-button-iconHoverBackground: rgba(139, 92, 246, 0.1);
+  --vscode-button-iconHoverBackground: rgba(0, 127, 212, 0.1);
   --vscode-button-iconCornerRadius: 5px;
 
   /* List/Dropdown */
   --vscode-list-hoverBackground: #f3f4f6;
-  --vscode-list-activeSelectionBackground: #ede9fe;
-  --vscode-list-activeSelectionForeground: #5b21b6;
+  --vscode-list-activeSelectionBackground: #e4e6f1;
+  --vscode-list-activeSelectionForeground: #323233;
   --vscode-dropdown-background: #ffffff;
   --vscode-dropdown-border: #e5e5e5;
   --vscode-dropdown-foreground: #374151;
@@ -48,8 +48,8 @@
   /* Panel Components */
   --vscode-panel-background: #ffffff;
   --vscode-panel-border: #e8e8e8;
-  --vscode-panel-tabActiveBorder: #8b5cf6;
-  --vscode-panel-tabActiveForeground: #5b21b6;
+  --vscode-panel-tabActiveBorder: #007fd4;
+  --vscode-panel-tabActiveForeground: #323233;
   --vscode-panel-tabForeground: #9ca3af;
 
   /* Status Bar */
@@ -82,12 +82,12 @@
   --vscode-badge-foreground: #374151;
 
   /* Link */
-  --vscode-link-foreground: #7c3aed;
-  --vscode-link-activeForeground: #6d28d9;
-  --vscode-link-hoverForeground: #8b5cf6;
+  --vscode-link-foreground: #007fd4;
+  --vscode-link-activeForeground: #006bb3;
+  --vscode-link-hoverForeground: #0060a0;
 
   /* Progress */
-  --vscode-progress-background: #8b5cf6;
+  --vscode-progress-background: #007fd4;
 
   /* Secondary Text */
   --vscode-secondary-foreground: #6b7280;
@@ -97,11 +97,11 @@
   /* Status Colors */
   --vscode-error-foreground: #dc2626;
   --vscode-warning-foreground: #d97706;
-  --vscode-info-foreground: #7c3aed;
+  --vscode-info-foreground: #007fd4;
   --vscode-success-foreground: #059669;
 
   /* User Message - Enhanced Visibility */
-  --vscode-user-message-bg: #7c3aed;
+  --vscode-user-message-bg: #0e639c;
   --vscode-user-message-fg: #ffffff;
 
   --vscode-text-block-background: #f9fafb;
@@ -125,12 +125,11 @@
   /* Global Colors */
   --vscode-background: #0f0f12;
   --vscode-foreground: #e4e4e7;
-  --vscode-focusBorder: #a78bfa;
+  --vscode-focusBorder: #007fd4;
   --vscode-contrastActiveBorder: #fbbf24;
-  --vscode-contrastBorder: #c4b5fd;
+  --vscode-contrastBorder: #6fc3df;
 
   /* Border & Divider */
-  --vscode-focus-border: #a78bfa;
   --vscode-border-color: #27272a;
   --vscode-divider-color: #3f3f46;
 
@@ -142,17 +141,17 @@
   --vscode-input-border: #27272a;
 
   /* Button Components */
-  --vscode-button-primaryBackground: #7c3aed;
-  --vscode-button-primaryForeground: #fafafa;
-  --vscode-button-primaryHoverBackground: #8b5cf6;
+  --vscode-button-primaryBackground: #0e639c;
+  --vscode-button-primaryForeground: #ffffff;
+  --vscode-button-primaryHoverBackground: #1177bb;
   --vscode-button-secondaryBackground: #27272a;
   --vscode-button-secondaryForeground: #e4e4e7;
   --vscode-button-secondaryHoverBackground: #3f3f46;
 
   /* List/Dropdown */
-  --vscode-list-hoverBackground: #27272a;
-  --vscode-list-activeSelectionBackground: #4c1d95;
-  --vscode-list-activeSelectionForeground: #fafafa;
+  --vscode-list-hoverBackground: #2a2d2e;
+  --vscode-list-activeSelectionBackground: #094771;
+  --vscode-list-activeSelectionForeground: #ffffff;
   --vscode-dropdown-background: #1c1c1e;
   --vscode-dropdown-border: #27272a;
   --vscode-dropdown-foreground: #e4e4e7;
@@ -160,14 +159,14 @@
   /* Panel Components */
   --vscode-panel-background: #0f0f12;
   --vscode-panel-border: #27272a;
-  --vscode-panel-tabActiveBorder: #a78bfa;
-  --vscode-panel-tabActiveForeground: #ddd6fe;
+  --vscode-panel-tabActiveBorder: #007fd4;
+  --vscode-panel-tabActiveForeground: #ffffff;
   --vscode-panel-tabForeground: #71717a;
 
   /* Status Bar */
-  --vscode-statusBar-background: #5b21b6;
-  --vscode-statusBar-foreground: #fafafa;
-  --vscode-statusBar-border: #5b21b6;
+  --vscode-statusBar-background: #6d28d9;
+  --vscode-statusBar-foreground: #ffffff;
+  --vscode-statusBar-border: #6d28d9;
 
   /* Secondary Text */
   --vscode-secondary-foreground: #a1a1aa;
@@ -178,9 +177,9 @@
   --vscode-badge-foreground: #e4e4e7;
 
   /* Link */
-  --vscode-link-foreground: #a78bfa;
-  --vscode-link-activeForeground: #c4b5fd;
-  --vscode-link-hoverForeground: #ddd6fe;
+  --vscode-link-foreground: #3794ff;
+  --vscode-link-activeForeground: #007fd4;
+  --vscode-link-hoverForeground: #0060a0;
 
   /* Checkbox */
   --vscode-checkbox-background: #1c1c1e;
