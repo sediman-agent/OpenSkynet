@@ -1,109 +1,164 @@
 /**
- * State Capture Module
- * Handles browser state capture (snapshot + screenshot) for agent vision
+ * State Capture
+ * Captures browser state with smart perception support
  */
 
-import type { BrowserController } from '../../browser/controller';
-import { setLatestScreenshot } from '../../api/routes/browser';
+import type { BrowserSession, PageState } from '../../browser/index.js';
+import { VisionDOMFusion } from '../../browser/perception/index.js';
+import { createLogger } from '../../core/logging.js';
 
+const logger = createLogger('state-capture');
+
+/**
+ * State capture options
+ */
+export interface StateCaptureOptions {
+  useVision?: boolean;
+  useSmartPerception?: boolean;
+  screenshotQuality?: 'low' | 'auto' | 'high';
+  fusionStrategy?: 'fast' | 'balanced' | 'accurate';
+}
+
+/**
+ * Captured state result
+ */
 export interface CapturedState {
-  output: string;
+  formatted: string;
   screenshot: string | null;
   url: string;
   title: string;
-}
-
-export interface StateCaptureOptions {
-  useVision: boolean;
-  includeElements?: boolean;
+  fusionState?: any;
 }
 
 /**
- * Capture current browser state: snapshot + screenshot → vision-enhanced message
+ * State Capture Manager
+ * This is extracted from agent/execution/enhanced-loop.ts
  */
-export async function captureState(
-  ctrl: BrowserController,
-  options: StateCaptureOptions
-): Promise<CapturedState> {
-  const { useVision } = options;
+export class StateCaptureManager {
+  private visionFusion?: VisionDOMFusion;
+  private useVision: boolean;
+  private useSmartPerception: boolean;
+  private screenshotQuality: 'low' | 'auto' | 'high';
+  private fusionStrategy: 'fast' | 'balanced' | 'accurate';
 
-  if (!ctrl) {
-    throw new Error('BrowserController not available');
+  constructor(options: StateCaptureOptions = {}) {
+    this.useVision = options.useVision ?? true;
+    this.useSmartPerception = options.useSmartPerception ?? false;
+    this.screenshotQuality = options.screenshotQuality ?? 'auto';
+    this.fusionStrategy = options.fusionStrategy ?? 'balanced';
+
+    if (this.useSmartPerception) {
+      this.visionFusion = new VisionDOMFusion();
+      logger.info('[StateCapture] Smart perception enabled');
+    }
   }
 
-  try {
-    const snapshot = await ctrl.snapshot();
-    const stateOutput = snapshot.output || snapshot.elements.map(
-      (el) => `[${el.refId}]<${el.tag}>${el.text ? ' ' + JSON.stringify(el.text.slice(0, 100)) : ''}`
-    ).join('\n');
-
-    let screenshot: string | null = null;
-
-    if (useVision) {
-      screenshot = await ctrl.screenshot();
+  /**
+   * Capture current browser state
+   */
+  async captureState(browserSession?: BrowserSession): Promise<CapturedState> {
+    if (!browserSession) {
+      return this.getEmptyState();
     }
 
-    // Store screenshot for UI updates
-    if (screenshot && screenshot.length > 100) {
-      setLatestScreenshot(screenshot, snapshot.url);
+    try {
+      const page = browserSession.context?.pages()[0];
+      if (!page) {
+        return this.getEmptyState();
+      }
+
+      if (this.useSmartPerception && this.visionFusion) {
+        return await this.captureFusedState(page);
+      } else {
+        return await this.captureBasicState(page, browserSession);
+      }
+    } catch (error) {
+      logger.error({ err: error as Error }, '[StateCapture] Failed to capture state');
+      return this.getEmptyState();
     }
+  }
+
+  /**
+   * Capture with smart perception (fusion)
+   */
+  private async captureFusedState(page: any): Promise<CapturedState> {
+    const fusedState = await this.visionFusion!.captureFusedState(page, {
+      includeScreenshot: this.useVision,
+      screenshotQuality: this.screenshotQuality,
+      fusionStrategy: this.fusionStrategy
+    });
 
     return {
-      output: stateOutput,
+      formatted: fusedState.dom.formatted,
+      screenshot: fusedState.screenshot.data,
+      url: fusedState.dom.state.url,
+      title: fusedState.dom.state.title,
+      fusionState: fusedState
+    };
+  }
+
+  /**
+   * Capture basic state (legacy method)
+   */
+  private async captureBasicState(page: any, browserSession: BrowserSession): Promise<CapturedState> {
+    const screenshot = this.useVision ? await browserSession.takeScreenshot() : null;
+    const url = page.url();
+    const title = await page.title();
+
+    return {
+      formatted: `URL: ${url}\nTitle: ${title}`,
       screenshot,
-      url: snapshot.url,
-      title: snapshot.title
+      url,
+      title
     };
-  } catch (error) {
-    console.error('[StateCapture] Failed to capture state:', error);
-    throw error;
-  }
-}
-
-/**
- * Capture snapshot only (no screenshot)
- */
-export async function captureSnapshotOnly(ctrl: BrowserController): Promise<CapturedState> {
-  if (!ctrl) {
-    throw new Error('BrowserController not available');
   }
 
-  try {
-    const snapshot = await ctrl.snapshot();
-    const stateOutput = snapshot.output || snapshot.elements.map(
-      (el) => `[${el.refId}]<${el.tag}>${el.text ? ' ' + JSON.stringify(el.text.slice(0, 100)) : ''}`
-    ).join('\n');
-
+  /**
+   * Get empty state when no browser available
+   */
+  private getEmptyState(): CapturedState {
     return {
-      output: stateOutput,
+      formatted: '',
       screenshot: null,
-      url: snapshot.url,
-      title: snapshot.title
+      url: '',
+      title: ''
     };
-  } catch (error) {
-    console.error('[StateCapture] Failed to capture snapshot:', error);
-    throw error;
-  }
-}
-
-/**
- * Capture screenshot only (no snapshot)
- */
-export async function captureScreenshotOnly(ctrl: BrowserController): Promise<string | null> {
-  if (!ctrl) {
-    throw new Error('BrowserController not available');
   }
 
-  try {
-    const screenshot = await ctrl.screenshot();
-    if (screenshot && screenshot.length > 100) {
-      const url = ctrl.getSession()?.context?.pages()[0]?.url() || '';
-      setLatestScreenshot(screenshot, url);
-      return screenshot;
+  /**
+   * Enable smart perception
+   */
+  enableSmartPerception(): void {
+    this.useSmartPerception = true;
+    if (!this.visionFusion) {
+      this.visionFusion = new VisionDOMFusion();
     }
-    return null;
-  } catch (error) {
-    console.error('[StateCapture] Failed to capture screenshot:', error);
-    throw error;
+    logger.info('[StateCapture] Smart perception enabled');
+  }
+
+  /**
+   * Update capture options
+   */
+  updateOptions(options: Partial<StateCaptureOptions>): void {
+    if (options.useVision !== undefined) this.useVision = options.useVision;
+    if (options.useSmartPerception !== undefined) this.useSmartPerception = options.useSmartPerception;
+    if (options.screenshotQuality !== undefined) this.screenshotQuality = options.screenshotQuality;
+    if (options.fusionStrategy !== undefined) this.fusionStrategy = options.fusionStrategy;
+
+    if (options.useSmartPerception && !this.visionFusion) {
+      this.visionFusion = new VisionDOMFusion();
+    }
+  }
+
+  /**
+   * Get current configuration
+   */
+  getConfig(): StateCaptureOptions {
+    return {
+      useVision: this.useVision,
+      useSmartPerception: this.useSmartPerception,
+      screenshotQuality: this.screenshotQuality,
+      fusionStrategy: this.fusionStrategy
+    };
   }
 }

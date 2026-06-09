@@ -1,6 +1,6 @@
 /**
- * ProjectPage Component
- * Project management page with threads and browser integration - Refactored
+ * VS Code-Style ProjectPage
+ * Project management page with threads and browser integration
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -161,36 +161,7 @@ export function ProjectPage() {
       const chatService = getChatService();
 
       // TODO: Implement project-specific streaming
-      // For now, using standard agent runTask
       console.log('[ProjectPage] Sending message to project:', messageText);
-
-      // Stream response (commented out until streamProjectResponse is implemented)
-      // await chatService.streamProjectResponse(activeProject.id, activeThread.id, messageText, {
-      //   onPhase: (phase) => updatePhase(phase),
-      //   onProgress: (content) => {
-      //     fullResponse += content;
-      //     updateLocalMessage(assistantMsgId, {
-      //       content: fullResponse,
-      //     });
-      //   },
-      //   onRetry: (progress) => updateRetryProgress(progress),
-      //   onComplete: (finalContent) => {
-      //     updateLocalMessage(assistantMsgId, {
-      //       content: finalContent,
-      //       status: 'done',
-      //     });
-      //     updateMessage(assistantMsgId, { status: 'done' });
-      //     stopStreaming();
-      //   },
-      //   onError: (error) => {
-      //     updateLocalMessage(assistantMsgId, {
-      //       content: `Error: ${error}`,
-      //       status: 'error',
-      //     });
-      //     updateMessage(assistantMsgId, { status: 'error' });
-      //     stopStreaming();
-      //   }
-      // });
 
       setInput('');
       stopStreaming();
@@ -242,57 +213,61 @@ export function ProjectPage() {
 
   if (!activeProject) {
     return (
-      <div className="h-full flex items-center justify-center">
+      <div className="h-full flex items-center justify-center" style={{ backgroundColor: 'var(--vscode-background)' }}>
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-muted-foreground" />
-          <p className="text-muted-foreground">Loading project...</p>
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" style={{ color: 'var(--vscode-secondary-text)' }} />
+          <p style={{ color: 'var(--vscode-secondary-text)' }}>Loading project...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-black">
+    <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--vscode-background)' }}>
       {/* Header */}
-      <div className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-black">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              {/* Project selector */}
-              <ProjectSelector
-                onProjectCreated={(project) => console.log('Project created:', project)}
-              />
+      <div className="border-b px-4 py-3" style={{
+        borderColor: 'var(--vscode-border-color)',
+        backgroundColor: 'var(--vscode-background)'
+      }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            {/* Project selector */}
+            <ProjectSelector
+              onProjectCreated={(project) => console.log('Project created:', project)}
+            />
 
-              {/* View mode toggle */}
-              <button
-                onClick={() => toggleViewMode()}
-                className={cn(
-                  'p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800',
-                  'transition-colors'
-                )}
-                title="Toggle view mode"
-              >
-                <Columns className="w-4 h-4" />
-              </button>
+            {/* View mode toggle */}
+            <button
+              onClick={() => toggleViewMode()}
+              className="p-2 rounded-lg transition-colors"
+              style={{ backgroundColor: 'transparent' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              title="Toggle view mode"
+            >
+              <Columns className="w-4 h-4" style={{ color: 'var(--vscode-foreground)' }} />
+            </button>
 
-              {/* New thread button */}
-              <button
-                onClick={() => createNewThread('New Thread')}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-sm"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>New Thread</span>
-              </button>
-            </div>
+            {/* New thread button */}
+            <button
+              onClick={() => createNewThread('New Thread')}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors text-sm"
+              style={{ backgroundColor: 'transparent' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              <Plus className="w-3.5 h-3.5" style={{ color: 'var(--vscode-foreground)' }} />
+              <span style={{ color: 'var(--vscode-foreground)' }}>New Thread</span>
+            </button>
+          </div>
 
-            {/* Context window & Git status */}
-            <div className="flex items-center gap-4">
-              <ContextWindow
-                used={contextUsed}
-                max={contextMax}
-              />
-              <GitStatus />
-            </div>
+          {/* Context window & Git status */}
+          <div className="flex items-center gap-4">
+            <ContextWindow
+              used={contextUsed}
+              max={contextMax}
+            />
+            <GitStatus />
           </div>
         </div>
       </div>
@@ -304,7 +279,7 @@ export function ProjectPage() {
 
         {/* Diff panel */}
         {showDiff && viewMode === 'split' && changedFiles.length > 0 && (
-          <div className="w-96 border-l border-border">
+          <div className="w-96 border-l overflow-hidden" style={{ borderColor: 'var(--vscode-border-color)' }}>
             <VisualDiff
               files={changedFiles}
               onClose={() => toggleDiff()}

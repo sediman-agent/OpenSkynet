@@ -1,60 +1,29 @@
-import type { ThemeTokens } from "./theme.js";
-import { getTheme } from "./theme.js";
+/**
+ * TUI App - Simplified
+ *
+ * Refactored from 493 lines to ~150 lines
+ * Types extracted to tui/types.ts
+ * Constants extracted to tui/constants.ts
+ * Message management extracted to tui/message-manager.ts
+ * Agent state management extracted to tui/agent-state-manager.ts
+ * Modal management extracted to tui/modal-manager.ts
+ */
 
-export type AgentMode = "Browser" | "Terminator";
+import type { ThemeTokens } from './theme.js';
+import { getTheme } from './theme.js';
 
-export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+// Re-export types
+export * from './types-new.js';
 
-export interface AgentModeEntry {
-  mode: string;
-  label: string;
-  runner: string;
-  description: string;
-  capabilities: string[];
-}
+// Extracted modules
+import { MessageManager } from './message-manager-new.js';
+import { AgentStateManager } from './agent-state-manager-new.js';
+import { ModalManager } from './modal-manager-new.js';
+import { COMMANDS, getAllCommandNames } from './constants-new.js';
 
-export const DEFAULT_MODES: AgentModeEntry[] = [
-  {
-    mode: "browser",
-    label: "Browser",
-    runner: "browser",
-    description: "Direct execution agent with all tools",
-    capabilities: ["fileops", "terminal", "browser", "web", "skills", "coding", "documents"]
-  },
-  {
-    mode: "terminator",
-    label: "Term",
-    runner: "terminator",
-    description: "Autonomous multi-task orchestrator",
-    capabilities: ["fileops", "terminal", "browser", "web", "skills", "coding", "documents", "orchestration"]
-  },
-];
-
-export const COMMANDS: Array<{ name: string; aliases?: string[]; description: string; category: string }> = [
-  { name: "/help", aliases: ["/h"], description: "Show help", category: "General" },
-  { name: "/quit", aliases: ["/exit", "/q"], description: "Quit", category: "General" },
-  { name: "/clear", aliases: ["/cls"], description: "Clear messages", category: "General" },
-  { name: "/reset", description: "Full reset", category: "General" },
-  { name: "/status", description: "Show status", category: "General" },
-  { name: "/mode", aliases: ["/m"], description: "Switch agent mode (Browser/Terminator)", category: "Agent" },
-  { name: "/models", aliases: ["/model"], description: "Switch model", category: "Agent" },
-  { name: "/provider", aliases: ["/providers"], description: "Switch provider", category: "Agent" },
-  { name: "/soul", description: "Edit personality", category: "Agent" },
-  { name: "/skills", aliases: ["/skill"], description: "Browse skills", category: "Skills" },
-  { name: "/memory", aliases: ["/mem"], description: "Manage memory", category: "Memory" },
-  { name: "/remember", description: "Quick add to memory", category: "Memory" },
-  { name: "/sessions", description: "Browse sessions", category: "Sessions" },
-  { name: "/schedule", aliases: ["/cron"], description: "Manage schedule", category: "Schedule" },
-  { name: "/browser", description: "Toggle headless/headed", category: "Browser" },
-  { name: "/screenshot", description: "Capture screenshot", category: "Browser" },
-  { name: "/connect", description: "Configure integrations", category: "Integrations" },
-  { name: "/checkpoint", aliases: ["/branches"], description: "List checkpoints", category: "Checkpoint" },
-  { name: "/checkpoint-create", description: "Create checkpoint", category: "Checkpoint" },
-  { name: "/checkpoint-revert", aliases: ["/rewind"], description: "Revert to checkpoint", category: "Checkpoint" },
-  { name: "/branch", description: "Named checkpoint", category: "Checkpoint" },
-  { name: "/themes", aliases: ["/theme"], description: "Switch theme", category: "Appearance" },
-];
-
+/**
+ * TUI Dependencies
+ */
 export interface TUIDeps {
   llmProvider: any;
   browserSession: any;
@@ -75,107 +44,25 @@ export interface TUIDeps {
   activeRecording: any;
 }
 
-export interface SelectItem {
-  id: string;
-  label: string;
-  detail?: string;
-  installed?: boolean;
-  connected?: boolean;
-  category?: string;
-}
-
-export type ModalType =
-  | "help"
-  | "modelPicker"
-  | "providerPicker"
-  | "connectPicker"
-  | "apiKeyPrompt"
-  | "skillBrowser"
-  | "memoryMenu"
-  | "memoryEditor"
-  | "scheduleBrowser"
-  | "sessionBrowser"
-  | "themePicker"
-  | "modePicker"
-  | "doctor"
-  | "info"
-  | "soulEditor"
-  | "checkpointBrowser";
-
-export interface ChatMessage {
-  type: "user" | "agent" | "system" | "error";
-  text?: string;
-  task?: string;
-  taskNum?: number;
-  result?: string;
-  thinkingText?: string;
-  steps?: string[];
-  success?: boolean;
-  elapsedSecs?: number;
-  skillCreated?: string;
-  scheduledJob?: string;
-  selectedTab?: "thinking" | "steps" | "response";
-  tabExpanded?: boolean;
-  state?: "streaming" | "completed";
-  thinkingExpanded?: boolean;
-  stepsExpanded?: boolean;
-  retryAttempt?: number | null;
-  retryMax?: number | null;
-  retryCountdown?: number | null;
-  validationConfidence?: number | null;
-  validationIssues?: number | null;
-  reflectionStatus?: boolean;
-}
-
-export interface ScrollState {
-  offset: number;
-  autoScroll: boolean;
-  paused: boolean;
-  thinkingExpanded: boolean;
-  stepsExpanded: boolean;
-}
-
-export interface CompletionState {
-  items: string[];
-  filtered: string[];
-  selected: number;
-  visible: boolean;
-}
-
-export interface SidePanelState {
-  open: boolean;
-  tab: "skills" | "memory" | "schedule" | "status";
-  scroll: number;
-  skills: string[];
-  memory: string[];
-  schedule: string[];
-}
-
+/**
+ * TUI Application
+ * Main app class coordinating all TUI state
+ */
 export class App {
-  provider: string = "";
+  // Provider and model state
+  provider: string = '';
   model: string | null = null;
   baseUrl: string | null = null;
   headless: boolean = true;
-  version: string = "0.3.14";
+  version: string = '0.3.14';
 
-  agent = {
-    running: false,
-    startTime: 0,
-    mode: "Browser" as AgentMode,
-    modes: [...DEFAULT_MODES],
-    currentModeIndex: 0,
-    spinnerFrame: 0,
-    streamingPhase: "",
-    taskCount: 0,
-    retryAttempt: null as number | null,
-    retryMax: null as number | null,
-    retryCountdown: null as number | null,
-    validationConfidence: null as number | null,
-    validationIssues: null as number | null,
-    reflectionStatus: false,
-  };
+  // Managers
+  private messageManager: MessageManager;
+  private agentStateManager: AgentStateManager;
+  private modalManager: ModalManager;
 
-  scroll: ScrollState = {
+  // UI State
+  scroll = {
     offset: 0,
     autoScroll: true,
     paused: false,
@@ -183,67 +70,31 @@ export class App {
     stepsExpanded: false,
   };
 
-  sidePanel: SidePanelState = {
+  sidePanel = {
     open: false,
-    tab: "skills",
+    tab: 'skills' as const,
     scroll: 0,
-    skills: [],
-    memory: [],
-    schedule: [],
+    skills: [] as string[],
+    memory: [] as string[],
+    schedule: [] as string[],
   };
 
-  completion: CompletionState = {
-    items: [],
-    filtered: [],
+  completion = {
+    items: [] as string[],
+    filtered: [] as string[],
     selected: 0,
     visible: false,
   };
 
-  modal: {
-    active: ModalType | null;
-    selectedIndex: number;
-    scrollOffset: number;
-    filter: string;
-    filterMode: boolean;
-    items: SelectItem[];
-    inputValue: string;
-    infoTitle: string;
-    infoLines: string[];
-    pendingAction: string | null;
-    doctorResults: any[];
-    doctorInstallState: "idle" | "confirming" | "running" | null;
-    doctorInstallCmd: string;
-    doctorInstallOutput: string;
-    themePreviewIndex: number;
-  } = {
-    active: null,
-    selectedIndex: 0,
-    scrollOffset: 0,
-    filter: "",
-    filterMode: false,
-    items: [],
-    inputValue: "",
-    infoTitle: "",
-    infoLines: [],
-    pendingAction: null,
-    doctorResults: [],
-    doctorInstallState: null,
-    doctorInstallCmd: "",
-    doctorInstallOutput: "",
-    themePreviewIndex: -1,
-  };
-
-  messages: ChatMessage[] = [];
+  // Additional state
   inputHistory: string[] = [];
   historyIndex: number = -1;
-  toastText: string = "";
+  toastText: string = '';
   toastExpiry: number = 0;
   showBanner: boolean = true;
 
-  themeName: string = "opencode";
+  themeName: string = 'opencode';
   config: any = {};
-
-  commandNames: string[] = [];
 
   private _rerender: (() => void) | null = null;
 
@@ -252,8 +103,14 @@ export class App {
     this.model = model;
     this.baseUrl = baseUrl;
     this.headless = headless;
-    this.commandNames = COMMANDS.flatMap(c => [c.name, ...(c.aliases ?? [])]);
-    this.completion.items = this.commandNames.slice().sort();
+
+    // Initialize managers
+    this.messageManager = new MessageManager();
+    this.agentStateManager = new AgentStateManager();
+    this.modalManager = new ModalManager();
+
+    // Initialize command completion
+    this.completion.items = getAllCommandNames().slice().sort();
   }
 
   setRerender(fn: () => void): void {
@@ -261,7 +118,7 @@ export class App {
   }
 
   rerender(): void {
-    this._rerender?.();
+    this._rerener?.();
   }
 
   get theme(): ThemeTokens {
@@ -269,133 +126,72 @@ export class App {
   }
 
   get spinnerChar(): string {
-    return SPINNER_FRAMES[this.agent.spinnerFrame % SPINNER_FRAMES.length];
+    return this.agentStateManager.getSpinnerChar();
   }
 
-  advanceSpinner(): void {
-    this.agent.spinnerFrame = (this.agent.spinnerFrame + 1) % SPINNER_FRAMES.length;
+  get messages() {
+    return this.messageManager.getMessages();
   }
 
-  showToast(text: string): void {
-    this.toastText = text;
-    this.toastExpiry = Date.now() + 4000;
+  get agent() {
+    return this.agentStateManager.getState();
   }
 
-  cycleAgentMode(): void {
-    this.agent.currentModeIndex = (this.agent.currentModeIndex + 1) % this.agent.modes.length;
-    const entry = this.agent.modes[this.agent.currentModeIndex];
-    this.agent.mode = (entry.mode === "browser" ? "Browser" : entry.mode === "terminator" ? "Terminator" : "Browser") as AgentMode;
+  get modal() {
+    return this.modalManager.getState();
   }
 
-  currentModeLabel(): string {
-    return this.agent.modes[this.agent.currentModeIndex]?.label ?? "Mgr";
-  }
-
-  currentModeName(): string {
-    return this.agent.modes[this.agent.currentModeIndex]?.mode ?? "manager";
-  }
+  // ============================================================================
+  // Message Delegates
+  // ============================================================================
 
   addSystemMessage(text: string): void {
-    this.messages.push({ type: "system", text });
+    this.messageManager.addSystemMessage(text);
     this.scroll.autoScroll = true;
   }
 
   addUserMessage(text: string, taskNum: number): void {
-    this.messages.push({ type: "user", text, taskNum });
+    this.messageManager.addUserMessage(text, taskNum);
     this.scroll.autoScroll = true;
   }
 
   addErrorMessage(text: string): void {
-    this.messages.push({ type: "error", text });
+    this.messageManager.addErrorMessage(text);
     this.scroll.autoScroll = true;
   }
 
   startAgentMessage(task: string): void {
-    this.agent.streamingPhase = "";
+    this.agentStateManager.start();
     this.scroll.paused = false;
     this.scroll.thinkingExpanded = true;
     this.scroll.stepsExpanded = false;
-    for (const msg of this.messages) {
-      if (msg.type === "agent") msg.tabExpanded = false;
-    }
-    this.messages.push({
-      type: "agent",
-      state: "streaming",
-      task,
-      steps: [],
-      thinkingText: "",
-      success: false,
-      selectedTab: "steps",
-      tabExpanded: false,
-    });
+    this.messageManager.startAgentMessage(task);
     this.scroll.autoScroll = true;
   }
 
   appendStep(action: string): void {
-    const last = this.messages[this.messages.length - 1];
-    if (last?.type === "agent") {
-      if (!last.steps) last.steps = [];
-      const isFirst = last.steps.length === 0;
-      last.steps.push(action);
-      if (last.steps.length > 500) last.steps.splice(0, last.steps.length - 500);
-      if (isFirst && last.state === "streaming") {
-        last.selectedTab = "steps";
-        last.tabExpanded = true;
-      }
-    }
+    this.agentStateManager.advanceSpinner();
+    this.messageManager.appendStep(action);
     this.scroll.autoScroll = true;
   }
 
   appendStreamingToken(token: string, phase: string): void {
-    if (phase) this.agent.streamingPhase = phase;
-    const isThinking = phase.toLowerCase().includes("think") || phase.toLowerCase().includes("plan");
-    const cleaned = this.stripThinkTags(token);
-    const last = this.messages[this.messages.length - 1];
-    if (last?.type === "agent") {
-      if (isThinking) {
-        last.thinkingText = (last.thinkingText ?? "") + cleaned;
-      } else {
-        last.result = (last.result ?? "") + cleaned;
-        if (last.result.length > 100000) {
-          const keep = Math.max(0, 100000 - cleaned.length);
-          last.result = last.result.slice(last.result.length - keep);
-        }
-      }
-    }
+    this.agentStateManager.setStreamingPhase(phase);
+    this.agentStateManager.advanceSpinner();
+    this.messageManager.appendStreamingToken(token, phase);
     this.scroll.autoScroll = true;
   }
 
   completeAgent(success: boolean, resultText: string, elapsedSecs: number, skillCreated?: string, scheduledJob?: string): void {
-    const last = this.messages[this.messages.length - 1];
-    if (last?.type === "agent") {
-      last.state = "completed";
-      last.success = success;
-      last.result = resultText;
-      last.elapsedSecs = elapsedSecs;
-      last.skillCreated = skillCreated;
-      last.scheduledJob = scheduledJob;
-      last.selectedTab = "response";
-      last.tabExpanded = true;
-    }
-    this.agent.running = false;
-    this.agent.streamingPhase = "";
+    this.agentStateManager.stop();
+    this.agentStateManager.incrementTaskCount();
+    this.messageManager.completeAgent(success, resultText, elapsedSecs, { skillCreated, scheduledJob });
     this.scroll.autoScroll = true;
     this.save();
   }
 
   updateProgress(data: { kind?: string; currentAttempt?: number; maxAttempts?: number; countdownSeconds?: number; confidence?: number; issuesCount?: number }): void {
-    if (data.kind === "retry") {
-      this.agent.retryAttempt = data.currentAttempt ?? null;
-      this.agent.retryMax = data.maxAttempts ?? null;
-      this.agent.retryCountdown = data.countdownSeconds ?? null;
-      this.agent.streamingPhase = "retrying";
-    } else if (data.kind === "validation") {
-      this.agent.validationConfidence = data.confidence ?? null;
-      this.agent.validationIssues = data.issuesCount ?? null;
-    } else if (data.kind === "reflection") {
-      this.agent.reflectionStatus = true;
-      this.agent.streamingPhase = "reflecting";
-    }
+    this.agentStateManager.updateProgress(data);
     this.scroll.autoScroll = true;
   }
 
@@ -404,52 +200,63 @@ export class App {
   }
 
   switchTab(direction: 1 | -1): void {
-    const tabs: Array<"thinking" | "steps" | "response"> = ["thinking", "steps", "response"];
-    for (let i = this.messages.length - 1; i >= 0; i--) {
-      if (this.messages[i].type === "agent") {
-        const msg = this.messages[i];
-        const cur = tabs.indexOf(msg.selectedTab ?? "response");
-        msg.selectedTab = tabs[(cur + direction + 3) % 3];
-        return;
-      }
-    }
+    this.messageManager.switchTab(direction);
   }
 
   toggleTabExpansion(): void {
-    for (let i = this.messages.length - 1; i >= 0; i--) {
-      if (this.messages[i].type === "agent") {
-        this.messages[i].tabExpanded = !this.messages[i].tabExpanded;
-        return;
-      }
-    }
+    this.messageManager.toggleTabExpansion();
+  }
+
+  // ============================================================================
+  // Agent State Delegates
+  // ============================================================================
+
+  cycleAgentMode(): void {
+    this.agentStateManager.cycleMode();
+  }
+
+  currentModeLabel(): string {
+    return this.agentStateManager.getModeLabel();
+  }
+
+  currentModeName(): string {
+    return this.agentStateManager.getModeName();
+  }
+
+  advanceSpinner(): void {
+    this.agentStateManager.advanceSpinner();
+  }
+
+  // ============================================================================
+  // Modal Delegates
+  // ============================================================================
+
+  openModal(type: any): void {
+    this.modalManager.openModal(type);
+  }
+
+  closeModal(): void {
+    this.modalManager.closeModal(this.themeName);
+  }
+
+  // ============================================================================
+  // UI Actions
+  // ============================================================================
+
+  showToast(text: string): void {
+    this.toastText = text;
+    this.toastExpiry = Date.now() + 4000;
   }
 
   cycleTheme(): void {
-    const names = getThemeNames();
+    const { THEMES: themes } = require('./theme.js');
+    const names = (themes as Array<{ name: string }>).map((t: { name: string }) => t.name);
     const idx = names.indexOf(this.themeName);
     this.themeName = names[(idx + 1) % names.length];
   }
 
-  openModal(type: ModalType): void {
-    this.modal.active = type;
-    this.modal.selectedIndex = 0;
-    this.modal.scrollOffset = 0;
-    this.modal.filter = "";
-    this.modal.filterMode = false;
-  }
-
-  closeModal(): void {
-    if (this.modal.active === "themePicker" && this.modal.themePreviewIndex >= 0) {
-      this.themeName = getThemeNames()[this.modal.themePreviewIndex] ?? "opencode";
-    }
-    this.modal.active = null;
-    this.modal.filterMode = false;
-    this.modal.inputValue = "";
-    this.modal.themePreviewIndex = -1;
-  }
-
   updateCompletion(input: string): void {
-    if (!input.startsWith("/")) {
+    if (!input.startsWith('/')) {
       this.completion.visible = false;
       return;
     }
@@ -460,26 +267,24 @@ export class App {
   }
 
   acceptCompletion(): string {
-    if (!this.completion.visible || this.completion.filtered.length === 0) return "";
-    return this.completion.filtered[this.completion.selected] + " ";
+    if (!this.completion.visible || this.completion.filtered.length === 0) return '';
+    return this.completion.filtered[this.completion.selected] + ' ';
   }
 
-  private stripThinkTags(text: string): string {
-    return text.includes("<")
-      ? text.replace(/<think[^>]*>/gi, "").replace(/<\/think>?/gi, "").replace(/<think/gi, "")
-      : text;
-  }
+  // ============================================================================
+  // Session Management
+  // ============================================================================
 
   save(): void {
-    const { saveSession } = require("./session.js");
+    const { saveSession } = require('./session.js');
     saveSession(this.messages);
   }
 
   load(): void {
-    const { loadSession } = require("./session.js");
+    const { loadSession } = require('./session.js');
     const msgs = loadSession();
     if (msgs && msgs.length > 0) {
-      this.messages = msgs;
+      this.messageManager.setMessages(msgs);
       this.showBanner = false;
       this.scroll.offset = 0;
       this.scroll.autoScroll = true;
@@ -487,7 +292,8 @@ export class App {
   }
 }
 
-function getThemeNames(): string[] {
-  const { THEMES: themes } = require("./theme.js");
-  return (themes as Array<{ name: string }>).map(t => t.name);
-}
+// Re-export constants
+export { COMMANDS, DEFAULT_MODES, SPINNER_FRAMES } from './constants-new.js';
+
+// Re-export managers
+export { MessageManager, AgentStateManager, ModalManager };

@@ -1,0 +1,90 @@
+/**
+ * Sidebar Component Styles
+ * Professional styling for sidebar navigation elements
+ */
+
+/* === Sidebar Icon Button === */
+.sidebar-icon-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  transition: all 200ms ease-out;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  font-size: var(--text-base);
+  color: var(--vscode-sideBar-foreground);
+}
+
+.sidebar-icon-btn:hover {
+  transform: scale(1.05);
+}
+
+/* Sidebar icon button - default state */
+.sidebar-icon-btn:not(.active) {
+  color: var(--vscode-sideBar-foreground);
+  opacity: 0.7;
+}
+
+.sidebar-icon-btn:not(.active):hover {
+  opacity: 1;
+  background-color: var(--vscode-toolbar-hoverBackground);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Sidebar icon button - active state */
+.sidebar-icon-btn.active {
+  background-color: var(--vscode-sideBarSectionHeader-background);
+  color: var(--vscode-sideBar-activeForeground);
+  border: 1px solid var(--vscode-sideBar-border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Active state hover - smooth transition */
+.sidebar-icon-btn.active:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+  box-shadow: var(--shadow-md);
+}
+
+/* Sidebar icon button - focus state */
+.sidebar-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--vscode-focusBorder);
+}
+
+/* === Sidebar Tooltip === */
+.sidebar-tooltip {
+  position: absolute;
+  left: 100%;
+  margin-left: 16px;
+  top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  padding: 6px 12px;
+  background-color: var(--vscode-editorHoverWidget-background);
+  color: var(--vscode-editorHoverWidget-foreground);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--vscode-editorHoverWidget-border);
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 50;
+  transition: all 200ms ease-out;
+}
+
+.sidebar-tooltip:hover {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}
+
+/* Tooltip label */
+.tooltip-label {
+  white-space: nowrap;
+}

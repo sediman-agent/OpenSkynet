@@ -1,6 +1,6 @@
 /**
- * VS Code-Style Execution Display
- * Exact replica of VS Code Copilot's tool call visualization
+ * VS Code-Style Execution Display - Industrial Grade
+ * Enhanced tool call visualization with professional styling and interactions
  */
 
 import { useState, useCallback } from 'react';
@@ -9,24 +9,9 @@ import { cn } from '@/lib/utils';
 import type { ThinkBlock } from '@/types';
 
 // ============================================================================
-// VS Code Design Tokens (using CSS variables for theme support)
+// Imports
 // ============================================================================
-const VS_CODES = {
-  // Spacing
-  xs: '2px',
-  sm: '4px',
-  md: '8px',
-  lg: '12px',
-
-  // Typography
-  fontSize: '12px',
-  fontSizeSmall: '11px',
-  lineHeight: 1.4,
-
-  // Border radius
-  radius: '2px',
-  radiusSm: '3px',
-} as const;
+import { VS_CODES } from '@/styles/vscode-constants';
 
 // ============================================================================
 // Types
@@ -83,7 +68,7 @@ function getStepIcon(type: string, action?: string): any {
 }
 
 // ============================================================================
-// VS Code-Style Status Badge
+// VS Code-Style Status Badge - Enhanced
 // ============================================================================
 
 function VSCodeStatusBadge({ status, duration }: { status: ExecutionStep['status']; duration?: number }) {
@@ -106,19 +91,28 @@ function VSCodeStatusBadge({ status, duration }: { status: ExecutionStep['status
   const Icon = style.icon;
 
   return (
-    <div className="flex items-center gap-2 text-xs font-mono">
+    <div className="flex items-center gap-2" style={{ fontSize: VS_CODES.fontSizeSmall }}>
       {Icon && (
         <div className="flex items-center" style={{ color: style.color }}>
           <Icon size={11} className={status === 'running' ? 'animate-spin' : ''} />
         </div>
       )}
 
-      <span style={{ color: style.color }} className="uppercase text-[10px]">
+      <span
+        className="uppercase px-2 py-0.5 rounded"
+        style={{
+          color: style.color,
+          fontSize: '10px',
+          fontWeight: 500,
+          backgroundColor: 'var(--vscode-badge-background)',
+          opacity: 0.9
+        }}
+      >
         {status}
       </span>
 
       {duration !== undefined && (
-        <span style={{ color: 'var(--vscode-secondary-text)' }}>
+        <span style={{ color: 'var(--vscode-secondary-text)', fontSize: '11px' }}>
           {formatDuration(duration)}
         </span>
       )}
@@ -127,7 +121,7 @@ function VSCodeStatusBadge({ status, duration }: { status: ExecutionStep['status
 }
 
 // ============================================================================
-// VS Code-Style Summary (Exact format)
+// VS Code-Style Summary - Enhanced
 // ============================================================================
 
 function VSCodeSummary({ steps }: { steps: ExecutionStep[] }) {
@@ -140,53 +134,56 @@ function VSCodeSummary({ steps }: { steps: ExecutionStep[] }) {
 
   return (
     <div
-      className="flex items-center gap-2 px-2 py-1 mb-2 border font-mono text-xs"
+      className="flex items-center gap-3 px-3 py-2 mb-3 border font-mono"
       style={{
         borderColor: 'var(--vscode-border-color)',
         borderRadius: VS_CODES.radiusSm,
-        backgroundColor: 'var(--vscode-panel-background)'
+        backgroundColor: 'var(--vscode-panel-background)',
+        fontSize: VS_CODES.fontSize
       }}
     >
       {/* Steps count */}
-      <span style={{ color: 'var(--vscode-foreground)' }}>
+      <span style={{ color: 'var(--vscode-foreground)', fontWeight: 500 }}>
         {completed}/{steps.length} steps
       </span>
 
+      {/* Separator */}
+      <span style={{ color: 'var(--vscode-border-color)', opacity: 0.5 }}>|</span>
+
       {/* Thinking count */}
       {thinkingCount > 0 && (
-        <span style={{ color: 'var(--vscode-secondary-text)' }}>
-          •
-        </span>
-      )}
-
-      {thinkingCount > 0 && (
-        <span className="flex items-center gap-1" style={{ color: 'var(--vscode-foreground)' }}>
-          <Bot size={11} />
-          {thinkingCount} thinking
-        </span>
+        <>
+          <span className="flex items-center gap-1" style={{ color: 'var(--vscode-foreground)' }}>
+            <Bot size={11} style={{ color: 'var(--vscode-secondary-text)' }} />
+            {thinkingCount} thinking
+          </span>
+          <span style={{ color: 'var(--vscode-border-color)', opacity: 0.5 }}>|</span>
+        </>
       )}
 
       {/* Failed count */}
       {failed > 0 && (
         <>
-          <span style={{ color: 'var(--vscode-secondary-text)' }}>•</span>
-          <span style={{ color: 'var(--vscode-error-foreground)' }}>{failed} failed</span>
+          <span className="flex items-center gap-1" style={{ color: 'var(--vscode-error-foreground)', fontWeight: 500 }}>
+            <AlertTriangle size={11} />
+            {failed} failed
+          </span>
+          <span style={{ color: 'var(--vscode-border-color)', opacity: 0.5 }}>|</span>
         </>
       )}
 
       {/* Total duration */}
       {totalDuration > 0 && (
-        <>
-          <span style={{ color: 'var(--vscode-secondary-text)' }}>•</span>
-          <span style={{ color: 'var(--vscode-foreground)' }}>{formatDuration(totalDuration)}</span>
-        </>
+        <span style={{ color: 'var(--vscode-foreground)', fontSize: '11px' }}>
+          {formatDuration(totalDuration)}
+        </span>
       )}
     </div>
   );
 }
 
 // ============================================================================
-// VS Code-Style Accordion Item
+// VS Code-Style Accordion Item - Enhanced
 // ============================================================================
 
 interface VSCodeAccordionItemProps {
@@ -228,22 +225,22 @@ function VSCodeAccordionItem({ step, onRetry, onDismiss }: VSCodeAccordionItemPr
 
   return (
     <div
-      className="border font-mono text-xs"
+      className="border font-mono text-xs transition-all duration-150"
       style={{
         borderColor: 'var(--vscode-border-color)',
-        borderRadius: VS_CODES.radiusSm,
-        marginBottom: VS_CODES.sm,
-        backgroundColor: expanded ? 'var(--vscode-list-hover-background)' : 'var(--vscode-panel-background)'
+        borderRadius: VS_CODES.radius,
+        marginBottom: VS_CODES.xs,
+        backgroundColor: expanded ? 'var(--vscode-list-hoverBackground)' : 'transparent'
       }}
     >
       {/* Header Row - VS Code Style */}
       <div
-        className="flex items-center gap-2 px-2 py-1 cursor-pointer transition-colors"
+        className="flex items-center gap-2 px-2 py-1.5 cursor-pointer"
         onClick={handleToggle}
-        style={{ minHeight: '24px' }}
+        style={{ minHeight: '28px' }}
         onMouseEnter={(e) => {
           if (!expanded) {
-            e.currentTarget.style.backgroundColor = 'var(--vscode-list-hover-background)';
+            e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)';
           }
         }}
         onMouseLeave={(e) => {
@@ -267,11 +264,14 @@ function VSCodeAccordionItem({ step, onRetry, onDismiss }: VSCodeAccordionItemPr
         </div>
 
         {/* Action Name */}
-        <div className="flex-1 truncate">
-          <span style={{
-            color: isThinking ? 'var(--vscode-warning-foreground)' : 'var(--vscode-foreground)',
-            fontWeight: isThinking ? 500 : 400
-          }}>
+        <div className="flex-1 min-w-0">
+          <span
+            className="font-medium truncate block"
+            style={{
+              color: isThinking ? 'var(--vscode-warning-foreground)' : 'var(--vscode-foreground)',
+              fontWeight: isThinking ? 600 : 500
+            }}
+          >
             {isThinking ? 'Reasoning' : (step.action || 'Unknown')}
           </span>
         </div>
@@ -285,28 +285,40 @@ function VSCodeAccordionItem({ step, onRetry, onDismiss }: VSCodeAccordionItemPr
             {step.error?.retryable && (
               <button
                 onClick={(e) => { e.stopPropagation(); handleRetry(); }}
-                className="px-2 py-0.5 text-xs transition-colors"
+                className="px-2 py-0.5 text-xs transition-colors rounded"
                 style={{
                   color: 'var(--vscode-info-foreground)',
                   background: 'transparent',
-                  border: 'none'
+                  border: '1px solid var(--vscode-border-color)',
+                  borderRadius: VS_CODES.radius
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--vscode-list-hover-background)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--vscode-list-hoverBackground)';
+                  e.currentTarget.style.borderColor = 'var(--vscode-focus-border)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.borderColor = 'var(--vscode-border-color)';
+                }}
               >
                 retry
               </button>
             )}
             <button
               onClick={(e) => { e.stopPropagation(); handleDismiss(); }}
-              className="px-2 py-0.5 text-xs transition-colors"
+              className="px-2 py-0.5 text-xs transition-colors rounded"
               style={{
                 color: 'var(--vscode-secondary-text)',
                 background: 'transparent',
-                border: 'none'
+                border: '1px solid var(--vscode-border-color)',
+                borderRadius: VS_CODES.radius
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--vscode-list-hover-background)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--vscode-list-hoverBackground)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
             >
               dismiss
             </button>
@@ -317,8 +329,11 @@ function VSCodeAccordionItem({ step, onRetry, onDismiss }: VSCodeAccordionItemPr
       {/* Preview (when collapsed) */}
       {!expanded && !isThinking && step.detail && (
         <div
-          className="px-2 pb-1 text-xs truncate"
-          style={{ color: 'var(--vscode-secondary-text)', marginLeft: '36px' }}
+          className="px-2 pb-1.5 text-xs truncate"
+          style={{
+            color: 'var(--vscode-secondary-text)',
+            marginLeft: '36px'
+          }}
         >
           {formatPreview(step.detail)}
         </div>
@@ -327,29 +342,30 @@ function VSCodeAccordionItem({ step, onRetry, onDismiss }: VSCodeAccordionItemPr
       {/* Expanded Content - VS Code Style */}
       {expanded && (
         <div
-          className="border-t overflow-hidden"
+          className="border-t overflow-hidden transition-all"
           style={{
             borderColor: 'var(--vscode-border-color)',
-            padding: VS_CODES.md
+            padding: `${VS_CODES.md} ${VS_CODES.lg}`
           }}
         >
-          {/* Error Message */}
+          {/* Error Message - Enhanced */}
           {hasError && step.error && (
             <div
-              className="mb-2 p-2 border-l-2"
+              className="mb-3 p-3 border-l-2"
               style={{
-                backgroundColor: 'rgba(244, 135, 113, 0.1)',
+                backgroundColor: 'rgba(244, 135, 113, 0.08)',
                 borderColor: 'var(--vscode-error-foreground)',
-                color: 'var(--vscode-error-foreground)'
+                color: 'var(--vscode-error-foreground)',
+                borderRadius: VS_CODES.radiusSm
               }}
             >
-              <div className="flex items-start gap-2 mb-1">
+              <div className="flex items-start gap-2 mb-2">
                 <AlertTriangle size={12} className="shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <div className="text-xs font-medium mb-0.5">Error</div>
-                  <div className="text-xs" style={{ color: 'var(--vscode-foreground)' }}>{step.error.message}</div>
+                  <div className="text-xs font-semibold mb-1">Error</div>
+                  <div className="text-xs">{step.error.message}</div>
                   {step.error.code && (
-                    <div className="text-[10px] mt-1 font-mono" style={{ color: 'var(--vscode-error-foreground)' }}>
+                    <div className="text-[10px] mt-1 font-mono" style={{ opacity: 0.8 }}>
                       {step.error.code}
                     </div>
                   )}
@@ -359,31 +375,33 @@ function VSCodeAccordionItem({ step, onRetry, onDismiss }: VSCodeAccordionItemPr
                 <div
                   className="mt-2 p-2 border-l-2"
                   style={{
-                    backgroundColor: 'rgba(55, 148, 255, 0.1)',
+                    backgroundColor: 'rgba(55, 148, 255, 0.08)',
                     borderColor: 'var(--vscode-info-foreground)',
-                    color: 'var(--vscode-info-foreground)'
+                    color: 'var(--vscode-foreground)',
+                    borderRadius: VS_CODES.radiusSm
                   }}
                 >
-                  <div className="text-xs">{step.error.suggestion}</div>
+                  <div className="text-xs">Suggestion: {step.error.suggestion}</div>
                 </div>
               )}
             </div>
           )}
 
-          {/* Thinking Content */}
+          {/* Thinking Content - Enhanced */}
           {isThinking && step.thinking?.content && (
             <div
-              className="p-2 border-l-2 mb-2"
+              className="mb-3 p-3 border-l-2"
               style={{
-                backgroundColor: 'rgba(220, 220, 170, 0.1)',
+                backgroundColor: 'rgba(220, 220, 170, 0.08)',
                 borderColor: 'var(--vscode-warning-foreground)',
-                color: 'var(--vscode-warning-foreground)'
+                color: 'var(--vscode-foreground)',
+                borderRadius: VS_CODES.radiusSm
               }}
             >
-              <div className="text-[10px] uppercase mb-1 font-medium tracking-wider">
+              <div className="text-[10px] uppercase mb-2 font-medium tracking-wider" style={{ opacity: 0.8 }}>
                 Reasoning
                 {step.thinking.content && (
-                  <span style={{ color: 'var(--vscode-secondary-text)' }} className="ml-2">
+                  <span style={{ color: 'var(--vscode-secondary-text)', marginLeft: '8px' }}>
                     ({step.thinking.content.length} chars)
                   </span>
                 )}
@@ -391,7 +409,6 @@ function VSCodeAccordionItem({ step, onRetry, onDismiss }: VSCodeAccordionItemPr
               <div
                 className="text-xs whitespace-pre-wrap break-words max-h-48 overflow-y-auto"
                 style={{
-                  color: 'var(--vscode-foreground)',
                   lineHeight: VS_CODES.lineHeight
                 }}
               >
@@ -400,19 +417,21 @@ function VSCodeAccordionItem({ step, onRetry, onDismiss }: VSCodeAccordionItemPr
             </div>
           )}
 
-          {/* Tool Input */}
+          {/* Tool Input - Enhanced */}
           {!isThinking && step.detail && (
-            <div className="mb-2">
-              <div className="text-[10px] uppercase mb-1 font-medium tracking-wider" style={{ color: 'var(--vscode-secondary-text)' }}>
+            <div className="mb-3">
+              <div className="text-[10px] uppercase mb-2 font-medium tracking-wider" style={{ color: 'var(--vscode-secondary-text)', opacity: 0.8 }}>
                 Input
               </div>
               <pre
-                className="p-2 overflow-x-auto max-h-32 whitespace-pre-wrap break-all font-mono text-xs"
+                className="p-3 overflow-x-auto max-h-32 whitespace-pre-wrap break-all font-mono border rounded"
                 style={{
-                  backgroundColor: 'var(--vscode-panel-background)',
-                  border: '1px solid var(--vscode-border-color)',
+                  backgroundColor: 'var(--vscode-sideBar-background)',
+                  border: `1px solid var(--vscode-border-color)`,
                   borderRadius: VS_CODES.radius,
-                  color: 'var(--vscode-foreground)'
+                  color: 'var(--vscode-foreground)',
+                  fontSize: VS_CODES.fontSize,
+                  lineHeight: VS_CODES.lineHeight
                 }}
               >
                 {step.detail}
@@ -420,17 +439,19 @@ function VSCodeAccordionItem({ step, onRetry, onDismiss }: VSCodeAccordionItemPr
             </div>
           )}
 
-          {/* Tool Output */}
+          {/* Tool Output - Enhanced */}
           {!isThinking && step.observation && (
             <div>
-              <div className="text-[10px] uppercase mb-1 font-medium tracking-wider" style={{ color: 'var(--vscode-secondary-text)' }}>
+              <div className="text-[10px] uppercase mb-2 font-medium tracking-wider" style={{ color: 'var(--vscode-secondary-text)', opacity:0.8 }}>
                 Output
               </div>
               <pre
-                className="p-2 overflow-x-auto max-h-40 whitespace-pre-wrap break-all font-mono text-xs border-l-2"
+                className="p-3 overflow-x-auto max-h-40 whitespace-pre-wrap break-all font-mono border-l-2 rounded"
                 style={{
-                  backgroundColor: hasError ? 'rgba(244, 135, 113, 0.05)' : 'var(--vscode-panel-background)',
+                  backgroundColor: hasError ? 'rgba(244, 135, 113, 0.05)' : 'var(--vscode-sideBar-background)',
                   borderColor: hasError ? 'var(--vscode-error-foreground)' : 'var(--vscode-success-foreground)',
+                  fontSize: VS_CODES.fontSize,
+                  lineHeight: VS_CODES.lineHeight,
                   color: hasError ? 'var(--vscode-error-foreground)' : 'var(--vscode-foreground)'
                 }}
               >
@@ -461,7 +482,7 @@ export function ExecutionDisplay({
     <div className={cn('font-mono text-xs', className)}>
       {showSummary && <VSCodeSummary steps={steps} />}
 
-      <div className="space-y-0">
+      <div>
         {steps.map((step, index) => (
           <VSCodeAccordionItem
             key={`${step.id}-${index}`}

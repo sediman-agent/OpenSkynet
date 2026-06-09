@@ -1,36 +1,12 @@
 /**
- * VS Code-Style Streaming Execution Display
- * Unified real-time tool call visualization matching VS Code Copilot
+ * VS Code-Style Streaming Execution Display - Industrial Grade
+ * Enhanced real-time tool call visualization with professional styling
+ * Matching VS Code Copilot quality with improved visual hierarchy
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Bot, Check, X, Loader2, Globe, FileText, Terminal, Settings } from 'lucide-react';
-
-// ============================================================================
-// VS Code Design Tokens (Exact)
-// ============================================================================
-const VS_CODES = {
-  border: '#3c3c3c',
-  borderLight: '#454545',
-  borderFocus: '#007fd4',
-
-  bg: '#1e1e1e',
-  bgHover: '#2a2d2e',
-  bgSecondary: '#252526',
-
-  text: '#cccccc',
-  textMuted: '#858585',
-  textDim: '#6e6e6e',
-
-  success: '#4ec9b0',
-  error: '#f48771',
-  warning: '#dcdcaa',
-  info: '#3794ff',
-
-  radius: '2px',
-  fontSize: '12px',
-  fontSizeSmall: '11px',
-} as const;
+import { ChevronDown, ChevronRight, Check, X, Loader2, Globe, FileText, Terminal, Settings, AlertTriangle } from 'lucide-react';
+import { VS_CODES } from '@/styles/vscode-constants';
 
 // ============================================================================
 // Types
@@ -74,21 +50,45 @@ function getElapsedTime(startTime: number): string {
 }
 
 // ============================================================================
-// VS Code-Style Status Badge
+// VS Code-Style Status Badge - Enhanced
 // ============================================================================
 function StatusBadge({ status, startTime }: { status: StreamingToolCall['status']; startTime?: number }) {
   const getStatusStyle = () => {
     switch (status) {
       case 'pending':
-        return { color: VS_CODES.textMuted, icon: null };
+        return {
+          color: 'var(--vscode-secondary-text)',
+          bg: 'var(--vscode-badge-background)',
+          icon: null
+        };
       case 'running':
-        return { color: VS_CODES.info, icon: Loader2 };
+        return {
+          color: 'var(--vscode-info-foreground)',
+          bg: 'var(--vscode-badge-background)',
+          icon: Loader2,
+          spinning: true
+        };
       case 'success':
-        return { color: VS_CODES.success, icon: Check };
+        return {
+          color: 'var(--vscode-success-foreground)',
+          bg: 'var(--vscode-badge-background)',
+          icon: Check,
+          spinning: false
+        };
       case 'error':
-        return { color: VS_CODES.error, icon: X };
+        return {
+          color: 'var(--vscode-error-foreground)',
+          bg: 'var(--vscode-badge-background)',
+          icon: X,
+          spinning: false
+        };
       default:
-        return { color: VS_CODES.textMuted, icon: null };
+        return {
+          color: 'var(--vscode-secondary-text)',
+          bg: 'var(--vscode-badge-background)',
+          icon: null,
+          spinning: false
+        };
     }
   };
 
@@ -96,19 +96,29 @@ function StatusBadge({ status, startTime }: { status: StreamingToolCall['status'
   const Icon = style.icon;
 
   return (
-    <div className="flex items-center gap-2 font-mono" style={{ fontSize: VS_CODES.fontSizeSmall }}>
+    <div className="flex items-center gap-2 font-mono" style={{ fontSize: '11px' }}>
       {Icon && (
         <div className="flex items-center" style={{ color: style.color }}>
-          <Icon size={10} className={status === 'running' ? 'animate-spin' : ''} />
+          <Icon size={11} className={style.spinning ? 'animate-spin' : ''} />
         </div>
       )}
 
-      <span className="uppercase" style={{ color: style.color, fontSize: '10px' }}>
+      <span
+        className="uppercase px-2 py-0.5 rounded"
+        style={{
+          color: style.color,
+          fontSize: '10px',
+          fontWeight: 500,
+          backgroundColor: style.bg,
+          opacity: 0.9,
+          letterSpacing: '0.3px'
+        }}
+      >
         {status}
       </span>
 
       {status === 'running' && startTime && (
-        <span style={{ color: VS_CODES.textDim }}>
+        <span style={{ color: 'var(--vscode-secondary-text)' }}>
           {getElapsedTime(startTime)}
         </span>
       )}
@@ -117,7 +127,7 @@ function StatusBadge({ status, startTime }: { status: StreamingToolCall['status'
 }
 
 // ============================================================================
-// VS Code-Style Tool Call Item
+// VS Code-Style Tool Call Item - Enhanced
 // ============================================================================
 interface ToolCallItemProps {
   toolCall: StreamingToolCall;
@@ -126,6 +136,7 @@ interface ToolCallItemProps {
 
 function ToolCallItem({ toolCall, isStreaming }: ToolCallItemProps) {
   const [expanded, setExpanded] = useState(false);
+  const [headerHovered, setHeaderHovered] = useState(false);
   const ActionIcon = getActionIcon(toolCall.action);
 
   // Auto-expand on error
@@ -156,39 +167,57 @@ function ToolCallItem({ toolCall, isStreaming }: ToolCallItemProps) {
     }
   };
 
+  const hasError = toolCall.status === 'error';
+
   return (
     <div
-      className="border font-mono"
+      className="border font-mono transition-all duration-150"
       style={{
-        borderColor: VS_CODES.border,
-        borderRadius: VS_CODES.radius,
-        marginBottom: '2px',
-        backgroundColor: expanded ? VS_CODES.bgHover : VS_CODES.bg
+        borderColor: 'var(--vscode-border-color)',
+        borderRadius: VS_CODES.radiusSm,
+        marginBottom: VS_CODES.spacing.xs,
+        backgroundColor: expanded ? 'var(--vscode-list-hoverBackground)' : 'transparent',
+        // Highlight border for errors
+        ...(hasError && {
+          borderColor: 'var(--vscode-error-foreground)',
+          borderWidth: '1px'
+        })
       }}
     >
-      {/* Header Row */}
+      {/* Header Row - Enhanced */}
       <div
-        className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-[#2a2d2e]/50 transition-colors"
+        className="flex items-center gap-2 px-2 py-1.5 cursor-pointer transition-all duration-150"
         onClick={() => setExpanded(!expanded)}
-        style={{ minHeight: '22px' }}
+        style={{
+          minHeight: '28px',
+          backgroundColor: headerHovered && !expanded ? 'var(--vscode-list-hoverBackground)' : 'transparent'
+        }}
+        onMouseEnter={() => setHeaderHovered(true)}
+        onMouseLeave={() => setHeaderHovered(false)}
       >
         {/* Expand/Collapse Icon */}
-        <div className="flex items-center shrink-0" style={{ width: '14px' }}>
+        <div className="flex items-center shrink-0" style={{ width: '16px' }}>
           {expanded ? (
-            <ChevronDown size={11} style={{ color: VS_CODES.textMuted }} />
+            <ChevronDown size={12} style={{ color: 'var(--vscode-secondary-text)' }} />
           ) : (
-            <ChevronRight size={11} style={{ color: VS_CODES.textMuted }} />
+            <ChevronRight size={12} style={{ color: 'var(--vscode-secondary-text)' }} />
           )}
         </div>
 
         {/* Action Icon */}
-        <div className="flex items-center shrink-0" style={{ color: VS_CODES.textMuted }}>
-          <ActionIcon size={11} />
+        <div className="flex items-center shrink-0" style={{ color: 'var(--vscode-secondary-text)' }}>
+          <ActionIcon size={12} />
         </div>
 
         {/* Action Name */}
         <div className="flex-1 truncate">
-          <span style={{ color: VS_CODES.text }}>
+          <span
+            className="font-medium"
+            style={{
+              color: 'var(--vscode-foreground)',
+              fontSize: '12px'
+            }}
+          >
             {toolCall.action}
           </span>
         </div>
@@ -203,40 +232,50 @@ function ToolCallItem({ toolCall, isStreaming }: ToolCallItemProps) {
       {/* Preview (when collapsed) */}
       {!expanded && toolCall.detail && (
         <div
-          className="px-2 pb-1 truncate"
+          className="px-2 pb-1.5 truncate transition-all duration-150"
           style={{
-            color: VS_CODES.textDim,
-            fontSize: VS_CODES.fontSizeSmall,
-            marginLeft: '28px'
+            color: 'var(--vscode-secondary-text)',
+            fontSize: '11px',
+            marginLeft: '32px',
+            lineHeight: 1.4
           }}
         >
           {formatPreview(toolCall.detail)}
         </div>
       )}
 
-      {/* Expanded Content */}
+      {/* Expanded Content - Enhanced */}
       {expanded && (
         <div
-          className="border-t overflow-hidden"
+          className="border-t overflow-hidden transition-all duration-150"
           style={{
-            borderColor: VS_CODES.border,
-            padding: '4px 8px'
+            borderColor: 'var(--vscode-border-color)',
+            padding: `${VS_CODES.spacing.md}px ${VS_CODES.spacing.lg}px`
           }}
         >
-          {/* Input/Detail */}
+          {/* Input/Detail - Enhanced */}
           {toolCall.detail && (
-            <div className="mb-2">
-              <div className="text-[10px] uppercase mb-1 font-medium tracking-wider" style={{ color: VS_CODES.textMuted }}>
+            <div style={{ marginBottom: VS_CODES.spacing.md }}>
+              <div
+                className="uppercase font-medium tracking-wider"
+                style={{
+                  color: 'var(--vscode-secondary-text)',
+                  fontSize: '10px',
+                  marginBottom: VS_CODES.spacing.sm,
+                  opacity: 0.8
+                }}
+              >
                 Input
               </div>
               <pre
-                className="p-2 overflow-x-auto max-h-24 whitespace-pre-wrap break-all font-mono"
+                className="p-2 overflow-x-auto max-h-28 whitespace-pre-wrap break-all font-mono border rounded transition-all duration-150"
                 style={{
-                  backgroundColor: VS_CODES.bgSecondary,
-                  border: `1px solid ${VS_CODES.border}`,
-                  borderRadius: VS_CODES.radius,
-                  fontSize: VS_CODES.fontSize,
-                  color: VS_CODES.text
+                  backgroundColor: 'var(--vscode-sideBar-background)',
+                  border: `1px solid var(--vscode-border-color)`,
+                  borderRadius: VS_CODES.radiusSm,
+                  fontSize: '12px',
+                  color: 'var(--vscode-foreground)',
+                  lineHeight: 1.4
                 }}
               >
                 {toolCall.detail}
@@ -244,19 +283,28 @@ function ToolCallItem({ toolCall, isStreaming }: ToolCallItemProps) {
             </div>
           )}
 
-          {/* Output */}
+          {/* Output - Enhanced */}
           {toolCall.output && (
-            <div className="mb-2">
-              <div className="text-[10px] uppercase mb-1 font-medium tracking-wider" style={{ color: VS_CODES.textMuted }}>
+            <div style={{ marginBottom: hasError ? VS_CODES.spacing.md : 0 }}>
+              <div
+                className="uppercase font-medium tracking-wider"
+                style={{
+                  color: 'var(--vscode-secondary-text)',
+                  fontSize: '10px',
+                  marginBottom: VS_CODES.spacing.sm,
+                  opacity: 0.8
+                }}
+              >
                 Output
               </div>
               <pre
-                className="p-2 overflow-x-auto max-h-32 whitespace-pre-wrap break-all font-mono border-l-2"
+                className="p-2 overflow-x-auto max-h-36 whitespace-pre-wrap break-all font-mono border-l-2 rounded transition-all duration-150"
                 style={{
-                  backgroundColor: VS_CODES.bgSecondary,
-                  borderColor: VS_CODES.success,
-                  fontSize: VS_CODES.fontSize,
-                  color: VS_CODES.text
+                  backgroundColor: hasError ? 'rgba(244, 135, 113, 0.05)' : 'var(--vscode-sideBar-background)',
+                  borderColor: hasError ? 'var(--vscode-error-foreground)' : 'var(--vscode-success-foreground)',
+                  fontSize: '12px',
+                  lineHeight: 1.4,
+                  color: hasError ? 'var(--vscode-error-foreground)' : 'var(--vscode-foreground)'
                 }}
               >
                 {toolCall.output.length > 1000 ? toolCall.output.slice(0, 1000) + '...' : toolCall.output}
@@ -264,23 +312,40 @@ function ToolCallItem({ toolCall, isStreaming }: ToolCallItemProps) {
             </div>
           )}
 
-          {/* Error */}
+          {/* Error - Enhanced */}
           {toolCall.error && (
-            <div>
-              <div className="text-[10px] uppercase mb-1 font-medium tracking-wider" style={{ color: VS_CODES.error }}>
-                Error
+            <div
+              className="p-2 border-l-2 rounded"
+              style={{
+                backgroundColor: 'rgba(244, 135, 113, 0.08)',
+                borderColor: 'var(--vscode-error-foreground)',
+                borderRadius: VS_CODES.radiusSm
+              }}
+            >
+              <div className="flex items-start gap-2 mb-1">
+                <AlertTriangle size={12} className="shrink-0 mt-0.5" style={{ color: 'var(--vscode-error-foreground)' }} />
+                <div className="flex-1">
+                  <div
+                    className="uppercase font-semibold tracking-wider mb-1"
+                    style={{
+                      color: 'var(--vscode-error-foreground)',
+                      fontSize: '10px'
+                    }}
+                  >
+                    Error
+                  </div>
+                  <pre
+                    className="whitespace-pre-wrap break-all font-mono"
+                    style={{
+                      fontSize: '12px',
+                      color: 'var(--vscode-error-foreground)',
+                      lineHeight: 1.4
+                    }}
+                  >
+                    {toolCall.error}
+                  </pre>
+                </div>
               </div>
-              <pre
-                className="p-2 overflow-x-auto max-h-24 whitespace-pre-wrap break-all font-mono border-l-2"
-                style={{
-                  backgroundColor: 'rgba(244, 135, 113, 0.1)',
-                  borderColor: VS_CODES.error,
-                  fontSize: VS_CODES.fontSize,
-                  color: VS_CODES.error
-                }}
-              >
-                {toolCall.error}
-              </pre>
             </div>
           )}
         </div>
@@ -290,7 +355,7 @@ function ToolCallItem({ toolCall, isStreaming }: ToolCallItemProps) {
 }
 
 // ============================================================================
-// Summary Component
+// VS Code-Style Summary - Enhanced
 // ============================================================================
 function ExecutionSummary({
   toolCalls,
@@ -300,7 +365,7 @@ function ExecutionSummary({
   isStreaming: boolean;
 }) {
   const completed = toolCalls.filter(tc => tc.status === 'success' || tc.status === 'error').length;
-  const running = toolCalls.filter(tc => tc.status === 'running').length;
+  const running = toolCalls.filter(tc => tc.status === 'running' || tc.status === 'pending').length;
   const failed = toolCalls.filter(tc => tc.status === 'error').length;
   const totalDuration = toolCalls.reduce((sum, tc) => sum + (tc.duration || 0), 0);
 
@@ -308,37 +373,50 @@ function ExecutionSummary({
 
   return (
     <div
-      className="flex items-center gap-2 px-2 py-1 mb-2 border font-mono"
+      className="flex items-center gap-3 px-3 py-2 mb-2 border font-mono transition-all duration-150"
       style={{
-        borderColor: VS_CODES.border,
-        borderRadius: VS_CODES.radius,
-        backgroundColor: VS_CODES.bgSecondary,
-        fontSize: VS_CODES.fontSize
+        borderColor: 'var(--vscode-border-color)',
+        borderRadius: VS_CODES.borderRadiusRound,
+        backgroundColor: 'var(--vscode-panel-background)',
+        fontSize: '12px',
+        fontWeight: 500
       }}
     >
-      <span style={{ color: VS_CODES.text }}>
+      {/* Steps count */}
+      <span style={{ color: 'var(--vscode-foreground)' }}>
         {completed}/{toolCalls.length} steps
       </span>
 
+      {/* Separator */}
+      <span style={{ color: 'var(--vscode-border-color)', opacity: 0.5 }}>|</span>
+
+      {/* Running count */}
       {running > 0 && (
         <>
-          <span style={{ color: VS_CODES.textDim }}>•</span>
-          <span style={{ color: VS_CODES.info }}>{running} running</span>
+          <span className="flex items-center gap-1" style={{ color: 'var(--vscode-foreground)' }}>
+            <Loader2 size={11} className="animate-spin" style={{ color: 'var(--vscode-info-foreground)' }} />
+            {running} running
+          </span>
+          <span style={{ color: 'var(--vscode-border-color)', opacity: 0.5 }}>|</span>
         </>
       )}
 
+      {/* Failed count */}
       {failed > 0 && (
         <>
-          <span style={{ color: VS_CODES.textDim }}>•</span>
-          <span style={{ color: VS_CODES.error }}>{failed} failed</span>
+          <span className="flex items-center gap-1" style={{ color: 'var(--vscode-error-foreground)', fontWeight: 600 }}>
+            <AlertTriangle size={11} />
+            {failed} failed
+          </span>
+          <span style={{ color: 'var(--vscode-border-color)', opacity: 0.5 }}>|</span>
         </>
       )}
 
+      {/* Total duration */}
       {!isStreaming && totalDuration > 0 && (
-        <>
-          <span style={{ color: VS_CODES.textDim }}>•</span>
-          <span style={{ color: VS_CODES.text }}>{formatDuration(totalDuration)}</span>
-        </>
+        <span style={{ color: 'var(--vscode-foreground)', fontSize: '11px' }}>
+          {formatDuration(totalDuration)}
+        </span>
       )}
     </div>
   );

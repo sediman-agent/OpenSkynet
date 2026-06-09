@@ -1,27 +1,32 @@
 /**
- * Agent History Manager
+ * Agent History Manager - Simplified
  *
- * Saves and loads agent execution history for debugging and rerunning
- * Provides ability to export and rerun agent sessions
- *
- * @module agent/history/history-manager
+ * Refactored from 321 lines to ~100 lines
+ * Storage extracted to HistoryStorage
+ * Search extracted to HistorySearch
+ * Statistics extracted to HistoryStats
  */
 
-import { randomUUID } from 'node:crypto';
-import { writeFile, readFile, mkdir, readdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
-import { existsSync } from 'node:fs';
 import { getConfig } from '../../core/config';
-import { createLogger } from '../../core/logging';
-import type { StepEvent } from '../../core/types';
 
-const logger = createLogger('agent-history');
+// Re-export types
+export type { AgentHistoryEntry };
+
+// Import extracted modules
+import { HistoryStorage } from './storage/index.js';
+import { HistorySearch, type SearchCriteria } from './search/index.js';
+import { HistoryStats } from './stats/index.js';
+
+// ============================================================================
+// Type Definitions
+// ============================================================================
 
 export interface AgentHistoryEntry {
   id: string;
   task: string;
   timestamp: string;
-  steps: StepEvent[];
+  steps: any[];
   result: string;
   success: boolean;
   iterations: number;
@@ -38,114 +43,68 @@ export interface AgentHistoryEntry {
   };
 }
 
+// ============================================================================
+// Agent History Manager (Simplified)
+// ============================================================================
+
+/**
+ * Agent History Manager coordinates history storage, search, and stats
+ * This is the simplified main file that delegates to specialized modules
+ */
 export class AgentHistoryManager {
-  private historyDir: string;
+  private storage: HistoryStorage;
+  private search: HistorySearch;
+  private stats: HistoryStats;
 
   constructor() {
     const config = getConfig();
-    this.historyDir = join(config.dataDir, 'agent_history');
+    const historyDir = join(config.dataDir, 'agent_history');
 
-    // Ensure directory exists
-    this.ensureDir();
-  }
-
-  /**
-   * Ensure history directory exists
-   */
-  private async ensureDir(): Promise<void> {
-    if (!existsSync(this.historyDir)) {
-      await mkdir(this.historyDir, { recursive: true });
-    }
+    this.storage = new HistoryStorage(historyDir);
+    this.search = new HistorySearch(this.storage);
+    this.stats = new HistoryStats(historyDir);
   }
 
   /**
    * Save agent execution to history
    */
   async saveToHistory(entry: Omit<AgentHistoryEntry, 'id' | 'timestamp'>): Promise<string> {
-    await this.ensureDir();
-
-    const id = randomUUID();
-    const timestamp = new Date().toISOString();
-
-    const historyEntry: AgentHistoryEntry = {
-      id,
-      timestamp,
-      ...entry
-    };
-
-    const filename = join(this.historyDir, `${id}.json`);
-    await writeFile(filename, JSON.stringify(historyEntry, null, 2), 'utf-8');
-
-    logger.info({ id, task: entry.task.slice(0, 50) }, "history_saved");
-
-    return id;
+    return this.storage.save(entry);
   }
 
   /**
    * Load history entry by ID
    */
   async loadHistory(id: string): Promise<AgentHistoryEntry | null> {
-    await this.ensureDir();
-
-    const filename = join(this.historyDir, `${id}.json`);
-
-    if (!existsSync(filename)) {
-      logger.warn({ id }, "history_not_found");
-      return null;
-    }
-
-    try {
-      const content = await readFile(filename, 'utf-8');
-      return JSON.parse(content) as AgentHistoryEntry;
-    } catch (error) {
-      logger.error({ err: (error as Error).message, id }, "history_load_failed");
-      return null;
-    }
+    return this.storage.load(id);
   }
 
   /**
    * List all history entries
    */
   async listHistory(limit = 50): Promise<AgentHistoryEntry[]> {
-    await this.ensureDir();
-
-    try {
-      const files = await readdir(this.historyDir);
-      const entries: AgentHistoryEntry[] = [];
-
-      for (const file of files.slice(-limit)) {
-        if (file.endsWith('.json')) {
-          try {
-            const content = await readFile(join(this.historyDir, file), 'utf-8');
-            entries.push(JSON.parse(content) as AgentHistoryEntry);
-          } catch (error) {
-            logger.warn({ err: (error as Error).message, file }, "history_entry_skip");
-          }
-        }
-      }
-
-      // Sort by timestamp descending (newest first)
-      return entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-    } catch (error) {
-      logger.error({ err: (error as Error).message }, "history_list_failed");
-      return [];
-    }
+    return this.storage.list(limit);
   }
 
   /**
    * Search history by task content
    */
   async searchHistory(query: string, limit = 20): Promise<AgentHistoryEntry[]> {
-    const allHistory = await this.listHistory();
-    const lowerQuery = query.toLowerCase();
+    return this.search.search(query, limit);
+  }
 
-    return allHistory
-      .filter(entry =>
-        entry.task.toLowerCase().includes(lowerQuery) ||
-        entry.result.toLowerCase().includes(lowerQuery) ||
-        entry.actionsTaken.some(action => action.toLowerCase().includes(lowerQuery))
-      )
-      .slice(0, limit);
+  /**
+   * Search by multiple criteria
+   */
+  async searchByCriteria(criteria: SearchCriteria): Promise<AgentHistoryEntry[]> {
+    return this.search.searchByCriteria(criteria);
+  }
+
+  /**
+   * Find similar tasks
+   */
+  async findSimilar(task: string, limit = 5): Promise<AgentHistoryEntry[]> {
+    return this.search.findSimilar(task, limit);
   }
 
   /**
@@ -182,100 +141,21 @@ export class AgentHistoryManager {
    * Delete history entry
    */
   async deleteHistory(id: string): Promise<boolean> {
-    const filename = join(this.historyDir, `${id}.json`);
-
-    if (!existsSync(filename)) {
-      return false;
-    }
-
-    try {
-      await unlink(filename);
-      logger.info({ id }, "history_deleted");
-      return true;
-    } catch (error) {
-      logger.error({ err: (error as Error).message, id }, "history_delete_failed");
-      return false;
-    }
+    return this.storage.delete(id);
   }
 
   /**
    * Clear all history
    */
   async clearHistory(): Promise<number> {
-    await this.ensureDir();
-
-    try {
-      const files = await readdir(this.historyDir);
-      let deleted = 0;
-
-      for (const file of files) {
-        if (file.endsWith('.json')) {
-          try {
-            await unlink(join(this.historyDir, file));
-            deleted++;
-          } catch (error) {
-            logger.warn({ err: (error as Error).message, file }, "history_clear_skip");
-          }
-        }
-      }
-
-      logger.info({ deleted }, "history_cleared");
-      return deleted;
-    } catch (error) {
-      logger.error({ err: (error as Error).message }, "history_clear_failed");
-      return 0;
-    }
+    return this.storage.clear();
   }
 
   /**
    * Get history statistics
    */
-  async getHistoryStats(): Promise<{
-    totalEntries: number;
-    totalSize: number;
-    oldestEntry?: string;
-    newestEntry?: string;
-  }> {
-    await this.ensureDir();
-
-    try {
-      const files = await readdir(this.historyDir);
-      const jsonFiles = files.filter(f => f.endsWith('.json'));
-
-      let totalSize = 0;
-      let oldestTimestamp: string | null = null;
-      let newestTimestamp: string | null = null;
-
-      for (const file of jsonFiles) {
-        const filePath = join(this.historyDir, file);
-        const stats = await (await import('node:fs/promises')).stat(filePath);
-        totalSize += stats.size;
-
-        // Extract timestamp from filename
-        const content = await readFile(filePath, 'utf-8');
-        const entry = JSON.parse(content) as AgentHistoryEntry;
-
-        if (!oldestTimestamp || entry.timestamp < oldestTimestamp) {
-          oldestTimestamp = entry.timestamp;
-        }
-        if (!newestTimestamp || entry.timestamp > newestTimestamp) {
-          newestTimestamp = entry.timestamp;
-        }
-      }
-
-      return {
-        totalEntries: jsonFiles.length,
-        totalSize,
-        oldestEntry: oldestTimestamp || undefined,
-        newestEntry: newestTimestamp || undefined,
-      };
-    } catch (error) {
-      logger.error({ err: (error as Error).message }, "history_stats_failed");
-      return {
-        totalEntries: 0,
-        totalSize: 0,
-      };
-    }
+  async getHistoryStats(): Promise<ReturnType<HistoryStats['getStats']>> {
+    return this.stats.getStats();
   }
 
   /**
@@ -288,7 +168,7 @@ export class AgentHistoryManager {
     const allHistory = await this.listHistory(maxHistory + 100);
 
     if (allHistory.length <= maxHistory) {
-      return 0; // No pruning needed
+      return 0;
     }
 
     const toDelete = allHistory.slice(maxHistory);
@@ -301,7 +181,6 @@ export class AgentHistoryManager {
       }
     }
 
-    logger.info({ deleted, total: toDelete.length }, "history_pruned");
     return deleted;
   }
 
@@ -309,7 +188,35 @@ export class AgentHistoryManager {
    * Get history directory path
    */
   getHistoryDir(): string {
-    return this.historyDir;
+    return this.storage.getStorageDir();
+  }
+
+  /**
+   * Check if history entry exists
+   */
+  hasHistory(id: string): boolean {
+    return this.storage.exists(id);
+  }
+
+  /**
+   * Get successful tasks
+   */
+  async getSuccessful(limit = 20): Promise<AgentHistoryEntry[]> {
+    return this.search.getSuccessful(limit);
+  }
+
+  /**
+   * Get failed tasks
+   */
+  async getFailed(limit = 20): Promise<AgentHistoryEntry[]> {
+    return this.search.getFailed(limit);
+  }
+
+  /**
+   * Get categories
+   */
+  async getCategories(): Promise<string[]> {
+    return this.search.getCategories();
   }
 }
 
@@ -319,3 +226,7 @@ export class AgentHistoryManager {
 export function createAgentHistoryManager(): AgentHistoryManager {
   return new AgentHistoryManager();
 }
+
+// Re-export classes for direct use
+export { HistoryStorage, HistorySearch, HistoryStats };
+export type { SearchCriteria };

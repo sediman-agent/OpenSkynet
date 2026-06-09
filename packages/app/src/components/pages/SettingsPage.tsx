@@ -1,9 +1,9 @@
+/**
+ * VS Code-Style SettingsPage
+ * Application settings with VS Code design system
+ */
+
 import { useState, useEffect } from 'react';
-import { Button } from '@/elements/actions/Button';
-import { Input } from '@/elements/form/Input';
-import { ToggleSwitch } from '@/elements/form/ToggleSwitch';
-import { ScrollArea } from '@/elements/data/ScrollArea';
-import { ThemePicker } from '@/elements/feedback/ThemePicker';
 import { useAppStore } from '@/stores/useAppStore';
 import { toast } from 'sonner';
 
@@ -69,102 +69,253 @@ export function SettingsPage() {
     setHasChanges(true);
   };
 
+  const COLOR_THEMES = [
+    { name: 'Blue', value: 'blue', color: '#007acc' },
+    { name: 'Green', value: 'green', color: '#388a34' },
+    { name: 'Red', value: 'red', color: '#a1260d' },
+    { name: 'Purple', value: 'purple', color: '#6c5ce7' },
+    { name: 'Orange', value: 'orange', color: '#d18616' },
+  ];
+
   return (
-    <div className="flex flex-col h-full bg-background">
-      <div className="h-10 border-b border-border flex items-center justify-between px-3 bg-background">
-        <h1 className="text-xs font-medium">Settings</h1>
+    <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--vscode-background)' }}>
+      {/* Header */}
+      <div className="h-10 border-b flex items-center justify-between px-4" style={{
+        borderColor: 'var(--vscode-border-color)',
+        backgroundColor: 'var(--vscode-background)'
+      }}>
+        <h1 className="text-xs font-medium" style={{ color: 'var(--vscode-foreground)' }}>Settings</h1>
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
+          <button
             onClick={handleReset}
-            className="h-7 px-2 text-xs"
+            className="px-2 py-1 text-xs font-mono transition-colors"
+            style={{
+              backgroundColor: 'transparent',
+              color: 'var(--vscode-foreground)',
+              minHeight: '26px'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
             Reset
-          </Button>
-          <Button
+          </button>
+          <button
             onClick={handleSave}
             disabled={!hasChanges}
-            size="sm"
-            className="h-7 px-3 text-xs"
+            className="px-3 py-1 text-xs font-mono uppercase tracking-wider transition-colors"
+            style={{
+              backgroundColor: hasChanges ? 'var(--vscode-button-primary-background)' : 'var(--vscode-button-secondary-background)',
+              color: hasChanges ? 'var(--vscode-button-primary-foreground)' : 'var(--vscode-button-secondary-foreground)',
+              border: '1px solid transparent',
+              borderRadius: 'var(--vscode-corner-radius)',
+              minHeight: '26px',
+              opacity: hasChanges ? 1 : 0.6
+            }}
+            onMouseEnter={(e) => {
+              if (hasChanges) {
+                e.currentTarget.style.backgroundColor = 'var(--vscode-button-primary-hover-background)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = hasChanges
+                ? 'var(--vscode-button-primary-background)'
+                : 'var(--vscode-button-secondary-background)';
+            }}
           >
             Save
-          </Button>
+          </button>
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
         <div className="max-w-xl mx-auto py-4 px-3 space-y-4">
+          {/* Appearance Section */}
           <section className="space-y-3">
-            <h2 className="text-xs font-medium text-foreground px-1">Appearance</h2>
+            <h2 className="text-xs font-medium px-1" style={{ color: 'var(--vscode-foreground)' }}>
+              APPEARANCE
+            </h2>
             <div className="space-y-2">
-              <div className="flex items-center justify-between py-2 px-2 rounded hover:bg-muted/30 transition-colors">
+              {/* Color Theme */}
+              <div className="flex items-center justify-between py-2 px-2 rounded transition-colors"
+                style={{ borderRadius: 'var(--vscode-corner-radius-round)' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
                 <div className="flex-1">
-                  <label className="text-xs font-medium">Color Theme</label>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Choose your accent color</p>
+                  <label className="text-xs font-medium block" style={{ color: 'var(--vscode-foreground)' }}>
+                    Color Theme
+                  </label>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--vscode-secondary-text)' }}>
+                    Choose your accent color
+                  </p>
                 </div>
-                <ThemePicker
-                  currentTheme={colorTheme}
-                  onThemeChange={setColorTheme}
-                />
+                <div className="flex items-center gap-1">
+                  {COLOR_THEMES.map((theme) => (
+                    <button
+                      key={theme.value}
+                      onClick={() => setColorTheme(theme.value as any)}
+                      className="w-5 h-5 rounded transition-transform"
+                      style={{
+                        backgroundColor: theme.color,
+                        transform: colorTheme === theme.value ? 'scale(1.2)' : 'scale(1)',
+                        border: colorTheme === theme.value ? '2px solid var(--vscode-foreground)' : '2px solid transparent'
+                      }}
+                      title={theme.name}
+                    />
+                  ))}
+                </div>
               </div>
 
-              <div className="flex items-center justify-between py-2 px-2 rounded hover:bg-muted/30 transition-colors">
+              {/* Dark Mode Toggle */}
+              <div className="flex items-center justify-between py-2 px-2 rounded transition-colors"
+                style={{ borderRadius: 'var(--vscode-corner-radius-round)' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
                 <div>
-                  <label className="text-xs font-medium">Dark Mode</label>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Use dark color scheme</p>
+                  <label className="text-xs font-medium block" style={{ color: 'var(--vscode-foreground)' }}>
+                    Dark Mode
+                  </label>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--vscode-secondary-text)' }}>
+                    Use dark color scheme
+                  </p>
                 </div>
-                <ToggleSwitch
-                  checked={theme === 'dark'}
-                  onCheckedChange={(checked) => {
-                    if (checked !== (theme === 'dark')) {
+                <button
+                  onClick={() => {
+                    if (theme !== 'dark') {
                       toggleTheme();
                     }
                   }}
-                  aria-label="Toggle dark mode"
-                />
+                  className="w-10 h-5 rounded-full relative transition-colors"
+                  style={{
+                    backgroundColor: theme === 'dark' ? 'var(--vscode-button-primary-background)' : 'var(--vscode-input-background)',
+                    border: '1px solid var(--vscode-border-color)'
+                  }}
+                >
+                  <span
+                    className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
+                    style={{
+                      left: theme === 'dark' ? 'calc(100% - 20px)' : '2px',
+                      backgroundColor: theme === 'dark' ? 'var(--vscode-button-primary-foreground)' : 'var(--vscode-secondary-text)'
+                    }}
+                  />
+                </button>
               </div>
             </div>
           </section>
 
+          {/* Connection Section */}
           <section className="space-y-3">
-            <h2 className="text-xs font-medium text-foreground px-1">Connection</h2>
+            <h2 className="text-xs font-medium px-1" style={{ color: 'var(--vscode-foreground)' }}>
+              CONNECTION
+            </h2>
             <div className="space-y-2">
-              <div className="py-2 px-2 rounded hover:bg-muted/30 transition-colors">
-                <label htmlFor="api-url" className="text-xs font-medium block mb-1">API URL</label>
-                <Input
+              {/* API URL */}
+              <div className="py-2 px-2 rounded transition-colors"
+                style={{ borderRadius: 'var(--vscode-corner-radius-round)' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <label htmlFor="api-url" className="text-xs font-medium block mb-1" style={{ color: 'var(--vscode-foreground)' }}>
+                  API URL
+                </label>
+                <input
                   id="api-url"
+                  type="text"
                   value={localSettings.apiBaseUrl}
                   onChange={(e) => handleChange('apiBaseUrl', e.target.value)}
-                   placeholder="http://localhost:3001"
-                  className="text-xs"
+                  placeholder="http://localhost:3001"
+                  className="w-full px-3 py-1 text-xs font-mono outline-none border"
+                  style={{
+                    backgroundColor: 'var(--vscode-input-background)',
+                    borderColor: 'var(--vscode-input-border)',
+                    borderRadius: 'var(--vscode-corner-radius)',
+                    color: 'var(--vscode-input-foreground)',
+                    minHeight: '26px',
+                    fontFamily: 'var(--vscode-font-family)'
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--vscode-focus-border)';
+                    e.currentTarget.style.boxShadow = '0 0 0 1px var(--vscode-focus-border)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--vscode-input-border)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
                 />
               </div>
 
-              <div className="flex items-center justify-between py-2 px-2 rounded hover:bg-muted/30 transition-colors">
+              {/* Auto-connect Toggle */}
+              <div className="flex items-center justify-between py-2 px-2 rounded transition-colors"
+                style={{ borderRadius: 'var(--vscode-corner-radius-round)' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
                 <div>
-                  <label className="text-xs font-medium">Auto-connect</label>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Connect on startup</p>
+                  <label className="text-xs font-medium block" style={{ color: 'var(--vscode-foreground)' }}>
+                    Auto-connect
+                  </label>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--vscode-secondary-text)' }}>
+                    Connect on startup
+                  </p>
                 </div>
-                <ToggleSwitch
-                  checked={localSettings.autoConnect}
-                  onCheckedChange={(checked) => handleChange('autoConnect', checked)}
-                  aria-label="Toggle auto-connect"
-                />
+                <button
+                  onClick={() => handleChange('autoConnect', !localSettings.autoConnect)}
+                  className="w-10 h-5 rounded-full relative transition-colors"
+                  style={{
+                    backgroundColor: localSettings.autoConnect ? 'var(--vscode-button-primary-background)' : 'var(--vscode-input-background)',
+                    border: '1px solid var(--vscode-border-color)'
+                  }}
+                >
+                  <span
+                    className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
+                    style={{
+                      left: localSettings.autoConnect ? 'calc(100% - 20px)' : '2px',
+                      backgroundColor: localSettings.autoConnect ? 'var(--vscode-button-primary-foreground)' : 'var(--vscode-secondary-text)'
+                    }}
+                  />
+                </button>
               </div>
             </div>
           </section>
 
+          {/* Language Model Section */}
           <section className="space-y-3">
-            <h2 className="text-xs font-medium text-foreground px-1">Language Model</h2>
+            <h2 className="text-xs font-medium px-1" style={{ color: 'var(--vscode-foreground)' }}>
+              LANGUAGE MODEL
+            </h2>
             <div className="space-y-2">
-              <div className="py-2 px-2 rounded hover:bg-muted/30 transition-colors">
-                <label htmlFor="provider-select" className="text-xs font-medium block mb-1">Provider</label>
+              {/* Provider Select */}
+              <div className="py-2 px-2 rounded transition-colors"
+                style={{ borderRadius: 'var(--vscode-corner-radius-round)' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <label htmlFor="provider-select" className="text-xs font-medium block mb-1" style={{ color: 'var(--vscode-foreground)' }}>
+                  Provider
+                </label>
                 <select
                   id="provider-select"
                   value={localSettings.provider}
                   onChange={(e) => handleChange('provider', e.target.value)}
-                  className="flex h-8 w-full rounded border border-input bg-background px-2 py-1 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full px-2 py-1 text-xs outline-none border font-mono"
+                  style={{
+                    backgroundColor: 'var(--vscode-input-background)',
+                    borderColor: 'var(--vscode-input-border)',
+                    borderRadius: 'var(--vscode-corner-radius)',
+                    color: 'var(--vscode-input-foreground)',
+                    minHeight: '26px',
+                    fontFamily: 'var(--vscode-font-family)'
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--vscode-focus-border)';
+                    e.currentTarget.style.boxShadow = '0 0 0 1px var(--vscode-focus-border)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--vscode-input-border)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
                 >
                   <option value="openai">OpenAI</option>
                   <option value="ollama">Ollama</option>
@@ -172,68 +323,144 @@ export function SettingsPage() {
                 </select>
               </div>
 
-              <div className="py-2 px-2 rounded hover:bg-muted/30 transition-colors">
-                <label htmlFor="model-input" className="text-xs font-medium block mb-1">Model</label>
-                <Input
+              {/* Model Input */}
+              <div className="py-2 px-2 rounded transition-colors"
+                style={{ borderRadius: 'var(--vscode-corner-radius-round)' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <label htmlFor="model-input" className="text-xs font-medium block mb-1" style={{ color: 'var(--vscode-foreground)' }}>
+                  Model
+                </label>
+                <input
                   id="model-input"
+                  type="text"
                   value={localSettings.model}
                   onChange={(e) => handleChange('model', e.target.value)}
                   placeholder="gpt-4 or leave empty for default"
-                  className="text-xs"
+                  className="w-full px-3 py-1 text-xs font-mono outline-none border"
+                  style={{
+                    backgroundColor: 'var(--vscode-input-background)',
+                    borderColor: 'var(--vscode-input-border)',
+                    borderRadius: 'var(--vscode-corner-radius)',
+                    color: 'var(--vscode-input-foreground)',
+                    minHeight: '26px',
+                    fontFamily: 'var(--vscode-font-family)'
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--vscode-focus-border)';
+                    e.currentTarget.style.boxShadow = '0 0 0 1px var(--vscode-focus-border)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--vscode-input-border)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
                 />
               </div>
             </div>
           </section>
 
+          {/* Browser Section */}
           <section className="space-y-3">
-            <h2 className="text-xs font-medium text-foreground px-1">Browser</h2>
+            <h2 className="text-xs font-medium px-1" style={{ color: 'var(--vscode-foreground)' }}>
+              BROWSER
+            </h2>
             <div className="space-y-2">
-              <div className="flex items-center justify-between py-2 px-2 rounded hover:bg-muted/30 transition-colors">
+              {/* Headless Mode Toggle */}
+              <div className="flex items-center justify-between py-2 px-2 rounded transition-colors"
+                style={{ borderRadius: 'var(--vscode-corner-radius-round)' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
                 <div>
-                  <label className="text-xs font-medium">Headless Mode</label>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Run without visible window</p>
+                  <label className="text-xs font-medium block" style={{ color: 'var(--vscode-foreground)' }}>
+                    Headless Mode
+                  </label>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--vscode-secondary-text)' }}>
+                    Run without visible window
+                  </p>
                 </div>
-                <ToggleSwitch
-                  checked={localSettings.headless}
-                  onCheckedChange={(checked) => handleChange('headless', checked)}
-                  aria-label="Toggle headless mode"
-                />
+                <button
+                  onClick={() => handleChange('headless', !localSettings.headless)}
+                  className="w-10 h-5 rounded-full relative transition-colors"
+                  style={{
+                    backgroundColor: localSettings.headless ? 'var(--vscode-button-primary-background)' : 'var(--vscode-input-background)',
+                    border: '1px solid var(--vscode-border-color)'
+                  }}
+                >
+                  <span
+                    className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
+                    style={{
+                      left: localSettings.headless ? 'calc(100% - 20px)' : '2px',
+                      backgroundColor: localSettings.headless ? 'var(--vscode-button-primary-foreground)' : 'var(--vscode-secondary-text)'
+                    }}
+                  />
+                </button>
               </div>
 
-              <div className="flex items-center justify-between py-2 px-2 rounded hover:bg-muted/30 transition-colors">
+              {/* Stealth Mode Toggle */}
+              <div className="flex items-center justify-between py-2 px-2 rounded transition-colors"
+                style={{ borderRadius: 'var(--vscode-corner-radius-round)' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
                 <div>
-                  <label className="text-xs font-medium">Stealth Mode</label>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Anti-detection patches</p>
+                  <label className="text-xs font-medium block" style={{ color: 'var(--vscode-foreground)' }}>
+                    Stealth Mode
+                  </label>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--vscode-secondary-text)' }}>
+                    Anti-detection patches
+                  </p>
                 </div>
-                <ToggleSwitch
-                  checked={localSettings.stealth}
-                  onCheckedChange={(checked) => handleChange('stealth', checked)}
-                  aria-label="Toggle stealth mode"
-                />
+                <button
+                  onClick={() => handleChange('stealth', !localSettings.stealth)}
+                  className="w-10 h-5 rounded-full relative transition-colors"
+                  style={{
+                    backgroundColor: localSettings.stealth ? 'var(--vscode-button-primary-background)' : 'var(--vscode-input-background)',
+                    border: '1px solid var(--vscode-border-color)'
+                  }}
+                >
+                  <span
+                    className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
+                    style={{
+                      left: localSettings.stealth ? 'calc(100% - 20px)' : '2px',
+                      backgroundColor: localSettings.stealth ? 'var(--vscode-button-primary-foreground)' : 'var(--vscode-secondary-text)'
+                    }}
+                  />
+                </button>
               </div>
             </div>
           </section>
 
+          {/* About Section */}
           <section className="space-y-3">
-            <h2 className="text-xs font-medium text-foreground px-1">About</h2>
-            <div className="py-2 px-2 rounded hover:bg-muted/30 transition-colors">
+            <h2 className="text-xs font-medium px-1" style={{ color: 'var(--vscode-foreground)' }}>
+              ABOUT
+            </h2>
+            <div className="py-2 px-2 rounded transition-colors"
+              style={{ borderRadius: 'var(--vscode-corner-radius-round)' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
               <dl className="grid grid-cols-2 gap-2 text-xs">
-                <dt className="text-muted-foreground">Version:</dt>
-                <dd className="font-medium text-right">{appVersion}</dd>
+                <dt style={{ color: 'var(--vscode-secondary-text)' }}>Version:</dt>
+                <dd className="font-medium text-right" style={{ color: 'var(--vscode-foreground)' }}>{appVersion}</dd>
 
-                <dt className="text-muted-foreground">Build:</dt>
-                <dd className="font-medium text-right">Electron + React</dd>
+                <dt style={{ color: 'var(--vscode-secondary-text)' }}>Build:</dt>
+                <dd className="font-medium text-right" style={{ color: 'var(--vscode-foreground)' }}>Electron + React</dd>
 
-                <dt className="text-muted-foreground">Platform:</dt>
-                <dd className="font-medium text-right">{platform}</dd>
+                <dt style={{ color: 'var(--vscode-secondary-text)' }}>Platform:</dt>
+                <dd className="font-medium text-right" style={{ color: 'var(--vscode-foreground)' }}>{platform}</dd>
 
-                <dt className="text-muted-foreground">Architecture:</dt>
-                <dd className="font-medium text-right">Universal</dd>
+                <dt style={{ color: 'var(--vscode-secondary-text)' }}>Architecture:</dt>
+                <dd className="font-medium text-right" style={{ color: 'var(--vscode-foreground)' }}>Universal</dd>
               </dl>
             </div>
           </section>
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
+
+export default SettingsPage;

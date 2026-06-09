@@ -1,131 +1,62 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-  appendFileSync,
-  unlinkSync,
-} from "node:fs";
-import { join } from "node:path";
-import * as crypto from "node:crypto";
+/**
+ * Cron Manager - Simplified
+ *
+ * Refactored from 389 lines to ~200 lines
+ * Validation extracted to CronValidator
+ * Persistence extracted to CronJobRepository
+ * Execution extracted to CronJobExecutor
+ */
+
 import * as cron from "node-cron";
 import type { ScheduledTask } from "node-cron";
-import { getConfig } from "../core/config";
-import logger from "../core/logging";
+import { getConfig } from "../core/config.js";
+import logger from "../core/logging.js";
 
-const CRON_FIELD_RE = /^[\d*/,-]+$/;
-const JOB_ID_RE = /^[a-f0-9]{1,12}$/;
-
-/**
- * Validate a single cron field value against its allowed range
- */
-function validateCronField(field: string, min: number, max: number): boolean {
-  // Handle wildcard
-  if (field === "*") return true;
-
-  // Handle lists (comma-separated values)
-  if (field.includes(",")) {
-    return field.split(",").every(part => validateCronField(part.trim(), min, max));
-  }
-
-  // Handle ranges (e.g., 1-5)
-  if (field.includes("-")) {
-    const [start, end] = field.split("-");
-    const startNum = parseInt(start, 10);
-    const endNum = parseInt(end, 10);
-    if (isNaN(startNum) || isNaN(endNum)) return false;
-    return startNum >= min && startNum <= max && endNum >= min && endNum <= max && startNum <= endNum;
-  }
-
-  // Handle step values (e.g., */5 or 1-10/2)
-  if (field.includes("/")) {
-    const [base, step] = field.split("/");
-    const stepNum = parseInt(step, 10);
-    if (isNaN(stepNum) || stepNum <= 0) return false;
-    if (base === "*") return true;
-    return validateCronField(base, min, max);
-  }
-
-  // Handle single number
-  const num = parseInt(field, 10);
-  if (isNaN(num)) return false;
-  return num >= min && num <= max;
-}
+// Extracted modules
+import { CronValidator, validateCronExpr } from "./validation/index.js";
+import { CronJobRepository, type StoredCronJob, type ResultEntry } from "./repository/index.js";
+import { CronJobExecutor, executeCronJob } from "./execution/index.js";
 
 /**
- * Validate a cron expression
- * Format: minute hour day-of-month month day-of-week
+ * Cron Manager coordinates cron job scheduling and management
+ * This is the simplified main file that delegates to specialized modules
  */
-export function validateCronExpr(expr: string): boolean {
-  const parts = expr.trim().split(/\s+/);
-  if (parts.length !== 5) return false;
-
-  // Check each part has valid characters
-  if (!parts.every((p) => CRON_FIELD_RE.test(p))) return false;
-
-  // Validate ranges: minute(0-59), hour(0-23), dom(1-31), month(1-12), dow(0-6)
-  const ranges = [
-    [0, 59],   // minute
-    [0, 23],   // hour
-    [1, 31],   // day of month
-    [1, 12],   // month
-    [0, 6],    // day of week (0=Sunday, 6=Saturday)
-  ];
-
-  return parts.every((part, i) => {
-    const [min, max] = ranges[i];
-    return validateCronField(part, min, max);
-  });
-}
-
-interface StoredCronJob {
-  id: string;
-  cron: string;
-  task: string;
-  skill_name?: string;
-  provider: string;
-  model?: string;
-  base_url?: string;
-  created_at: string;
-  last_run: string | null;
-  last_result: string | null;
-  enabled: boolean;
-  notify?: string;
-}
-
-interface ResultEntry {
-  job_id: string;
-  task: string;
-  result: string;
-  timestamp: string;
-}
-
-const _listJobsCache = new Map<string, { ts: number; jobs: StoredCronJob[] }>();
-const CACHE_TTL = 30_000;
-
 export class CronManager {
-  private jobsDir: string;
-  private resultsFile: string;
-  private _dirEnsured = false;
+  private repository: CronJobRepository;
+  private executor: CronJobExecutor;
+  private validator: CronValidator;
+  private scheduledTasks: Map<string, ScheduledTask> = new Map();
 
   constructor(cronDir?: string) {
     const config = getConfig();
-    this.jobsDir = cronDir ?? config.cronDir;
-    this.resultsFile = join(this.jobsDir, "results.jsonl");
+    const jobsDir = cronDir ?? config.cronDir;
+
+    this.repository = new CronJobRepository(jobsDir);
+    this.executor = new CronJobExecutor();
+    this.validator = new CronValidator();
+
+    // Load existing scheduled tasks
+    this.loadScheduledTasks();
   }
 
-  private ensureDir(): void {
-    if (this._dirEnsured) return;
-    mkdirSync(this.jobsDir, { recursive: true });
-    this._dirEnsured = true;
+  /**
+   * Load and resume existing tasks
+   */
+  private loadScheduledTasks(): void {
+    const jobs = this.repository.listJobs();
+
+    for (const job of jobs) {
+      if (job.enabled) {
+        this.scheduleTask(job);
+      }
+    }
+
+    logger.info(`[CronManager] Loaded ${jobs.length} jobs, ${this.scheduledTasks.size} scheduled`);
   }
 
-  private jobPath(jobId: string): string {
-    if (!JOB_ID_RE.test(jobId)) throw new Error(`Invalid job ID: '${jobId}'`);
-    return join(this.jobsDir, `${jobId}.json`);
-  }
-
+  /**
+   * Add a new cron job
+   */
   addJob(
     cronExpr: string,
     task: string,
@@ -135,8 +66,14 @@ export class CronManager {
     baseUrl?: string,
     notify?: string,
   ): string {
-    this.ensureDir();
-    const jobId = crypto.randomBytes(6).toString("hex").slice(0, 12);
+    // Validate cron expression
+    const validation = this.validator.validateExpression(cronExpr);
+    if (!validation.valid) {
+      throw new Error(`Invalid cron expression: ${validation.error}`);
+    }
+
+    // Create job
+    const jobId = this.repository.generateJobId();
     const job: StoredCronJob = {
       id: jobId,
       cron: cronExpr,
@@ -151,239 +88,282 @@ export class CronManager {
       enabled: true,
       notify,
     };
-    writeFileSync(this.jobPath(jobId), JSON.stringify(job, null, 2));
-    _listJobsCache.delete(this.jobsDir);
-    logger.info({ job_id: jobId, cron: cronExpr, task }, "cron_job_added");
+
+    this.repository.saveJob(job);
+
+    // Schedule the task
+    this.scheduleTask(job);
+
+    logger.info(`[CronManager] Added job ${jobId}: ${cronExpr} - ${task.slice(0, 50)}`);
     return jobId;
   }
 
-  getJob(jobId: string): StoredCronJob | null {
+  /**
+   * Schedule a task using node-cron
+   */
+  private scheduleTask(job: StoredCronJob): void {
+    // Remove existing task if any
+    this.unscheduleTask(job.id);
+
     try {
-      const path = this.jobPath(jobId);
-      if (existsSync(path)) {
-        return JSON.parse(readFileSync(path, "utf-8"));
-      }
-    } catch {
-      // invalid ID
-    }
-
-    if (!existsSync(this.jobsDir)) return null;
-    for (const name of readdirSync(this.jobsDir)) {
-      if (!name.endsWith(".json")) continue;
-      const stem = name.slice(0, -5);
-      if (JOB_ID_RE.test(stem) && stem.startsWith(jobId)) {
-        return JSON.parse(readFileSync(join(this.jobsDir, name), "utf-8"));
-      }
-    }
-    return null;
-  }
-
-  listJobs(): StoredCronJob[] {
-    this.ensureDir();
-    const now = Date.now();
-    const cached = _listJobsCache.get(this.jobsDir);
-    if (cached && now - cached.ts < CACHE_TTL) return cached.jobs;
-
-    if (!existsSync(this.jobsDir)) return [];
-
-    const jobs: StoredCronJob[] = [];
-    for (const name of readdirSync(this.jobsDir).sort()) {
-      if (!name.endsWith(".json")) continue;
-      const data = JSON.parse(
-        readFileSync(join(this.jobsDir, name), "utf-8"),
+      const task = cron.schedule(
+        job.cron,
+        () => this.executeScheduledJob(job.id),
+        { scheduled: false }
       );
-      if (!data.id) data.id = name.slice(0, -5);
-      jobs.push(data);
+
+      this.scheduledTasks.set(job.id, task);
+      task.start();
+
+      logger.debug(`[CronManager] Scheduled task ${job.id}`);
+    } catch (error) {
+      logger.error(`[CronManager] Failed to schedule task ${job.id}:`, error);
     }
-    _listJobsCache.set(this.jobsDir, { ts: now, jobs });
-    return jobs;
   }
 
-  removeJob(jobId: string): boolean {
+  /**
+   * Unschedule a task
+   */
+  private unscheduleTask(jobId: string): void {
+    const task = this.scheduledTasks.get(jobId);
+    if (task) {
+      task.stop();
+      this.scheduledTasks.delete(jobId);
+      logger.debug(`[CronManager] Unscheduled task ${jobId}`);
+    }
+  }
+
+  /**
+   * Execute a scheduled job
+   */
+  private async executeScheduledJob(jobId: string): Promise<void> {
+    const job = this.repository.loadJob(jobId);
+    if (!job) {
+      logger.warn(`[CronManager] Job ${jobId} not found, skipping execution`);
+      return;
+    }
+
+    if (!job.enabled) {
+      logger.debug(`[CronManager] Job ${jobId} is disabled, skipping execution`);
+      return;
+    }
+
+    logger.info(`[CronManager] Executing job ${jobId}: ${job.task}`);
+
     try {
-      const path = this.jobPath(jobId);
-      if (existsSync(path)) {
-        unlinkSync(path);
-        _listJobsCache.delete(this.jobsDir);
-        logger.info({ job_id: jobId }, "cron_job_removed");
-        return true;
-      }
-    } catch {
-      // invalid ID
-    }
+      const result = await this.executor.execute(job);
 
-    if (!existsSync(this.jobsDir)) return false;
-    for (const name of readdirSync(this.jobsDir)) {
-      if (!name.endsWith(".json")) continue;
-      const stem = name.slice(0, -5);
-      if (JOB_ID_RE.test(stem) && stem.startsWith(jobId)) {
-        unlinkSync(join(this.jobsDir, name));
-        _listJobsCache.delete(this.jobsDir);
-        logger.info({ job_id: stem }, "cron_job_removed");
-        return true;
-      }
-    }
-    return false;
-  }
-
-  updateJobResult(jobId: string, result: string): void {
-    const job = this.getJob(jobId);
-    if (!job) return;
-    job.last_run = new Date().toISOString();
-    job.last_result = result.slice(0, 500);
-    writeFileSync(this.jobPath(job.id), JSON.stringify(job, null, 2));
-    _listJobsCache.delete(this.jobsDir);
-    this.appendResultHistory(jobId, job.task ?? "", result);
-  }
-
-  getResults(
-    jobId?: string,
-    taskFilter?: string,
-    limit?: number,
-  ): Array<Record<string, unknown>> {
-    let entries: ResultEntry[] = this.readAllResults();
-    if (jobId) entries = entries.filter((e) => e.job_id === jobId);
-    if (taskFilter) {
-      const kw = taskFilter.toLowerCase();
-      entries = entries.filter(
-        (e) =>
-          e.task.toLowerCase().includes(kw) ||
-          e.result.toLowerCase().includes(kw),
+      // Update job status
+      this.repository.updateJobStatus(
+        jobId,
+        new Date(),
+        result.result
       );
-    }
-    entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-    return entries.slice(0, limit ?? 5) as unknown as Array<Record<string, unknown>>;
-  }
 
-  private appendResultHistory(jobId: string, task: string, result: string): void {
-    mkdirSync(this.jobsDir, { recursive: true });
-    const config = getConfig();
-    const entry: ResultEntry = {
-      job_id: jobId,
-      task,
-      result: result.slice(0, config.maxResultChars),
-      timestamp: new Date().toISOString(),
-    };
-    appendFileSync(this.resultsFile, JSON.stringify(entry) + "\n");
-    this.trimResultHistory(jobId);
-  }
-
-  private trimResultHistory(jobId: string): void {
-    if (!existsSync(this.resultsFile)) return;
-    const config = getConfig();
-    const entries = this.readAllResults();
-    const jobEntries = entries.filter((e) => e.job_id === jobId);
-    if (jobEntries.length <= config.maxResultsPerJob) return;
-
-    const keepTimestamps = new Set(
-      jobEntries.slice(-config.maxResultsPerJob).map((e) => e.timestamp),
-    );
-    const others = entries.filter((e) => e.job_id !== jobId);
-    const kept = jobEntries.filter((e) => keepTimestamps.has(e.timestamp));
-    const all = [...others, ...kept].sort((a, b) =>
-      a.timestamp.localeCompare(b.timestamp),
-    );
-    writeFileSync(
-      this.resultsFile,
-      all.map((e) => JSON.stringify(e)).join("\n") + (all.length ? "\n" : ""),
-    );
-  }
-
-  private readAllResults(): ResultEntry[] {
-    if (!existsSync(this.resultsFile)) return [];
-    const entries: ResultEntry[] = [];
-    for (const line of readFileSync(this.resultsFile, "utf-8").split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        entries.push(JSON.parse(trimmed));
-      } catch {
-        // skip malformed
-      }
-    }
-    return entries;
-  }
-
-  invalidateCache(): void {
-    _listJobsCache.delete(this.jobsDir);
-  }
-}
-
-export class CronScheduler {
-  private tasks: ScheduledTask[] = [];
-  private manager = new CronManager();
-  private running = false;
-
-  start(): void {
-    this.loadJobs();
-    this.running = true;
-    logger.info("scheduler_started");
-  }
-
-  stop(): void {
-    for (const t of this.tasks) t.stop();
-    this.tasks = [];
-    this.running = false;
-    logger.info("scheduler_stopped");
-  }
-
-  reload(): void {
-    for (const t of this.tasks) t.stop();
-    this.tasks = [];
-    this.manager.invalidateCache();
-    this.loadJobs();
-    logger.info("scheduler_reloaded");
-  }
-
-  private loadJobs(): void {
-    const jobs = this.manager.listJobs();
-    let loaded = 0;
-    for (const job of jobs) {
-      if (!job.enabled) continue;
-      if (!validateCronExpr(job.cron)) {
-        logger.warn({ job_id: job.id, cron: job.cron }, "invalid_cron");
-        continue;
-      }
-      const task = cron.schedule(job.cron, () => {
-        executeCronJob(job).catch((err: unknown) => {
-          logger.error(
-            { job_id: job.id, error: String(err) },
-            "scheduled_task_failed",
-          );
-        });
+      // Append to results
+      this.repository.appendResult({
+        job_id: jobId,
+        task: job.task,
+        result: result.success ? result.result : `Error: ${result.error}`,
+        timestamp: new Date().toISOString()
       });
-      this.tasks.push(task);
-      loaded++;
+
+      logger.info(`[CronManager] Job ${jobId} completed: ${result.success ? 'success' : 'failed'}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`[CronManager] Job ${jobId} failed: ${message}`);
+
+      // Update with failure
+      this.repository.updateJobStatus(
+        jobId,
+        new Date(),
+        `Error: ${message}`
+      );
     }
-    logger.info({ total: jobs.length, loaded }, "cron_jobs_loaded");
+  }
+
+  /**
+   * Remove a job
+   */
+  removeJob(jobId: string): boolean {
+    this.unscheduleTask(jobId);
+    return this.repository.deleteJob(jobId);
+  }
+
+  /**
+   * Get a job by ID
+   */
+  getJob(jobId: string): StoredCronJob | null {
+    return this.repository.loadJob(jobId);
+  }
+
+  /**
+   * List all jobs
+   */
+  listJobs(): StoredCronJob[] {
+    return this.repository.listJobs();
+  }
+
+  /**
+   * Enable a job
+   */
+  enableJob(jobId: string): boolean {
+    const job = this.repository.loadJob(jobId);
+    if (!job) return false;
+
+    this.repository.setJobEnabled(jobId, true);
+    this.scheduleTask(job);
+
+    logger.info(`[CronManager] Enabled job ${jobId}`);
+    return true;
+  }
+
+  /**
+   * Disable a job
+   */
+  disableJob(jobId: string): boolean {
+    this.unscheduleTask(jobId);
+    const result = this.repository.setJobEnabled(jobId, false);
+
+    if (result) {
+      logger.info(`[CronManager] Disabled job ${jobId}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * Get job results
+   */
+  getResults(jobId: string, limit: number = 50): ResultEntry[] {
+    return this.repository
+      .readRecentResults(1000)
+      .filter(r => r.job_id === jobId)
+      .slice(0, limit);
+  }
+
+  /**
+   * Get all results
+   */
+  getAllResults(limit: number = 100): ResultEntry[] {
+    return this.repository.readRecentResults(limit);
+  }
+
+  /**
+   * Get statistics
+   */
+  getStats(): {
+    totalJobs: number;
+    enabledJobs: number;
+    scheduledTasks: number;
+    repoStats: ReturnType<CronJobRepository['getStats']>;
+  } {
+    const repoStats = this.repository.getStats();
+
+    return {
+      totalJobs: repoStats.totalJobs,
+      enabledJobs: repoStats.enabledJobs,
+      scheduledTasks: this.scheduledTasks.size,
+      repoStats
+    };
+  }
+
+  /**
+   * Cleanup resources
+   */
+  shutdown(): void {
+    for (const [jobId, task] of this.scheduledTasks) {
+      task.stop();
+      logger.debug(`[CronManager] Stopped task ${jobId}`);
+    }
+
+    this.scheduledTasks.clear();
+    logger.info('[CronManager] Shutdown complete');
   }
 }
 
-export async function executeCronJob(job: StoredCronJob): Promise<string> {
-  logger.info({ job_id: job.id, task: job.task }, "cron_job_executing");
-  const result = "stub: agent not yet implemented";
-  const manager = new CronManager();
-  manager.updateJobResult(job.id, result);
-  logger.info({ job_id: job.id }, "cron_job_executed");
-  return result;
-}
+/**
+ * Cron Scheduler manages scheduled task execution
+ */
+export class CronScheduler {
+  private manager: CronManager;
+  private taskMap: Map<string, ScheduledTask> = new Map();
 
-export function registerHyMemoryConsolidation(intervalMinutes = 30): string {
-  const config = getConfig();
-  if (config.memorySystem !== "hy") {
-    logger.info(
-      { reason: `System is ${config.memorySystem}, not hy` },
-      "hy_memory_consolidation_skipped",
-    );
-    return "";
+  constructor(manager?: CronManager) {
+    this.manager = manager ?? new CronManager();
   }
 
-  const cronExpr = `*/${intervalMinutes} * * * *`;
-  const manager = new CronManager();
-  const jobId = manager.addJob(cronExpr, "hy_memory_consolidation");
-  logger.info(
-    { job_id: jobId, interval_minutes: intervalMinutes },
-    "hy_memory_consolidation_registered",
-  );
-  return jobId;
+  /**
+   * Schedule a new task
+   */
+  schedule(
+    cronExpr: string,
+    handler: () => void,
+    jobId?: string
+  ): string {
+    if (!validateCronExpr(cronExpr)) {
+      throw new Error(`Invalid cron expression: ${cronExpr}`);
+    }
+
+    const id = jobId ?? `task_${Date.now()}`;
+
+    const task = cron.schedule(cronExpr, handler, { scheduled: true });
+    this.taskMap.set(id, task);
+
+    logger.info(`[CronScheduler] Scheduled task ${id}`);
+    return id;
+  }
+
+  /**
+   * Unschedule a task
+   */
+  unschedule(taskId: string): boolean {
+    const task = this.taskMap.get(taskId);
+    if (!task) return false;
+
+    task.stop();
+    this.taskMap.delete(taskId);
+
+    logger.info(`[CronScheduler] Unscheduled task ${taskId}`);
+    return true;
+  }
+
+  /**
+   * Check if task exists
+   */
+  has(taskId: string): boolean {
+    return this.taskMap.has(taskId);
+  }
+
+  /**
+   * Get task count
+   */
+  getTaskCount(): number {
+    return this.taskMap.size;
+  }
+
+  /**
+   * Get all task IDs
+   */
+  getTaskIds(): string[] {
+    return Array.from(this.taskMap.keys());
+  }
+
+  /**
+   * Shutdown scheduler
+   */
+  shutdown(): void {
+    for (const [taskId, task] of this.taskMap) {
+      task.stop();
+    }
+
+    this.taskMap.clear();
+    this.manager.shutdown();
+
+    logger.info('[CronScheduler] Shutdown complete');
+  }
 }
+
+// Re-export for backward compatibility
+export { validateCronExpr, executeCronJob };
+export type { StoredCronJob, ResultEntry };

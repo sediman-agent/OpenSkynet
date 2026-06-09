@@ -137,6 +137,7 @@ async function main() {
   const { CheckpointManager } = await import("./agent/memory/checkpoint.js");
   const { BrowserSession } = await import("./browser/session.js");
   const { BrowserController } = await import("./browser/controller.js");
+  const { setGlobalBrowserSession } = await import("./browser/global-session.js");
   const { createProvider } = await import("./llm/provider.js");
   const { AgentLoop } = await import("./agent/loop.js");
   const { ProjectManager } = await import("./project/manager.js");
@@ -170,6 +171,15 @@ async function main() {
     proxy: config.stealthProxy || undefined,
     userDataDir: config.browserProfileDir,
   });
+
+  // In Electron mode, prepare for CDP connection instead of launching Playwright
+  if (process.env.SEDIMAN_MODE === 'electron') {
+    browserSession.prepareForWebviewCDP();
+    logger.info('[RPC] Browser session prepared for Electron embedded webview');
+  }
+
+  // Register globally for API access
+  setGlobalBrowserSession(browserSession);
   const agentLoop = new AgentLoop({
     llmProvider,
     browserSession,

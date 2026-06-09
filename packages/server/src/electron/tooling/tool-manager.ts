@@ -1,97 +1,26 @@
 /**
- * Tool Manager - Senior-level implementation with:
- * - Lazy loading
- * - Dependency Injection
- * - Lifecycle management
- * - Thread-safe operations
+ * Tool Manager - Simplified
+ *
+ * Refactored from 352 lines to ~150 lines
+ * DI Container extracted to ToolDIContainer
+ * Tool Loading extracted to ToolLoader
+ * Registry Proxy extracted to ToolRegistryProxy
  */
 
-import type { BuiltinTool } from './types';
-import type { ToolBus } from '../../agent/tools/bus';
+import type { BuiltinTool } from './types.js';
+import type { ToolBus } from '../../agent/tools/bus.js';
+
+// Extracted modules
+import { ToolDIContainer } from './di/index.js';
+import { ToolLoader, type LazyToolDescriptor, type ToolLifecycle } from './loading/index.js';
+import { ToolRegistryProxy } from './registry/index.js';
+
+// ============================================================================
+// Tool Lifecycle Hooks
+// ============================================================================
 
 /**
- * Dependency Injection Container
- * Manages tool dependencies with proper lifecycle
- */
-export class ToolDIContainer {
-  private readonly singletons = new Map<string, unknown>();
-  private readonly factories = new Map<string, () => unknown>();
-  private readonly transient = new Set<string>();
-
-  /**
-   * Register a singleton dependency
-   */
-  registerSingleton<T>(key: string, factory: () => T): void {
-    this.factories.set(key, factory);
-    this.singletons.delete(key);
-    this.transient.delete(key);
-  }
-
-  /**
-   * Register a transient dependency (new instance each time)
-   */
-  registerTransient<T>(key: string, factory: () => T): void {
-    this.factories.set(key, factory);
-    this.transient.add(key);
-  }
-
-  /**
-   * Register an existing instance
-   */
-  registerInstance<T>(key: string, instance: T): void {
-    this.singletons.set(key, instance);
-    this.factories.delete(key);
-    this.transient.delete(key);
-  }
-
-  /**
-   * Resolve a dependency
-   */
-  resolve<T>(key: string): T {
-    // Check for existing instance
-    if (this.singletons.has(key)) {
-      return this.singletons.get(key) as T;
-    }
-
-    // Check if transient
-    if (this.transient.has(key)) {
-      const factory = this.factories.get(key);
-      if (!factory) {
-        throw new Error(`No factory registered for: ${key}`);
-      }
-      return factory() as T;
-    }
-
-    // Create new singleton
-    const factory = this.factories.get(key);
-    if (!factory) {
-      throw new Error(`No factory registered for: ${key}`);
-    }
-
-    const instance = factory();
-    this.singletons.set(key, instance);
-    return instance as T;
-  }
-
-  /**
-   * Check if dependency exists
-   */
-  has(key: string): boolean {
-    return this.factories.has(key) || this.singletons.has(key);
-  }
-
-  /**
-   * Clear all dependencies (for testing)
-   */
-  clear(): void {
-    this.singletons.clear();
-    this.factories.clear();
-    this.transient.clear();
-  }
-}
-
-/**
- * Tool lifecycle hooks
+ * Tool lifecycle hooks interface
  */
 export interface ToolLifecycle {
   onBeforeLoad?(toolName: string): void | Promise<void>;
@@ -100,29 +29,23 @@ export interface ToolLifecycle {
   onAfterUnload?(toolName: string): void | Promise<void>;
 }
 
-/**
- * Lazy tool descriptor
- */
-interface LazyToolDescriptor {
-  readonly name: string;
-  readonly loader: () => Promise<BuiltinTool> | BuiltinTool;
-  readonly dependencies?: string[];
-  loaded?: boolean;
-  tool?: BuiltinTool;
-}
+// ============================================================================
+// Lazy-loading Tool Manager (Simplified)
+// ============================================================================
 
 /**
- * Lazy-loading Tool Manager
- * Implements proxy pattern for on-demand tool loading
+ * Lazy Tool Manager coordinates tool loading and dependency management
+ * This is the simplified main file that delegates to specialized modules
  */
 export class LazyToolManager {
-  private readonly container = new ToolDIContainer();
-  private readonly tools = new Map<string, LazyToolDescriptor>();
-  private readonly loadingPromises = new Map<string, Promise<BuiltinTool>>();
-  private lifecycle?: ToolLifecycle;
+  private container: ToolDIContainer;
+  private loader: ToolLoader;
+  private registry: ToolRegistryProxy;
 
   constructor(lifecycle?: ToolLifecycle) {
-    this.lifecycle = lifecycle;
+    this.container = new ToolDIContainer();
+    this.loader = new ToolLoader(lifecycle);
+    this.registry = new ToolRegistryProxy(this.loader);
   }
 
   /**
@@ -133,20 +56,14 @@ export class LazyToolManager {
     loader: () => Promise<BuiltinTool> | BuiltinTool,
     dependencies: string[] = []
   ): void {
-    this.tools.set(name, { name, loader, dependencies, loaded: false });
+    this.loader.registerTool(name, loader, dependencies);
   }
 
   /**
    * Register an immediate tool
    */
   registerImmediateTool(name: string, tool: BuiltinTool): void {
-    this.tools.set(name, {
-      name,
-      loader: () => tool,
-      dependencies: [],
-      loaded: true,
-      tool
-    });
+    this.loader.registerImmediateTool(name, tool);
   }
 
   /**
@@ -168,91 +85,42 @@ export class LazyToolManager {
    * Get a tool (loads if necessary)
    */
   async getTool(name: string): Promise<BuiltinTool | null> {
-    const descriptor = this.tools.get(name);
-    if (!descriptor) {
-      return null;
-    }
-
-    // Return cached tool if already loaded
-    if (descriptor.loaded && descriptor.tool) {
-      return descriptor.tool;
-    }
-
-    // Check if already loading (prevent duplicate loads)
-    if (this.loadingPromises.has(name)) {
-      return this.loadingPromises.get(name)!;
-    }
-
-    // Load the tool
-    const loadPromise = this.loadTool(descriptor);
-    this.loadingPromises.set(name, loadPromise);
-
-    try {
-      const tool = await loadPromise;
-      return tool;
-    } finally {
-      this.loadingPromises.delete(name);
-    }
+    return this.loader.getTool(name);
   }
 
   /**
    * Check if tool is loaded
    */
   isLoaded(name: string): boolean {
-    const descriptor = this.tools.get(name);
-    return descriptor?.loaded ?? false;
+    return this.loader.isLoaded(name);
   }
 
   /**
    * Get all loaded tool names
    */
   getLoadedTools(): string[] {
-    const loaded: string[] = [];
-    for (const [name, descriptor] of this.tools.entries()) {
-      if (descriptor.loaded) {
-        loaded.push(name);
-      }
-    }
-    return loaded;
+    return this.loader.getLoadedTools();
   }
 
   /**
    * Preload tools (useful for initialization)
    */
   async preloadTools(...names: string[]): Promise<void> {
-    await Promise.all(names.map(name => this.getTool(name)));
+    return this.loader.preloadTools(...names);
   }
 
   /**
    * Unload a tool (free memory)
    */
   async unloadTool(name: string): Promise<void> {
-    const descriptor = this.tools.get(name);
-    if (!descriptor || !descriptor.loaded) {
-      return;
-    }
-
-    // Call lifecycle hook
-    if (this.lifecycle?.onBeforeUnload && descriptor.tool) {
-      await this.lifecycle.onBeforeUnload(name, descriptor.tool);
-    }
-
-    // Clear tool
-    descriptor.loaded = false;
-    descriptor.tool = undefined;
-
-    // Call lifecycle hook
-    if (this.lifecycle?.onAfterUnload) {
-      await this.lifecycle.onAfterUnload(name);
-    }
+    return this.loader.unloadTool(name);
   }
 
   /**
    * Unload all tools
    */
   async unloadAll(): Promise<void> {
-    const names = Array.from(this.tools.keys());
-    await Promise.all(names.map(name => this.unloadTool(name)));
+    return this.loader.unloadAll();
   }
 
   /**
@@ -270,40 +138,37 @@ export class LazyToolManager {
   }
 
   /**
-   * Internal: Load a tool with dependency resolution
+   * Get registry proxy
    */
-  private async loadTool(descriptor: LazyToolDescriptor): Promise<BuiltinTool> {
-    // Load dependencies first
-    if (descriptor.dependencies) {
-      await Promise.all(
-        descriptor.dependencies.map(dep => this.getTool(dep))
-      );
-    }
+  getRegistry(): ToolRegistryProxy {
+    return this.registry;
+  }
 
-    // Call lifecycle hook
-    if (this.lifecycle?.onBeforeLoad) {
-      await this.lifecycle.onBeforeLoad(descriptor.name);
-    }
+  /**
+   * Get manager statistics
+   */
+  getStats(): {
+    tools: ReturnType<ToolLoader['getStats']>;
+    dependencies: ReturnType<ToolDIContainer['getStats']>;
+  } {
+    return {
+      tools: this.loader.getStats(),
+      dependencies: this.container.getStats()
+    };
+  }
 
-    // Load the tool
-    const tool = await descriptor.loader();
-
-    // Cache the tool
-    descriptor.loaded = true;
-    descriptor.tool = tool;
-
-    // Call lifecycle hook
-    if (this.lifecycle?.onAfterLoad) {
-      await this.lifecycle.onAfterLoad(descriptor.name, tool);
-    }
-
-    return tool;
+  /**
+   * Clear all resources (for testing)
+   */
+  clear(): void {
+    this.container.clear();
   }
 }
 
-/**
- * Global tool manager instance
- */
+// ============================================================================
+// Global Instance Management
+// ============================================================================
+
 let globalToolManager: LazyToolManager | null = null;
 
 /**
@@ -324,29 +189,12 @@ export function setToolManager(manager: LazyToolManager): void {
 }
 
 /**
- * Tool registry proxy for lazy access
+ * Reset global tool manager
  */
-export class ToolRegistryProxy {
-  constructor(private readonly manager: LazyToolManager) {}
-
-  /**
-   * Proxy to get tool by name
-   */
-  async get(name: string): Promise<BuiltinTool | null> {
-    return this.manager.getTool(name);
-  }
-
-  /**
-   * Proxy to check if tool exists
-   */
-  has(name: string): boolean {
-    return this.manager.isLoaded(name);
-  }
-
-  /**
-   * Proxy to get all tool names
-   */
-  keys(): string[] {
-    return this.manager.getLoadedTools();
-  }
+export function resetToolManager(): void {
+  globalToolManager = null;
 }
+
+// Re-export types
+export type { ToolLifecycle, LazyToolDescriptor };
+export { ToolDIContainer, ToolLoader, ToolRegistryProxy };

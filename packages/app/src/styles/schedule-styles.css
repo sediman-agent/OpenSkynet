@@ -1,0 +1,368 @@
+/**
+ * Schedule Page Styles
+ * Professional styling for cron job management interface
+ */
+
+/* === Schedule Page Container === */
+.schedule-page {
+  background-color: var(--vscode-background);
+  color: var(--vscode-foreground);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* === Schedule Page Header === */
+.schedule-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--vscode-border-color);
+  background-color: var(--vscode-background);
+  color: var(--vscode-foreground);
+  min-height: 40px;
+}
+
+.schedule-header-icon {
+  color: var(--vscode-secondary-text);
+}
+
+.schedule-header-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--vscode-foreground);
+}
+
+.schedule-header-subtitle {
+  font-size: var(--text-xs);
+  color: var(--vscode-secondary-text);
+}
+
+/* === Job Counter Badge === */
+.job-counter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1_5) var(--space-3);
+  background-color: var(--vscode-input-background);
+  border-radius: var(--radius-sm);
+}
+
+.job-counter-icon {
+  color: var(--vscode-secondary-text);
+}
+
+.job-counter-value {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--vscode-foreground);
+}
+
+.job-counter-detail {
+  font-size: var(--text-xs);
+  color: var(--vscode-secondary-text);
+}
+
+/* === Schedule Page Search === */
+.schedule-search {
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--vscode-border-color);
+}
+
+.schedule-search-input {
+  width: 100%;
+  padding-left: 36px;
+  padding-right: var(--space-3);
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  background-color: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--radius-sm);
+  color: var(--vscode-input-foreground);
+  min-height: 26px;
+  outline: none;
+  transition: all 150ms ease-out;
+}
+
+.schedule-search-input:focus {
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.schedule-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--vscode-secondary-text);
+}
+
+/* === Schedule Page Content === */
+.schedule-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6);
+  max-width: 1024px;
+  margin: 0 auto;
+}
+
+/* === Job Form Card === */
+.job-form-card {
+  padding: var(--space-6);
+  background-color: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.job-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.job-form-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--vscode-foreground);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.job-form-close {
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 150ms ease-out;
+}
+
+.job-form-close:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+/* === Job Form Fields === */
+.job-form-field {
+  margin-bottom: var(--space-4);
+}
+
+.job-form-label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  color: var(--vscode-secondary-text);
+  margin-bottom: var(--space-2);
+}
+
+.job-form-input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  background-color: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--radius-sm);
+  color: var(--vscode-input-foreground);
+  min-height: 26px;
+  font-family: var(--font-system);
+  outline: none;
+  transition: all 150ms ease-out;
+}
+
+.job-form-input:focus {
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.job-form-textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: var(--font-mono);
+}
+
+.job-form-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23858585' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: var(--space-6);
+}
+
+/* === Job Form Actions === */
+.job-form-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.job-form-error {
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--vscode-errorBackground);
+  color: var(--vscode-errorForeground);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  margin-bottom: var(--space-3);
+}
+
+/* === Job List === */
+.job-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.job-item {
+  background-color: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  transition: all 150ms ease-out;
+}
+
+.job-item:hover {
+  border-color: var(--vscode-focusBorder);
+}
+
+.job-item-disabled {
+  opacity: 0.6;
+}
+
+/* === Job Item Header === */
+.job-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.job-item-task {
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  color: var(--vscode-foreground);
+  flex: 1;
+}
+
+.job-item-id {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--vscode-secondary-text);
+}
+
+/* === Job Item Details === */
+.job-item-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.job-item-detail {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--vscode-secondary-text);
+}
+
+.job-item-detail-label {
+  font-weight: var(--font-medium);
+}
+
+.job-item-detail-value {
+  font-family: var(--font-mono);
+  color: var(--vscode-foreground);
+}
+
+/* === Job Item Status === */
+.job-item-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+}
+
+.job-item-status-enabled {
+  background-color: var(--vscode-testing-iconPassed);
+  color: var(--vscode-foreground);
+}
+
+.job-item-status-disabled {
+  background-color: var(--vscode-descriptionForeground);
+  color: var(--vscode-foreground);
+}
+
+/* === Job Item Actions === */
+.job-item-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.job-item-button {
+  padding: var(--space-1_5) var(--space-3);
+  font-size: var(--text-xs);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms ease-out;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-system);
+}
+
+.job-item-button-primary {
+  background-color: var(--vscode-button-primary-background);
+  color: var(--vscode-button-primary-foreground);
+}
+
+.job-item-button-primary:hover {
+  background-color: var(--vscode-button-primaryHoverBackground);
+}
+
+.job-item-button-danger {
+  background-color: transparent;
+  color: var(--vscode-errorForeground);
+  border: 1px solid var(--vscode-input-border);
+}
+
+.job-item-button-danger:hover {
+  background-color: var(--vscode-errorBackground);
+}
+
+/* === Empty State === */
+.schedule-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12);
+  text-align: center;
+  color: var(--vscode-secondary-text);
+}
+
+.schedule-empty-icon {
+  margin-bottom: var(--space-4);
+  opacity: 0.5;
+}
+
+.schedule-empty-title {
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  color: var(--vscode-foreground);
+  margin-bottom: var(--space-2);
+}
+
+.schedule-empty-description {
+  font-size: var(--text-sm);
+  color: var(--vscode-secondary-text);
+}

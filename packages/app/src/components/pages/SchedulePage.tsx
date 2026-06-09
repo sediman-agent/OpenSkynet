@@ -1,63 +1,15 @@
+/**
+ * VS Code-Style SchedulePage
+ * Cron-based task automation with VS Code design system
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, Plus, Trash2, Search, Play, Calendar, X } from 'lucide-react';
-import { PageHeader } from '@/components/layout/PageHeader';
-import { Button } from '@/elements/actions/Button';
-import { Input } from '@/elements/form/Input';
-import { Textarea } from '@/elements/form/Textarea';
-import { Card } from '@/elements/data/Card';
-import { ScrollArea } from '@/elements/data/ScrollArea';
-import { Badge } from '@/elements/feedback/Badge';
-import { cn } from '@/lib/utils';
 import { type CronJob } from '@/types';
+import { cn } from '@/lib/utils';
+import { CRON_PRESETS, formatCronHuman, timeAgo } from '@/lib/schedule-utils';
 
 const API_BASE = 'http://localhost:3001';
-
-const CRON_PRESETS = [
-  { label: 'Every minute', value: '* * * * *' },
-  { label: 'Every 5 minutes', value: '*/5 * * * *' },
-  { label: 'Every 30 minutes', value: '*/30 * * * *' },
-  { label: 'Every hour', value: '0 * * * *' },
-  { label: 'Every 6 hours', value: '0 */6 * * *' },
-  { label: 'Every day at midnight', value: '0 0 * * *' },
-  { label: 'Every day at 9am', value: '0 9 * * *' },
-  { label: 'Every Monday at 9am', value: '0 9 * * 1' },
-  { label: 'First of every month', value: '0 0 1 * *' },
-];
-
-function formatCronHuman(cron: string): string {
-  const preset = CRON_PRESETS.find((p) => p.value === cron);
-  if (preset) return preset.label;
-
-  const parts = cron.split(/\s+/);
-  if (parts.length !== 5) return cron;
-
-  const [min, hour, dom, month, dow] = parts;
-
-  if (min.startsWith('*/') && hour === '*' && dom === '*' && month === '*' && dow === '*') {
-    return `Every ${min.slice(2)} minutes`;
-  }
-  if (hour.startsWith('*/') && min === '0' && dom === '*' && month === '*' && dow === '*') {
-    return `Every ${hour.slice(2)} hours`;
-  }
-  if (min === '0' && hour === '0' && dom === '*' && month === '*' && dow === '*') {
-    return 'Daily at midnight';
-  }
-
-  return cron;
-}
-
-function timeAgo(iso: string | null): string {
-  if (!iso) return 'Never';
-  const diff = Date.now() - new Date(iso).getTime();
-  const secs = Math.floor(diff / 1000);
-  if (secs < 60) return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
 
 interface AddJobForm {
   cron: string;
@@ -182,264 +134,316 @@ export function SchedulePage() {
   const enabledCount = jobs.filter((j) => j.enabled).length;
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      <PageHeader
-        icon={Clock}
-        title="Schedule"
-        subtitle="Cron-based task automation"
-        actions={
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-lg">
-              <Calendar className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium text-foreground">{jobs.length}</span>
-              {jobs.length > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  ({enabledCount} active)
-                </span>
-              )}
-            </div>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => setShowAddForm(!showAddForm)}
-            >
-              <Plus className="w-4 h-4 mr-1" />
-              Add Job
-            </Button>
+    <div className="schedule-page">
+      {/* Header */}
+      <div className="schedule-header">
+        <Clock size={18} className="schedule-header-icon" />
+        <div className="flex-1">
+          <h1 className="schedule-header-title">Schedule</h1>
+          <p className="schedule-header-subtitle">
+            Cron-based task automation
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="job-counter">
+            <Calendar size={14} className="job-counter-icon" />
+            <span className="job-counter-value">
+              {jobs.length}
+            </span>
+            {jobs.length > 0 && (
+              <span className="job-counter-detail">
+                ({enabledCount} active)
+              </span>
+            )}
           </div>
-        }
-      />
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="job-item-button job-item-button-primary"
+          >
+            <Plus size={12} />
+            Add Job
+          </button>
+        </div>
+      </div>
 
-      <div className="p-6 border-b border-border bg-background space-y-4">
+      {/* Search */}
+      <div className="schedule-search">
         <div className="flex items-center justify-between max-w-4xl mx-auto">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
+            <Search
+              size={14}
+              className="schedule-search-icon"
+            />
+            <input
+              type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search jobs..."
-              className="pl-9"
+              className="schedule-search-input"
             />
           </div>
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="max-w-4xl mx-auto p-6 space-y-4">
-          {showAddForm && (
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                  <Plus className="w-4 h-4" />
-                  New Scheduled Job
-                </h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
+      {/* Content */}
+      <div className="schedule-content">
+        {showAddForm && (
+          <div className="job-form-card">
+            <div className="job-form-header">
+              <h3 className="job-form-title">
+                <Plus size={14} />
+                New Scheduled Job
+              </h3>
+              <button
+                onClick={() => {
+                  setShowAddForm(false);
+                  setFormError('');
+                }}
+                className="job-form-close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="job-form-field">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="job-form-label">
+                    Cron Expression
+                  </label>
+                  <span className="text-[10px]" style={{ color: 'var(--vscode-secondary-text)' }}>
+                    minute hour day month weekday
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  value={form.cron}
+                  onChange={(e) => setForm({ ...form, cron: e.target.value })}
+                  placeholder="*/30 * * * *"
+                  className="job-form-input"
+                />
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {CRON_PRESETS.map((preset) => (
+                    <button
+                      key={preset.value}
+                      type="button"
+                      onClick={() => setForm({ ...form, cron: preset.value })}
+                      className="text-[10px] px-2 py-1 rounded border transition-colors font-mono"
+                      style={{
+                        backgroundColor: form.cron === preset.value
+                          ? 'var(--vscode-button-primary-background)'
+                          : 'transparent',
+                        color: form.cron === preset.value
+                          ? 'var(--vscode-button-primary-foreground)'
+                          : 'var(--vscode-foreground)',
+                        borderColor: form.cron === preset.value
+                          ? 'transparent'
+                          : 'var(--vscode-border-color)'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (form.cron !== preset.value) {
+                          e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (form.cron !== preset.value) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="job-form-field">
+                <label className="job-form-label">
+                  Task Description
+                </label>
+                <textarea
+                  value={form.task}
+                  onChange={(e) => setForm({ ...form, task: e.target.value })}
+                  placeholder="Describe what the agent should do..."
+                  className="job-form-input job-form-textarea"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="job-form-field">
+                  <label className="job-form-label">
+                    Skill Name (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.skill_name}
+                    onChange={(e) => setForm({ ...form, skill_name: e.target.value })}
+                    placeholder="skill-name"
+                    className="job-form-input"
+                  />
+                </div>
+                <div className="job-form-field">
+                  <label className="job-form-label">
+                    Provider (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.provider}
+                    onChange={(e) => setForm({ ...form, provider: e.target.value })}
+                    placeholder="openai"
+                    className="job-form-input"
+                  />
+                </div>
+              </div>
+
+              {formError && (
+                <div className="job-form-error">{formError}</div>
+              )}
+
+              <div className="job-form-actions">
+                <button
                   onClick={() => {
                     setShowAddForm(false);
                     setFormError('');
                   }}
+                  className="job-item-button"
                 >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Cron Expression
-                    </label>
-                    <span className="text-[10px] text-muted-foreground">
-                      minute hour day month weekday
-                    </span>
-                  </div>
-                  <Input
-                    value={form.cron}
-                    onChange={(e) => setForm({ ...form, cron: e.target.value })}
-                    placeholder="*/30 * * * *"
-                    className="font-mono"
-                  />
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {CRON_PRESETS.map((preset) => (
-                      <button
-                        key={preset.value}
-                        type="button"
-                        onClick={() => setForm({ ...form, cron: preset.value })}
-                        className={cn(
-                          'text-[10px] px-2 py-1 rounded border transition-colors',
-                          form.cron === preset.value
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-muted text-muted-foreground border-border hover:bg-accent'
-                        )}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <Textarea
-                  label="Task Description"
-                  value={form.task}
-                  onChange={(e) => setForm({ ...form, task: e.target.value })}
-                  placeholder="Describe what the agent should do..."
-                  autoResize={false}
-                  className="min-h-[80px]"
-                />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label="Skill Name (optional)"
-                    value={form.skill_name}
-                    onChange={(e) => setForm({ ...form, skill_name: e.target.value })}
-                    placeholder="skill-name"
-                  />
-                  <Input
-                    label="Provider (optional)"
-                    value={form.provider}
-                    onChange={(e) => setForm({ ...form, provider: e.target.value })}
-                    placeholder="openai"
-                  />
-                </div>
-
-                {formError && (
-                  <p className="text-xs text-destructive">{formError}</p>
-                )}
-
-                <div className="flex items-center gap-2 justify-end">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setShowAddForm(false);
-                      setFormError('');
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleAddJob}
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1" />
-                        Creating...
-                      </>
-                    ) : (
-                      <>
-                        <Clock className="w-3 h-3 mr-1" />
-                        Schedule
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {isLoading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-            </div>
-          ) : filteredJobs.length > 0 ? (
-            <div className="border border-border rounded-lg overflow-hidden">
-              {filteredJobs.map((job, index) => (
-                <div
-                  key={job.id}
-                  className={cn(
-                    'p-4 hover:bg-muted/50 transition-colors',
-                    index !== filteredJobs.length - 1 && 'border-b border-border'
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddJob}
+                  disabled={isSubmitting}
+                  className="job-item-button job-item-button-primary"
+                  style={{ opacity: isSubmitting ? 0.6 : 1 }}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Clock size={12} />
+                      Schedule
+                    </>
                   )}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-muted flex-shrink-0 mt-0.5">
-                      <Play className={cn(
-                        'w-4 h-4',
-                        job.enabled ? 'text-primary' : 'text-muted-foreground'
-                      )} />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <code className="text-xs font-mono text-foreground bg-muted px-2 py-0.5 rounded">
-                          {job.cron}
-                        </code>
-                        <Badge
-                          variant={job.enabled ? 'success' : 'default'}
-                          size="sm"
-                          dot
-                        >
-                          {job.enabled ? 'Active' : 'Disabled'}
-                        </Badge>
-                        {job.skill_name && (
-                          <Badge variant="info" size="sm">
-                            {job.skill_name}
-                          </Badge>
-                        )}
-                        {job.provider && job.provider !== 'openai' && (
-                          <Badge variant="default" size="sm">
-                            {job.provider}
-                          </Badge>
-                        )}
-                      </div>
-
-                      <p className="text-sm text-foreground line-clamp-2">
-                        {job.task}
-                      </p>
-
-                      <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                        <span title={formatCronHuman(job.cron)}>
-                          {formatCronHuman(job.cron)}
-                        </span>
-                        <span className="tabular-nums">
-                          Last run: {timeAgo(job.last_run)}
-                        </span>
-                        <span className="text-[10px] font-mono">
-                          {job.id}
-                        </span>
-                      </div>
-
-                      {job.last_result && (
-                        <div className="mt-2 px-3 py-2 bg-muted rounded text-xs text-muted-foreground line-clamp-2 font-mono">
-                          {job.last_result}
-                        </div>
-                      )}
-                    </div>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeleteJob(job.id)}
-                      disabled={deleting.has(job.id)}
-                      className="text-destructive hover:text-destructive h-8"
-                    >
-                      {deleting.has(job.id) ? (
-                        <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                </button>
+              </div>
             </div>
-          ) : (
-            <Card className="p-16 text-center">
-              <Clock className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
-              <p className="text-muted-foreground">
-                {searchQuery
-                  ? 'No scheduled jobs matching your search'
-                  : 'No scheduled jobs yet. Click "Add Job" to create one.'}
-              </p>
-            </Card>
-          )}
-        </div>
-      </ScrollArea>
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{
+              borderColor: 'var(--vscode-progress-background)',
+              borderTopColor: 'transparent'
+            }} />
+          </div>
+        ) : filteredJobs.length > 0 ? (
+          <div className="job-list">
+            {filteredJobs.map((job, index) => (
+              <div
+                key={job.id}
+                className={cn('job-item', !job.enabled && 'job-item-disabled')}
+                style={{
+                  borderBottom: index !== filteredJobs.length - 1 ? '1px solid var(--vscode-border-color)' : 'none'
+                }}
+              >
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 rounded flex items-center justify-center flex-shrink-0 mt-0.5" style={{
+                    backgroundColor: 'var(--vscode-input-background)'
+                  }}>
+                    <Play
+                      size={16}
+                      style={{ color: job.enabled ? 'var(--vscode-button-primary-background)' : 'var(--vscode-secondary-text)' }}
+                    />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <code className="text-xs font-mono px-2 py-0.5 rounded" style={{
+                        backgroundColor: 'var(--vscode-input-background)',
+                        color: 'var(--vscode-foreground)'
+                      }}>
+                        {job.cron}
+                      </code>
+                      <span className={cn('job-item-status', job.enabled ? 'job-item-status-enabled' : 'job-item-status-disabled')}>
+                        {job.enabled ? 'Active' : 'Disabled'}
+                      </span>
+                      {job.skill_name && (
+                        <span className="text-[10px] px-2 py-0.5 rounded" style={{
+                          backgroundColor: 'var(--vscode-info-foreground)',
+                          color: 'white'
+                        }}>
+                          {job.skill_name}
+                        </span>
+                      )}
+                      {job.provider && job.provider !== 'openai' && (
+                        <span className="text-[10px] px-2 py-0.5 rounded" style={{
+                          backgroundColor: 'var(--vscode-badge-background)',
+                          color: 'var(--vscode-badge-foreground)'
+                        }}>
+                          {job.provider}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-sm line-clamp-2" style={{ color: 'var(--vscode-foreground)' }}>
+                      {job.task}
+                    </p>
+
+                    <div className="flex items-center gap-3 mt-2 text-xs" style={{ color: 'var(--vscode-secondary-text)' }}>
+                      <span title={formatCronHuman(job.cron)}>
+                        {formatCronHuman(job.cron)}
+                      </span>
+                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        Last run: {timeAgo(job.last_run)}
+                      </span>
+                      <span className="text-[10px] font-mono">
+                        {job.id}
+                      </span>
+                    </div>
+
+                    {job.last_result && (
+                      <div className="mt-2 px-3 py-2 rounded text-xs line-clamp-2 font-mono" style={{
+                        backgroundColor: 'var(--vscode-input-background)',
+                        color: 'var(--vscode-secondary-text)'
+                      }}>
+                        {job.last_result}
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => handleDeleteJob(job.id)}
+                    disabled={deleting.has(job.id)}
+                    className="job-item-button job-item-button-danger"
+                    style={{ opacity: deleting.has(job.id) ? 0.6 : 1 }}
+                  >
+                    {deleting.has(job.id) ? (
+                      <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Trash2 size={14} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="schedule-empty-state">
+            <Clock size={48} className="schedule-empty-icon" />
+            <p className="schedule-empty-description">
+              {searchQuery
+                ? 'No scheduled jobs matching your search'
+                : 'No scheduled jobs yet. Click "Add Job" to create one.'}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+
+export default SchedulePage;

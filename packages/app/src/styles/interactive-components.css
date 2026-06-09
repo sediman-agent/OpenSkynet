@@ -1,0 +1,42 @@
+/**
+ * Interactive Component Styles
+ * Professional styling for interactive UI elements
+ */
+
+/* === Focus Ring === */
+.focus-ring {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--vscode-focusBorder), 0 0 0 4px rgba(139, 92, 246, 0.1);
+}
+
+/* === Interactive Base === */
+.interactive {
+  transition: all 200ms ease-out;
+  cursor: pointer;
+}
+
+/* === Button Scale Effect === */
+.btn-scale {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-scale:hover {
+  transform: scale(1.05);
+}
+
+.btn-scale:active {
+  transform: scale(0.95);
+}
+
+/* === Premium Glow Effect === */
+.glow-effect {
+  box-shadow:
+    0 0 0 1px rgba(139, 92, 246, 0.1),
+    0 0 20px rgba(139, 92, 246, 0.15),
+    0 0 40px rgba(139, 92, 246, 0.1);
+}
+
+/* === Smooth Color Transitions === */
+.transition-colors-smooth {
+  transition: background-color 200ms ease-out, border-color 200ms ease-out, color 200ms ease-out;
+}

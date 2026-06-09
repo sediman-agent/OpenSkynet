@@ -16,20 +16,35 @@ interface BrowserState {
 
 // Electron API interface
 interface ElectronAPI {
-  // Browser visibility
-  browserShow: () => Promise<object>;
-  browserHide: () => Promise<object>;
+  // Browser controls API (unified)
+  browser: {
+    // Visibility control
+    show: () => Promise<object>;
+    hide: () => Promise<object>;
+    resize: (width: number) => Promise<object>;
 
-  // Browser controls
-  browserNavigate: (url: string) => Promise<object>;
-  browserBack: () => Promise<object>;
-  browserForward: () => Promise<object>;
-  browserRefresh: () => Promise<object>;
-  browserGetState: () => Promise<object>;
-  browserScreenshot: () => Promise<object>;
+    // Navigation
+    navigate: (url: string) => Promise<object>;
+    back: () => Promise<object>;
+    forward: () => Promise<object>;
+    refresh: () => Promise<object>;
 
-  // CDP connection for shared browser
-  getCdpTarget: () => Promise<{ success: boolean; webSocketDebuggerUrl?: string; targetId?: string; error?: string }>;
+    // State
+    getState: () => Promise<object>;
+    screenshot: () => Promise<object>;
+
+    // IPC-based browser execution
+    exec: {
+      navigate: (url: string) => Promise<object>;
+      click: (x: number, y: number) => Promise<object>;
+      type: (selector: string, text: string) => Promise<object>;
+      snapshot: () => Promise<object>;
+      evaluate: (script: string) => Promise<object>;
+    };
+
+    // CDP connection for shared browser
+    getCdpTarget: (webContentsId?: number) => Promise<{ success: boolean; webSocketDebuggerUrl?: string; targetId?: string; error?: string }>;
+  };
 
   // Agent action listener
   onAgentAction: (callback: (action: AgentAction) => void) => () => void;
@@ -46,6 +61,9 @@ interface ElectronAPI {
   // Events
   onMessage: (callback: (message: unknown) => void) => (() => void);
   sendMessage: (message: unknown) => void;
+
+  // Check if running in showcase mode
+  isShowcase: () => boolean;
 }
 
 // Window interface extension

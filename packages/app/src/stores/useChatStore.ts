@@ -10,19 +10,15 @@ interface ChatState {
   version: number; // Increment to force re-renders
   _synced: boolean; // Track if we've synced with server
 
-  // Computed
-  activeConversation: Conversation | null;
-  messages: Message[];
-
   // Actions
   syncWithServer: () => Promise<void>;
   createConversation: (title?: string) => Promise<Conversation>;
   selectConversation: (id: string) => void;
-  deleteConversation: (id: string) => Promise<void>;
+  deleteConversation: (id: string) => Promise<boolean>;
   updateConversationTitle: (id: string, title: string) => Promise<void>;
 
   // Message actions
-  addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'> | Message) => Promise<void>;
+  addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'> | Message) => Promise<Message>;
   updateMessage: (conversationId: string, messageId: string, updates: Partial<Message>) => Promise<void>;
   appendToMessage: (conversationId: string, messageId: string, delta: string) => void;
   setMessageStatus: (conversationId: string, messageId: string, status: MessageStatus) => Promise<void>;
@@ -49,16 +45,6 @@ export const useChatStore = create<ChatState>()(
       activeConversationId: null,
       version: 0,
       _synced: false,
-
-      // Computed
-      get activeConversation() {
-        const { activeConversationId, conversations } = get();
-        return conversations.find((c) => c.id === activeConversationId) || null;
-      },
-
-      get messages() {
-        return get().activeConversation?.messages || [];
-      },
 
       /**
        * Sync conversations with server
@@ -124,52 +110,86 @@ export const useChatStore = create<ChatState>()(
           title: title || 'New Chat',
         };
 
-        // Optimistic update
-        set((state) => ({
-          conversations: [newConversation, ...state.conversations],
-          activeConversationId: newConversation.id,
-        }));
-
-        // Sync to server
+        // Sync to server first (no optimistic update to avoid race conditions)
         try {
           const service = getConversationService();
           const serverConvo = await service.createConversation(title);
 
           if (serverConvo) {
-            // Update with server ID
+            // Add server conversation to store
             set((state) => ({
-              conversations: state.conversations.map(c =>
-                c.id === newConversation.id ? { ...c, id: serverConvo.id } : c
-              ),
+              conversations: [serverConvo, ...state.conversations],
               activeConversationId: serverConvo.id,
+              version: state.version + 1,
             }));
+            console.log('[ChatStore] Created new conversation:', serverConvo.id, 'with', serverConvo.messages.length, 'messages');
             return serverConvo;
           }
         } catch (error) {
           console.error('[ChatStore] Failed to create conversation on server:', error);
+          // Fall back to local-only conversation
+          set((state) => ({
+            conversations: [newConversation, ...state.conversations],
+            activeConversationId: newConversation.id,
+            version: state.version + 1,
+          }));
         }
 
         return newConversation;
       },
 
-      selectConversation: (id) => {
-        set({ activeConversationId: id });
+      selectConversation: async (id) => {
+        // First set the active ID and increment version to force re-render
+        set({ activeConversationId: id, version: get().version + 1 });
+
+        // Then load the full conversation with messages from server
+        try {
+          const service = getConversationService();
+          const serverConvo = await service.getConversation(id);
+
+          if (serverConvo) {
+            // Update the conversation in the store with the loaded messages
+            set((state) => ({
+              conversations: state.conversations.map((c) =>
+                c.id === id
+                  ? { ...c, messages: serverConvo.messages, updatedAt: serverConvo.updatedAt }
+                  : c
+              ),
+              version: state.version + 1,
+            }));
+            console.log('[ChatStore] Loaded conversation with messages:', serverConvo.messages.length, 'messages');
+          }
+        } catch (error) {
+          console.error('[ChatStore] Failed to load conversation messages:', error);
+        }
       },
 
       deleteConversation: async (id) => {
+        console.log('[ChatStore] Deleting conversation:', id);
+        const prevState = get();
+        console.log('[ChatStore] Before delete, conversations count:', prevState.conversations.length);
+
         // Optimistic update
-        set((state) => ({
-          conversations: state.conversations.filter((c) => c.id !== id),
-          activeConversationId:
-            state.activeConversationId === id ? null : state.activeConversationId,
-        }));
+        set((state) => {
+          const newConversations = state.conversations.filter((c) => c.id !== id);
+          console.log('[ChatStore] After delete, conversations count:', newConversations.length);
+          return {
+            conversations: newConversations,
+            activeConversationId:
+              state.activeConversationId === id ? null : state.activeConversationId,
+            version: state.version + 1,
+          };
+        });
 
         // Sync to server
         try {
           const service = getConversationService();
-          await service.deleteConversation(id);
+          const success = await service.deleteConversation(id);
+          console.log('[ChatStore] Delete conversation result:', success);
+          return success;
         } catch (error) {
           console.error('[ChatStore] Failed to delete conversation on server:', error);
+          return false;
         }
       },
 
@@ -212,7 +232,7 @@ export const useChatStore = create<ChatState>()(
           version: state.version + 1,
         }));
 
-        // Sync to server
+        // Sync to server and return server message
         try {
           const service = getConversationService();
           const serverMessage = await service.addMessage(conversationId, {
@@ -222,8 +242,8 @@ export const useChatStore = create<ChatState>()(
             thinking: newMessage.thinking,
           });
 
-          if (serverMessage && serverMessage.id !== newMessage.id) {
-            // Update with server ID
+          if (serverMessage) {
+            // Update with server ID and return the server message
             set((state) => ({
               conversations: state.conversations.map((c) => {
                 if (c.id === conversationId) {
@@ -237,10 +257,13 @@ export const useChatStore = create<ChatState>()(
                 return c;
               }),
             }));
+            return { ...newMessage, id: serverMessage.id };
           }
         } catch (error) {
           console.error('[ChatStore] Failed to add message on server:', error);
         }
+
+        return newMessage;
       },
 
       updateMessage: async (conversationId, messageId, updates) => {

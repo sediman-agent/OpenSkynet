@@ -27,6 +27,20 @@ export class ConversationManager {
   }
 
   /**
+   * Get conversation (alias for getHistory)
+   */
+  getConversation(): Message[] {
+    return this.conversation;
+  }
+
+  /**
+   * Get conversation length
+   */
+  getLength(): number {
+    return this.conversation.length;
+  }
+
+  /**
    * Get the length of the conversation
    */
   get length(): number {
@@ -38,6 +52,13 @@ export class ConversationManager {
    */
   clear(): void {
     this.conversation = [];
+  }
+
+  /**
+   * Set conversation from history
+   */
+  setConversation(history: Message[]): void {
+    this.conversation = history;
   }
 
   /**

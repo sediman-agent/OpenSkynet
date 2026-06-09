@@ -1,0 +1,244 @@
+/**
+ * Layout Utilities
+ * VS Code-style layout patterns and sizing utilities
+ */
+
+/* === Container Sizing === */
+.container { width: 100%; margin: 0 auto; }
+.container-fluid { width: 100%; }
+
+/* === Layout Patterns === */
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flex-col-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.grid-center {
+  display: grid;
+  place-items: center;
+  justify-items: center;
+}
+
+/* === Aspect Ratio === */
+.aspect-square { aspect-ratio: 1 / 1; }
+.aspect-video { aspect-ratio: 16 / 9; }
+.aspect-hd { aspect-ratio: 16 / 9; }
+
+/* === Cover/Contain === */
+.cover { object-fit: cover; }
+.contain { object-fit: contain; }
+
+/* === Overflow Patterns === */
+.overflow-x-auto { overflow-x: auto; }
+.overflow-y-auto { overflow-y: auto; }
+.overflow-scroll { overflow: scroll; }
+
+/* === Centering === */
+.center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* === Card Layout === */
+.card {
+  background: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.card-header {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--vscode-border-color);
+}
+
+.card-body {
+  padding: var(--space-4);
+}
+
+.card-footer {
+  padding: var(--space-3);
+  border-top: 1px solid var(--vscode-border-color);
+}
+
+/* === Section Layout === */
+.section {
+  padding: var(--space-6) 0;
+}
+
+.section-header {
+  margin-bottom: var(--space-4);
+}
+
+.section-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  margin-bottom: var(--space-2);
+}
+
+.section-description {
+  font-size: var(--text-sm);
+  color: var(--vscode-secondary-text);
+}
+
+/* === VS Code Panel Layout === */
+.panel {
+  background: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-panel-background);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 35px;
+}
+
+.panel-body {
+  padding: var(--space-4);
+}
+
+.panel-footer {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+/* === Editor Area Layout === */
+.editor-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--vscode-background);
+}
+
+.editor-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+/* === Sidebar Layout === */
+.sidebar {
+  width: 256px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--vscode-sideBar-border);
+  background: var(--vscode-sideBar-background);
+  overflow-y: auto;
+}
+
+.sidebar.collapsed {
+  width: 48px;
+}
+
+/* === Status Bar Layout === */
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-2);
+  background: var(--vscode-statusBar-background);
+  color: var(--vscode-statusBar-foreground);
+  height: 22px;
+  font-size: var(--text-xs);
+  user-select: none;
+}
+
+/* === Split Layout === */
+.split-view {
+  display: flex;
+  height: 100%;
+}
+
+.split-pane {
+  flex: 1;
+  overflow: auto;
+}
+
+.split-pane-resizable {
+  position: relative;
+}
+
+/* === VS Code Three-Panel Layout === */
+.three-panel-layout {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.primary-sidebar {
+  width: 48px;
+  flex-shrink: 0;
+  background: var(--vscode-sideBar-background);
+  border-right: 1px solid var(--vscode-border-color);
+}
+
+.editor-area {
+  flex: 1;
+  background: var(--vscode-background);
+  overflow: hidden;
+}
+
+.secondary-sidebar {
+  width: 600px;
+  flex-shrink: 0;
+  background: var(--vscode-panel-background);
+  border-left: 1px solid var(--vscode-border-color);
+}
+
+/* === Responsive Utilities === */
+@media (max-width: 768px) {
+  .secondary-sidebar {
+    position: absolute;
+    right: 0;
+    height: 100%;
+    z-index: 50;
+    transform: translateX(100%);
+    transition: transform 300ms ease-in-out;
+  }
+
+  .secondary-sidebar.open {
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .three-panel-layout {
+    flex-direction: column;
+  }
+
+  .primary-sidebar {
+    width: 100%;
+    height: 48px;
+    border-right: none;
+    border-bottom: 1px solid var(--vscode-border-color);
+  }
+
+  .editor-area {
+    order: 1;
+  }
+
+  .secondary-sidebar {
+    width: 100%;
+    order: 2;
+  }
+}

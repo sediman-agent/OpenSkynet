@@ -3,10 +3,10 @@
  * Handles system prompt construction for different task categories
  */
 
-import { BROWSER_SYSTEM_PROMPT } from "../prompts/browser-system";
-import { loadSoul } from "../prompts/soul";
-import type { TaskCategory, TaskPlan } from "./types";
-import { getConfig } from "../../core/config";
+import { BROWSER_SYSTEM_PROMPT } from "../prompts/browser-system.js";
+import { loadSoul } from "../prompts/soul.js";
+import type { TaskCategory, TaskPlan } from "./types.js";
+import { getConfig } from "../../core/config.js";
 
 export interface SystemPromptOptions {
   task: string;

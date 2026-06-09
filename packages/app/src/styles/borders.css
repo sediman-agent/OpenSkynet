@@ -1,0 +1,91 @@
+/**
+ * Borders, Shadows, and Border Radius
+ * VS Code-style visual styling utilities
+ */
+
+:root {
+  /* Border Radius - Industrial Standard */
+  --radius-none: 0;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
+  --radius-2xl: 8px;
+  --radius-full: 9999px;
+
+  /* Shadows - Subtle Professional */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 10px 10px rgba(0, 0, 0, 0.04);
+  --shadow-2xl: 0 25px 50px rgba(0, 0, 0, 0.15), 0 12px 24px rgba(0, 0, 0, 0.08);
+
+  /* VS Code Widget Shadow */
+  --shadow-widget: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+  /* Focus Ring - Elegant Violet */
+  --shadow-focus: 0 0 0 2px var(--vscode-focus-border), 0 0 0 6px rgba(139, 92, 246, 0.2);
+}
+
+/* === Border Radius Utilities === */
+.rounded-none { border-radius: var(--radius-none); }
+.rounded-sm { border-radius: var(--radius-sm); }
+.rounded { border-radius: var(--radius-md); }
+.rounded-lg { border-radius: var(--radius-lg); }
+.rounded-xl { border-radius: var(--radius-xl); }
+.rounded-2xl { border-radius: var(--radius-2xl); }
+.rounded-full { border-radius: var(--radius-full); }
+
+/* === Border Utilities === */
+.border { border: 1px solid var(--vscode-border-color); }
+.border-t { border-top: 1px solid var(--vscode-border-color); }
+.border-r { border-right: 1px solid var(--vscode-border-color); }
+.border-b { border-bottom: 1px solid var(--vscode-border-color); }
+.border-l { border-left: 1px solid var(--vscode-border-color); }
+
+.border-0 { border: 0; }
+
+/* === Divider Utilities === */
+.divide-y > * + * {
+  border-top: 1px solid var(--vscode-border-color);
+}
+.divide-y > * + *:first-child {
+  border-top: 0;
+}
+
+.divide-x > * + * {
+  border-left: 1px solid var(--vscode-border-color);
+}
+.divide-x > * + *:first-child {
+  border-left: 0;
+}
+
+/* === Shadow Utilities === */
+.shadow-xs { box-shadow: var(--shadow-xs); }
+.shadow-sm { box-shadow: var(--shadow-sm); }
+.shadow-md { box-shadow: var(--shadow-md); }
+.shadow-lg { box-shadow: var(--shadow-lg); }
+.shadow-xl { box-shadow: var(--shadow-xl); }
+.shadow-2xl { box-shadow: var(--shadow-2xl); }
+.shadow-none { box-shadow: none; }
+
+/* === Focus Ring Utility === */
+.shadow-focus {
+  box-shadow: var(--shadow-focus);
+}
+
+/* === VS Code Widget Shadow === */
+.widget-shadow {
+  box-shadow: var(--shadow-widget);
+}
+
+/* === Ring Utilities (for focus states) === */
+.ring {
+  --ring-offset-width: 1px;
+  --ring-offset-color: var(--vscode-background);
+  --ring-width: 2px;
+  --ring-color: var(--vscode-focus-border);
+  box-shadow: 0 0 0 calc(var(--ring-offset-width) + var(--ring-width)) var(--ring-offset-color),
+              0 0 0 var(--ring-width) var(--ring-color);
+}

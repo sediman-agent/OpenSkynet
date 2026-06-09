@@ -1,13 +1,13 @@
 /**
- * Copilot-Style AgentPage
- * Main agent UI - Minimal, professional layout matching VS Code Copilot
+ * VS Code-Style AgentPage - Industrial Grade
+ * Main agent UI with professional layout, spacing, and visual hierarchy
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRPCConnection } from '@/hooks/useRPCConnection';
 import { useAppStore } from '@/stores/useAppStore';
-import { useSandboxStore } from '@/stores/useSandboxStore';
 import { useChatStore } from '@/stores/useChatStore';
+import { useSandboxStore } from '@/stores/useSandboxStore';
 import { getChatService } from '@/services/chatService';
 import { FileUploadZone } from '@/elements/form/FileUploadZone';
 import { AgentMessages } from '@/components/agent/AgentMessages';
@@ -19,17 +19,9 @@ import { useAgentStreaming } from '@/hooks/agent/useAgentStreaming';
 import { useScrollControl } from '@/hooks/agent/useScrollControl';
 import { useFileAttachments } from '@/hooks/agent/useFileAttachments';
 import { useConversationManager } from '@/hooks/agent/useConversationManager';
+import { ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Message } from '@/types';
-
-// ============================================================================
-// VS Code Design Tokens for Chat Layout (using CSS variables for theme support)
-// ============================================================================
-const LAYOUT_TOKENS = {
-  headerHeight: 40,
-  inputPadding: 8,
-  maxWidth: 800,
-} as const;
 
 export function AgentPage() {
   // Store hooks
@@ -48,14 +40,6 @@ export function AgentPage() {
 
   // Chat store for message operations
   const { addMessage, updateMessage } = useChatStore();
-
-  const {
-    scrollRef,
-    messagesEndRef,
-    showScrollButton,
-    scrollToBottom,
-    handleScroll
-  } = useScrollControl();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -87,6 +71,13 @@ export function AgentPage() {
   } = useAgentStreaming();
 
   const {
+    scrollRef,
+    messagesEndRef,
+    showScrollButton,
+    scrollToBottom
+  } = useScrollControl({ messages, isStreaming });
+
+  const {
     attachedFiles,
     showFileUpload,
     isDragOver,
@@ -100,6 +91,9 @@ export function AgentPage() {
 
   // Thinking messages expansion state
   const [expandedThinkingMessages, setExpandedThinkingMessages] = useState<Set<string>>(new Set());
+
+  // Track active tool calls
+  const activeToolCalls = useRef(new Map<string, { startTime: number; action: string; detail?: string }>()).current;
 
   // Force connection status to true (backend is running) and sync conversations
   useEffect(() => {
@@ -130,92 +124,69 @@ export function AgentPage() {
     startStreaming();
     clearExecutionSteps();
 
-    // Add user message to conversation
+    // Add user message to conversation and get server-assigned ID
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
       content: inputText,
       timestamp: new Date(),
     };
-    await addMessage(conversationId, userMessage);
+    const serverUserMessage = await addMessage(conversationId, userMessage);
 
-    // Create placeholder for assistant message
-    const assistantMessageId = crypto.randomUUID();
+    // Create placeholder for assistant message and get server-assigned ID
     const assistantMessage: Message = {
-      id: assistantMessageId,
+      id: crypto.randomUUID(),
       role: 'assistant',
       content: '',
       status: 'streaming',
       timestamp: new Date(),
     };
-    await addMessage(conversationId, assistantMessage);
+    const serverAssistantMessage = await addMessage(conversationId, assistantMessage);
+
+    // Use server-assigned IDs for updates
+    const actualAssistantId = serverAssistantMessage.id;
 
     // Track accumulated content
     let accumulatedContent = '';
 
     const chatService = getChatService();
 
-    // Track active tool calls
-    const activeToolCalls = new Map<string, { startTime: number; action: string; detail?: string }>();
-
     // Run task with streaming
     await chatService.runTask(inputText, {
       onChunk: (delta, phase) => {
-        if (delta) {
+        // Update streaming phase - cast phase to StreamingPhase if valid
+        if (phase && phase !== streamingPhase) {
+          const validPhases: (typeof phase)[] = ['thinking', 'planning', 'executing', 'reflecting', 'retrying', 'responding'];
+          if (validPhases.includes(phase as any)) {
+            updatePhase(phase as any);
+          }
+        }
+
+        // Only add to message content if in 'responding' phase (not thinking/planning/etc)
+        // This prevents tool outputs and internal reasoning from appearing in user messages
+        if (delta && (!phase || phase === 'responding')) {
           accumulatedContent += delta;
-          updateMessage(conversationId, assistantMessageId, {
+          updateMessage(conversationId, actualAssistantId, {
             content: accumulatedContent
           });
         }
-        if (phase) updatePhase(phase as any);
       },
       onProgress: (progress) => {
-        if (progress.phase) updatePhase(progress.phase as any);
-
-        // Handle tool call start - action might be in different fields
-        const action = (progress as any).action || progress.phase;
-        const detail = progress.detail || progress.message;
-
-        if (action && action !== 'thinking' && action !== 'planning') {
-          // Tool call started
-          const toolId = `${action}-${Date.now()}`;
-          activeToolCalls.set(toolId, {
-            startTime: Date.now(),
-            action: action,
-            detail: detail
-          });
-          addExecutionStep({
-            id: toolId,
-            type: 'tool',
-            timestamp: Date.now(),
-            status: 'running',
-            action: action,
-            detail: detail
-          });
+        // Update streaming phase from progress if available
+        if (progress.phase && progress.phase !== streamingPhase) {
+          const validPhases: string[] = ['thinking', 'planning', 'executing', 'reflecting', 'retrying', 'responding'];
+          if (validPhases.includes(progress.phase)) {
+            updatePhase(progress.phase as any);
+          }
         }
-        if (detail) updateAction(progress.phase, detail);
       },
       onDone: () => {
-        // Update all running tool calls to success
-        activeToolCalls.forEach((_, toolId) => {
-          const existing = executionSteps.find(s => s.id === toolId);
-          if (existing && existing.status === 'running') {
-            updateLastExecutionStep({
-              status: 'success',
-              duration: Date.now() - existing.timestamp
-            });
-          }
-        });
-        activeToolCalls.clear();
-
         // Finalize assistant message
-        updateMessage(conversationId, assistantMessageId, {
+        updateMessage(conversationId, actualAssistantId, {
           status: 'done',
           content: accumulatedContent
         });
 
-        // Note: Tool calls will be saved to the message by the backend
-        // The execution steps are cleared after a brief delay to allow UI to update
         setTimeout(() => {
           clearExecutionSteps();
         }, 100);
@@ -224,7 +195,6 @@ export function AgentPage() {
       },
       onError: (error) => {
         console.error('Task error:', error);
-        // Update all running tool calls to error
         activeToolCalls.forEach((_, toolId) => {
           const existing = executionSteps.find(s => s.id === toolId);
           if (existing && existing.status === 'running') {
@@ -236,8 +206,7 @@ export function AgentPage() {
         });
         activeToolCalls.clear();
 
-        // Update assistant message with error
-        updateMessage(conversationId, assistantMessageId, {
+        updateMessage(conversationId, actualAssistantId, {
           status: 'error',
           content: accumulatedContent || `Error: ${error}`
         });
@@ -246,7 +215,6 @@ export function AgentPage() {
       },
       onBrowserOpenRequired: (reason, task) => {
         console.log('[AgentPage] Browser open required:', reason, task);
-        // Open browser panel when browser task starts
         const { togglePanel } = useSandboxStore.getState();
         const { isOpen } = useSandboxStore.getState();
         if (!isOpen) {
@@ -262,6 +230,8 @@ export function AgentPage() {
         timestamp: m.timestamp?.toISOString()
       }))
     });
+
+    setInput('');
   }
 
   // Handle file paste
@@ -302,75 +272,75 @@ export function AgentPage() {
   const hasMessages = messages.length > 0;
 
   return (
-    <div
-      className={cn(
-        "flex flex-col h-full font-mono text-sm",
-        isStreaming && "request-in-progress"
-      )}
-      style={{ backgroundColor: 'var(--vscode-background)' }}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
-      {/* Connection Warning - Compact */}
+    <div className="flex flex-col h-full" style={{ fontFamily: 'var(--font-system)' }}>
+      {/* Connection Warning - Professional */}
       {!agentStatus.rpcConnected && (
-        <div className="flex items-center justify-between px-3 py-1.5 border-b" style={{
+        <div className="flex items-center justify-between px-4 py-2 border-b" style={{
           backgroundColor: 'var(--vscode-input-background)',
           borderColor: 'var(--vscode-border-color)',
           color: 'var(--vscode-foreground)'
         }}>
-          <div className="flex items-center gap-2 text-xs">
-            <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
-            <span className="font-medium">DISCONNECTED</span>
-            <span style={{ color: 'var(--vscode-secondary-text)' }}>— Backend not responding</span>
+          <div className="flex items-center gap-2" style={{ fontSize: '12px' }}>
+            <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: 'var(--vscode-warning-foreground)' }} />
+            <span style={{ fontWeight: 500 }}>DISCONNECTED</span>
+            <span style={{ color: 'var(--vscode-secondary-text)', opacity: 0.7 }}>— Backend not responding</span>
           </div>
           <button
             onClick={() => window.location.reload()}
-            className="text-[11px] hover:underline transition-colors"
-            style={{ color: 'var(--vscode-link-foreground)' }}
+            className="text-xs font-medium transition-colors px-2 py-1 rounded"
+            style={{
+              color: 'var(--vscode-link-foreground)',
+              border: 'none',
+              backgroundColor: 'transparent'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
+            onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
           >
             RECONNECT
           </button>
         </div>
       )}
 
-      {/* Messages Area - Copilot Style */}
+      {/* Messages Area - Professional Layout */}
       <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-4 py-2"
-        style={{ maxWidth: LAYOUT_TOKENS.maxWidth, margin: '0 auto', width: '100%' }}
+        className="flex-1 overflow-hidden"
         onPaste={handlePaste}
+        style={{
+          maxWidth: 900,
+          margin: '0 auto',
+          width: '100%',
+          padding: '0 20px'
+        }}
       >
-        {/* Welcome Message */}
+        {/* Welcome Message - Empty State */}
         {!hasMessages && !isStreaming && (
-          <div className="flex flex-col items-center justify-center h-full text-center py-12">
-            <div className="mb-4" style={{ color: 'var(--vscode-secondary-text)' }}>
-              <p className="text-xs">Start a conversation with the agent</p>
+          <div className="flex flex-col items-center justify-center h-full text-center" style={{ padding: '48px 16px' }}>
+            <div style={{ color: 'var(--vscode-secondary-text)' }}>
+              <p style={{ fontSize: '13px', marginBottom: '8px' }}>Start a conversation with the agent</p>
+              <p style={{ fontSize: '11px', opacity: 0.7 }}>
+                Type your message below or use slash commands for quick actions
+              </p>
             </div>
           </div>
         )}
 
-        {/* Messages List */}
-        <div className="space-y-0">
-          {messages.map((message, index) => (
-            <AgentMessages
-              key={message.id}
-              messages={[message]}
-              isStreaming={isStreaming && index === messages.length - 1}
-              scrollRef={scrollRef}
-              messagesEndRef={messagesEndRef}
-              onScroll={handleScroll}
-              showScrollButton={showScrollButton}
-              onScrollToBottom={() => scrollToBottom(true)}
-              expandedThinkingMessages={expandedThinkingMessages}
-              onToggleThinking={toggleThinking}
-            />
-          ))}
+        {/* Messages List - Better Spacing */}
+        <div className="space-y-1">
+          <AgentMessages
+            messages={messages}
+            isStreaming={isStreaming}
+            executionSteps={executionSteps}
+            scrollRef={scrollRef}
+            messagesEndRef={messagesEndRef}
+            showScrollButton={showScrollButton}
+            onScrollToBottom={() => scrollToBottom(true)}
+            expandedThinkingMessages={expandedThinkingMessages}
+            onToggleThinking={toggleThinking}
+          />
 
-          {/* Streaming Execution Display - VS Code Style */}
+          {/* Streaming Execution Display - Integrated */}
           {isStreaming && executionSteps.length > 0 && (
-            <div className="px-2 pb-2">
+            <div className="mx-1 mb-2">
               <StreamingExecutionDisplay
                 toolCalls={executionSteps.map(step => ({
                   id: step.id,
@@ -389,29 +359,26 @@ export function AgentPage() {
           )}
         </div>
 
-        {/* Scroll to bottom button */}
+        {/* Scroll to bottom button - Professional */}
         {showScrollButton && (
           <button
             onClick={() => scrollToBottom(true)}
-            className="fixed bottom-20 right-4 p-2 rounded border transition-all z-10"
+            className="fixed bottom-24 right-6 p-2 rounded transition-all z-10 shadow-sm"
             style={{
-              backgroundColor: 'var(--vscode-input-background)',
+              backgroundColor: 'var(--vscode-button-secondary-background)',
               borderColor: 'var(--vscode-border-color)',
-              color: 'var(--vscode-secondary-text)'
+              color: 'var(--vscode-button-secondary-foreground)',
+              border: '1px solid'
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'var(--vscode-foreground)';
-              e.currentTarget.style.borderColor = 'var(--vscode-secondary-text)';
+              e.currentTarget.style.backgroundColor = 'var(--vscode-button-secondaryHoverBackground)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.color = 'var(--vscode-secondary-text)';
-              e.currentTarget.style.borderColor = 'var(--vscode-border-color)';
+              e.currentTarget.style.backgroundColor = 'var(--vscode-button-secondary-background)';
             }}
             title="Scroll to bottom"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 11L3 6h10l-5 5z" />
-            </svg>
+            <ArrowDown size={16} />
           </button>
         )}
 
@@ -420,36 +387,40 @@ export function AgentPage() {
 
       {/* File Upload Zone */}
       {showFileUpload && (
-        <FileUploadZone
-          onFilesUploaded={(files) => files.forEach(file => addFile({
-            id: file.id,
-            name: file.name,
-            size: file.size,
-            type: file.type || 'application/octet-stream',
-            status: 'done'
-          }))}
-        />
+        <div className="border-t" style={{ borderColor: 'var(--vscode-border-color)' }}>
+          <FileUploadZone
+            onFilesUploaded={(files) => files.forEach(file => addFile({
+              id: file.id,
+              name: file.name,
+              size: file.size,
+              type: file.type || 'application/octet-stream',
+              status: 'done'
+            }))}
+          />
+        </div>
       )}
 
-      {/* File Attachments Bar - Compact */}
+      {/* File Attachments Bar - Professional */}
       {attachedFiles.length > 0 && (
-        <FileAttachmentBar
-          files={attachedFiles}
-          onRemove={removeFile}
-          isDragOver={isDragOver}
-        />
+        <div className="border-t" style={{ borderColor: 'var(--vscode-border-color)' }}>
+          <FileAttachmentBar
+            files={attachedFiles}
+            onRemove={removeFile}
+            isDragOver={isDragOver}
+          />
+        </div>
       )}
 
-      {/* Input Area - Copilot Style */}
+      {/* Input Area - Professional */}
       <div
         className="border-t"
         style={{
           borderColor: 'var(--vscode-border-color)',
           backgroundColor: 'var(--vscode-background)',
-          padding: `${LAYOUT_TOKENS.inputPadding}px 0`
+          padding: '12px 0'
         }}
       >
-        <div style={{ maxWidth: LAYOUT_TOKENS.maxWidth, margin: '0 auto', padding: '0 16px' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 20px' }}>
           <AgentInput
             value={input}
             onChange={setInput}
@@ -457,40 +428,18 @@ export function AgentPage() {
             onStop={stopStreaming}
             isSending={isStreaming}
             sendError={sendError}
-            disabled={!agentStatus.rpcConnected}
-            placeholder={agentStatus.rpcConnected ? "Message agent..." : "Waiting for connection..."}
+            placeholder="Ask anything..."
             showSlashCommands={showSlashCommands}
             filteredSlashCommands={filteredSlashCommands}
             onSelectSlashCommand={selectSlashCommand}
             onToggleFileUpload={toggleFileUpload}
-            showFileUpload={showFileUpload}
             textareaRef={textareaRef}
             onKeyDown={handleKeyDown}
           />
-
-          {/* Status Bar - Compact */}
-          <div className="flex items-center justify-between mt-2 px-1">
-            <div className="flex items-center gap-2 text-[11px" style={{ color: 'var(--vscode-secondary-text)' }}>
-              {agentStatus.rpcConnected ? (
-                <>
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                  <span>CONNECTED</span>
-                  {model && <span>• {model}</span>}
-                  {provider && <span>• {provider}</span>}
-                </>
-              ) : (
-                <>
-                  <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-                  <span>DISCONNECTED</span>
-                </>
-              )}
-            </div>
-            <div className="text-[10px]" style={{ color: 'var(--vscode-secondary-text)' }}>
-              {hasMessages && `${messages.length} MESSAGE${messages.length !== 1 ? 'S' : ''}`}
-            </div>
-          </div>
         </div>
       </div>
     </div>
   );
 }
+
+export default AgentPage;

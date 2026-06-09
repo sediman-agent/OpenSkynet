@@ -1,0 +1,68 @@
+/**
+ * VS Code Modern Design System
+ * Modular CSS architecture for VS Code-native styling
+ *
+ * This file imports all modular CSS components in the correct order:
+ * 1. Variables (theme system)
+ * 2. Base (reset & foundation)
+ * 3. Typography (fonts & text)
+ * 4. Spacing (4px grid system)
+ * 5. Borders (radius, shadows, focus rings)
+ * 6. Utilities (display, flexbox, grid, etc.)
+ * 7. Layout (containers, panels, grids)
+ * 8. Forms (inputs, buttons, form elements)
+ * 9. Animations (keyframes, transitions)
+ * 10. Interactive Components (focus rings, buttons)
+ * 11. Sidebar Components (icon buttons, tooltips)
+ */
+
+/* === 1. Theme Variables === */
+@import './variables.css';
+
+/* === 2. Base Reset & Foundation === */
+@import './base.css';
+
+/* === 3. Typography System === */
+@import './typography.css';
+
+/* === 4. Spacing System === */
+@import './spacing.css';
+
+/* === 5. Borders & Shadows === */
+@import './borders.css';
+
+/* === 6. Utility Classes === */
+@import './utilities.css';
+
+/* === 7. Layout Patterns === */
+@import './layout.css';
+
+/* === 8. Form Components === */
+@import './forms.css';
+
+/* === 9. Animation Library === */
+@import './animations.css';
+
+/* === 10. Interactive Components === */
+@import './interactive-components.css';
+
+/* === 11. Sidebar Components === */
+@import './sidebar-components.css';
+
+/* === 12. Component Style Classes === */
+@import './component-styles.css';
+
+/* === 13. Schedule Page Styles === */
+@import './schedule-styles.css';
+
+/* === 14. Skills Page Styles === */
+@import './skills-styles.css';
+
+/* === Additional VS Code-specific components === */
+@import './vscode-streaming.css';
+
+/**
+ * Usage:
+ * Import this file in main.tsx instead of the old vscode-complete.css
+ * All styles are now modular and easier to maintain
+ */

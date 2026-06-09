@@ -80,12 +80,19 @@ export function getConversations(limit: number = 50): ConversationDb[] {
 export function getConversation(id: string): ConversationWithMessages | null {
   const db = getDb();
 
+  console.log('[ConversationService] Getting conversation:', id);
+
   const conversationRow = db.query("SELECT * FROM conversations WHERE id = ?").get(id) as any;
-  if (!conversationRow) return null;
+  if (!conversationRow) {
+    console.log('[ConversationService] Conversation not found:', id);
+    return null;
+  }
 
   const messageRows = db.query(
     "SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
   ).all(id) as any[];
+
+  console.log('[ConversationService] Found messages:', messageRows.length, 'for conversation:', id);
 
   // Get tool calls for each message
   const messagesWithToolCalls = messageRows.map((msg) => {
@@ -98,6 +105,8 @@ export function getConversation(id: string): ConversationWithMessages | null {
       tool_calls: toolCallRows.length > 0 ? toolCallRows : undefined,
     };
   });
+
+  console.log('[ConversationService] Returning conversation with messages:', messagesWithToolCalls.length);
 
   return {
     ...conversationRow,
@@ -153,6 +162,8 @@ export function addMessage(
   const id = randomUUID();
   const metadataJson = JSON.stringify(message.metadata || {});
 
+  console.log('[ConversationService] Adding message:', { messageId: id, conversationId, role: message.role, content: message.content });
+
   db.run(
     `INSERT INTO messages (id, conversation_id, role, content, status, metadata_json, thinking)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -168,6 +179,8 @@ export function addMessage(
   logger.debug({ messageId: id, conversationId, role: message.role }, "message_added");
 
   const row = db.query("SELECT * FROM messages WHERE id = ?").get(id) as any;
+  console.log('[ConversationService] Message saved successfully:', { messageId: id, conversationId });
+
   return row;
 }
 

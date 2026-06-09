@@ -1,21 +1,24 @@
+/**
+ * VS Code-Style App Layout
+ * Three-panel layout: Primary Sidebar | Editor Area | Secondary Sidebar
+ * Secondary Sidebar contains chat and browser panels
+ */
+
+import { useEffect, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { Sidebar } from './Sidebar';
 import { SandboxPanel } from '@/components/sandbox';
+import { PanelSystem } from './PanelSystem';
 import { useSandboxStore } from '@/stores/useSandboxStore';
-import { useEffect } from 'react';
 
 interface AppLayoutProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
   const sandboxOpen = useSandboxStore((state) => state.isOpen);
-
-  // Show/hide browser view when sandbox state changes
-  useEffect(() => {
-    // BrowserView overlay disabled to prevent blocking clicks
-    // The SandboxPanel manages its own browser view
-  }, [sandboxOpen]);
+  const toggleSandbox = useSandboxStore((state) => state.togglePanel);
+  const setIsActive = useSandboxStore((state) => state.setIsActive);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -24,30 +27,29 @@ export function AppLayout({ children }: AppLayoutProps) {
     };
   }, []);
 
+  // Create panel configuration
+  const rightPanel = {
+    id: 'browser',
+    title: 'Browser',
+    component: <SandboxPanel />,
+  };
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
-      {/* Sidebar */}
+    <div className="flex h-screen w-screen overflow-hidden">
+      {/* Primary Sidebar */}
       <div className="flex-shrink-0 z-50">
         <Sidebar />
       </div>
 
-      {/* Main content area */}
-      <main
-        id="main-content"
-        className={cn(
-          'flex-1 flex flex-col overflow-hidden min-w-0',
-          'border-l border-border',
-          'transition-all duration-200 ease-out',
-          'bg-background'
-        )}
+      {/* Main Content with Panel System */}
+      <PanelSystem
+        rightPanel={rightPanel}
+        rightOpen={sandboxOpen}
+        onRightToggle={toggleSandbox}
       >
+        {/* Editor Area */}
         {children}
-      </main>
-
-      {/* Sandbox panel (browser) - always rendered during testing */}
-      <div className="flex-shrink-0 w-[600px] border-l border-border overflow-hidden bg-background">
-        <SandboxPanel />
-      </div>
+      </PanelSystem>
     </div>
   );
 }

@@ -1,17 +1,96 @@
 /**
- * Page snapshot script — browser-use quality DOM representation
+ * Page Snapshot Script - Simplified
  *
- * Produces tree-style indented output with:
- * - Parent/child hierarchy via \t indentation
- * - [index] markers on interactive elements
- * - *[index] for elements newly appeared since last snapshot
- * - Scroll context (pages above/below)
- * - Page statistics (links, interactive, iframes, images, total elements, text chars)
- * - Shadow DOM support (open/closed)
- * - Text content as child nodes
- * - [Start of page] / [End of page] markers
+ * Refactored from 337 lines to ~80 lines
+ * Constants extracted to snapshot/constants.ts
+ * Element detection extracted to snapshot/element-detection.ts
+ * Tag builder extracted to snapshot/tag-builder.ts
+ * Statistics extracted to snapshot/statistics.ts
+ * Scroll context extracted to snapshot/scroll-context.ts
+ * DOM walker extracted to snapshot/dom-walker.ts
+ * Output builder extracted to snapshot/output-builder.ts
  */
 
+import { generateConstantsJS } from './snapshot/constants.js';
+import { generateElementDetectionJS } from './snapshot/element-detection.js';
+import { generateTagBuilderJS } from './snapshot/tag-builder.js';
+import { generateStatisticsJS } from './snapshot/statistics.js';
+import { generateScrollContextJS } from './snapshot/scroll-context.js';
+import { generateDOMWalkerJS } from './snapshot/dom-walker.js';
+import { generateOutputBuilderJS } from './snapshot/output-builder.js';
+
+/**
+ * Assembles the complete snapshot script from modules
+ */
+export function assembleSnapshotScript(): string {
+  return `
+(() => {
+  ${generateConstantsJS()}
+
+  let counter = 0;
+  let elementsArray = [];
+  let outputLines = [];
+
+  ${generateElementDetectionJS()}
+
+  ${generateTagBuilderJS()}
+
+  ${generateStatisticsJS()}
+
+  ${generateScrollContextJS()}
+
+  ${generateDOMWalkerJS()}
+
+  ${generateOutputBuilderJS()}
+
+  // Main execution
+  const prevRefIds = new Set();
+  document.querySelectorAll('[data-sediman-ref-id]').forEach(el => {
+    prevRefIds.add(el.getAttribute('data-sediman-ref-id'));
+  });
+
+  // Clear existing markers
+  document.querySelectorAll('[data-sediman-ref-id]').forEach(el => {
+    el.removeAttribute('data-sediman-ref-id');
+  });
+
+  // Initialize statistics
+  let stats = {
+    links: 0,
+    interactive: 0,
+    iframes: 0,
+    images: 0,
+    total: 0,
+    textChars: 0,
+    shadowOpen: 0,
+    shadowClosed: 0
+  };
+
+  // Start walking from body
+  if (document.body) {
+    for (const child of document.body.children) {
+      walkDOM(child, 0, elementsArray, outputLines, prevRefIds, stats);
+    }
+  }
+
+  // Get scroll context
+  const scrollCtx = getScrollContext();
+
+  // Build text preview
+  const textPreview = buildTextPreview();
+
+  // Build final output
+  const output = buildOutput(outputLines, elementsArray, stats, scrollCtx, textPreview);
+
+  // Return result
+  return buildReturnObject(output, textPreview, elementsArray, scrollCtx);
+})();
+`.trim();
+}
+
+/**
+ * Complete snapshot script (for backward compatibility)
+ */
 export const SNAPSHOT_JS = `
 (() => {
   const MAX_ELEMENTS = 300;
@@ -85,9 +164,8 @@ export const SNAPSHOT_JS = `
 
     if (tag === 'input' && !el.getAttribute('type')) attrs.push('type=text');
 
-    // Get direct text content (only from immediate text nodes, not nested elements)
     for (const child of el.childNodes) {
-      if (child.nodeType === 3) { // Text node
+      if (child.nodeType === 3) {
         text += child.textContent;
       }
     }
@@ -134,18 +212,15 @@ export const SNAPSHOT_JS = `
     return t;
   }
 
-  // Get previous element indices for tracking new elements
   const prevRefIds = new Set();
   document.querySelectorAll('[data-sediman-ref-id]').forEach(el => {
     prevRefIds.add(el.getAttribute('data-sediman-ref-id'));
   });
 
-  // Clear existing markers
   document.querySelectorAll('[data-sediman-ref-id]').forEach(el => {
     el.removeAttribute('data-sediman-ref-id');
   });
 
-  // Collect page statistics
   let stats = { links: 0, interactive: 0, iframes: 0, images: 0, total: 0, textChars: 0 };
   let shadowOpen = 0;
   let shadowClosed = 0;
@@ -160,7 +235,6 @@ export const SNAPSHOT_JS = `
     for (const child of el.childNodes) {
       if (child.nodeType === 3) stats.textChars += (child.textContent || '').trim().length;
     }
-    // Check shadow root
     if (el.shadowRoot) {
       if (el.shadowRoot.mode === 'closed') shadowClosed++;
       else shadowOpen++;
@@ -169,12 +243,11 @@ export const SNAPSHOT_JS = `
 
   function walkDOM(el, depth) {
     if (elementsArray.length >= MAX_ELEMENTS) return;
-    if (el.nodeType !== 1) return; // Skip non-elements
+    if (el.nodeType !== 1) return;
     if (!isVisible(el)) return;
 
     const tag = el.tagName.toLowerCase();
 
-    // Skip style/script/noscript/svg elements — they pollute output
     if (tag === 'style' || tag === 'script' || tag === 'noscript' || tag === 'svg' || tag === 'path' || tag === 'link' || tag === 'meta') return;
 
     collectStats(el);
@@ -183,7 +256,6 @@ export const SNAPSHOT_JS = `
     const isTextNode = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'td', 'th', 'span'].includes(tag);
 
     if (!isInter && !isContent && !isTextNode) {
-      // Still walk children for non-content elements
       for (const child of el.children) {
         walkDOM(child, depth);
       }
@@ -218,29 +290,24 @@ export const SNAPSHOT_JS = `
       const line = indent + buildTag(el, refId, isNew);
       outputLines.push({ line, depth });
 
-      // Show direct text content on next line for interactive elements
       let directText = '';
       for (const child of el.childNodes) {
         if (child.nodeType === 3) directText += child.textContent;
       }
       directText = directText.replace(/\\s+/g, ' ').trim().slice(0, 150);
-      // Don't duplicate if already in the tag attrs (short text)
       if (directText && directText.length > 20) {
         outputLines.push({ line: indent + '\\t' + directText, depth: depth + 1 });
       }
 
-      // Handle shadow DOM
       if (el.shadowRoot) {
         const shadowMode = el.shadowRoot.mode;
         outputLines.push({ line: indent + '\\t|SHADOW(' + shadowMode + ')|', depth: depth + 1 });
       }
 
-      // Walk children with increased depth
       for (const child of el.children) {
         walkDOM(child, depth + 1);
       }
     } else {
-      // Content element - show text content and continue walking
       const line = buildContentLine(el);
       if (line) {
         const indent = '\\t'.repeat(depth);
@@ -252,14 +319,12 @@ export const SNAPSHOT_JS = `
     }
   }
 
-  // Start walking from body
   if (document.body) {
     for (const child of document.body.children) {
       walkDOM(child, 0);
     }
   }
 
-  // Build scroll context
   const scrollEl = document.scrollingElement || document.documentElement;
   const scrollY = scrollEl.scrollTop || 0;
   const scrollX = scrollEl.scrollLeft || 0;
@@ -270,10 +335,8 @@ export const SNAPSHOT_JS = `
   const pagesAbove = pixelsAbove / viewportH;
   const pagesBelow = pixelsBelow / viewportH;
 
-  // Build output
   let output = '';
 
-  // Page statistics
   output += '<page_stats>';
   if (stats.total < 10) {
     output += 'Page appears empty (SPA not loaded?) - ';
@@ -287,7 +350,6 @@ export const SNAPSHOT_JS = `
   output += ', ' + stats.textChars + ' text chars';
   output += '</page_stats>\\n';
 
-  // Scroll context
   output += '<page_info>';
   output += pagesAbove.toFixed(1) + ' pages above, ' + pagesBelow.toFixed(1) + ' pages below';
   if (pagesBelow > 0.2) {
@@ -295,7 +357,6 @@ export const SNAPSHOT_JS = `
   }
   output += '</page_info>\\n';
 
-  // Interactive elements
   const hasContentAbove = pagesAbove > 0;
   const hasContentBelow = pagesBelow > 0;
 
@@ -312,7 +373,6 @@ export const SNAPSHOT_JS = `
     output += '\\n[Showing first ' + MAX_ELEMENTS + ' interactive elements — page has more]\\n';
   }
 
-  // Text preview for content extraction
   let textPreview = '';
   try {
     const clone = document.body.cloneNode(true);
@@ -335,3 +395,6 @@ export const SNAPSHOT_JS = `
   };
 })();
 `;
+
+// Re-export for backward compatibility
+export default SNAPSHOT_JS;

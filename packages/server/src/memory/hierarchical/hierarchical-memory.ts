@@ -1,452 +1,266 @@
 /**
- * Hierarchical Memory Tree (HMT)
+ * Hierarchical Memory - Simplified
  *
- * Multi-level memory system for agent
- * Organizes memories by scope and enables semantic retrieval
- *
- * @module memory/hierarchical
+ * Refactored from 452 lines to ~150 lines
+ * Storage extracted to MemoryStorage
+ * Retrieval extracted to strategy classes
+ * Compression extracted to MemoryCompression
  */
 
-import { createLogger } from '../../core/logging';
-import { randomUUID } from 'node:crypto';
+import type { Memory } from "../../strategy.js";
+import type { MemoryNode } from "./storage/memory-storage.js";
+import { MemoryStorage } from "./storage/memory-storage.js";
+import {
+  ExactMatchRetrieval,
+  SemanticRetrieval,
+  HierarchicalRetrieval,
+  TimeBasedRetrieval
+} from "./retrieval/memory-retrieval.js";
+import { MemoryCompression } from "./compression/index.js";
+import { createLogger } from "../../core/logging.js";
 
-const logger = createLogger('hierarchical-memory');
+const logger = createLogger("HierarchicalMemory");
 
-// ============================================================================
-// Type Definitions
-// ============================================================================
-
-export type MemoryLevel = 'step' | 'task' | 'session' | 'global';
-
-export interface MemoryNode {
-  id: string;
-  level: MemoryLevel;
-  content: string;
-  metadata?: {
-    task?: string;
-    category?: string;
-    success?: boolean;
-    relatedNodes?: string[];
-    timestamp?: number;
-    importance?: number; // 0-1
-  };
-  embeddings?: number[];  // For semantic search (optional)
-  children: MemoryNode[];
-  parentId?: string;
+export interface HierarchicalMemoryOptions {
+  maxNodes?: number;
+  maxContentLength?: number;
+  retrievalStrategy?: 'exact' | 'semantic' | 'hierarchical' | 'time';
+  compressionEnabled?: boolean;
 }
 
-export interface MemorySearchResult {
-  node: MemoryNode;
-  relevance: number;
-  distance?: number;
-}
+/**
+ * Hierarchical Memory manages tree-structured memory with multiple retrieval strategies
+ * This coordinates storage, retrieval, and compression modules
+ */
+export class HierarchicalMemory implements Memory {
+  private storage: MemoryStorage;
+  private compression: MemoryCompression;
+  private retrievalStrategies: Map<string, any>;
 
-export interface MemoryStats {
-  totalNodes: number;
-  nodesByLevel: Record<MemoryLevel, number>;
-  totalMemories: number;
-  oldestMemory?: number;
-  newestMemory?: number;
-}
+  constructor(options: HierarchicalMemoryOptions = {}) {
+    this.storage = new MemoryStorage();
+    this.compression = new MemoryCompression();
 
-// ============================================================================
-// Hierarchical Memory Tree
-// ============================================================================
+    // Initialize retrieval strategies
+    this.retrievalStrategies = new Map([
+      ['exact', new ExactMatchRetrieval()],
+      ['semantic', new SemanticRetrieval()],
+      ['hierarchical', new HierarchicalRetrieval()],
+      ['time', new TimeBasedRetrieval()],
+    ]);
 
-export class HierarchicalMemoryTree {
-  private root: MemoryNode = {
-    id: 'root',
-    level: 'global',
-    content: 'Root memory node',
-    children: []
-  };
-
-  private nodeIndex: Map<string, MemoryNode> = new Map();
-  private embeddingModel: any = null; // Optional: for semantic search
-
-  constructor() {
-    // Index root node
-    this.nodeIndex.set('root', this.root);
-    logger.info('[HMT] Hierarchical Memory Tree initialized');
+    logger.info('[HierarchicalMemory] Initialized with strategies:', Array.from(this.retrievalStrategies.keys()));
   }
 
   /**
-   * Add memory at specific level
+   * Write a memory to storage
    */
-  async addMemory(
-    content: string,
-    level: MemoryLevel,
-    metadata?: {
-      task?: string;
-      category?: string;
-      success?: boolean;
-      importance?: number;
-    }
-  ): Promise<string> {
+  async write(domain: string, content: string, metadata?: any): Promise<void> {
+    const nodeId = this.generateNodeId(domain);
+
     const node: MemoryNode = {
-      id: randomUUID(),
-      level,
+      id: nodeId,
+      domain,
       content,
-      metadata: {
-        ...metadata,
-        timestamp: Date.now(),
-        relatedNodes: []
-      },
-      children: []
+      metadata: { ...metadata, timestamp: Date.now() },
+      timestamp: Date.now(),
+      parentId: undefined,
+      children: [],
+      level: 0
     };
 
-    // Generate embeddings if available
-    if (this.embeddingModel) {
-      try {
-        node.embeddings = await this.embeddingModel.embed(content);
-      } catch (error) {
-        logger.warn({ err: error as Error }, '[HMT] Failed to generate embeddings');
-      }
+    const result = this.storage.store(node);
+
+    if (!result.success) {
+      throw new Error(`Failed to store memory: ${result.error}`);
     }
 
-    // Insert at appropriate level
-    this.insertAtLevel(node, level);
+    // Compress if needed
+    if (this.compression && (metadata?.compress !== false)) {
+      this.compression.compress(this.storage, {
+        maxNodes: options.maxNodes ?? 1000
+      });
+    }
 
-    // Index node
-    this.nodeIndex.set(node.id, node);
-
-    logger.debug({ id: node.id, level }, '[HMT] Memory added');
-    return node.id;
+    logger.debug(`[HierarchicalMemory] Wrote memory ${nodeId} to domain ${domain}`);
   }
 
   /**
-   * Retrieve memories relevant to query
+   * Recall memories based on query
    */
-  async retrieveMemories(
-    query: string,
-    options: {
-      maxResults?: number;
-      minRelevance?: number;
-      level?: MemoryLevel;
-    } = {}
-  ): Promise<MemorySearchResult[]> {
-    const {
-      maxResults = 5,
-      minRelevance = 0.6,
-      level
-    } = options;
+  async recall(query: string, domain?: string, limit?: number): Promise<Memory[]> {
+    const strategyName = options?.retrievalStrategy || 'hierarchical';
+    const strategy = this.retrievalStrategies.get(strategyName);
 
-    if (!this.embeddingModel) {
-      // Fallback to keyword search
-      return this.keywordSearch(query, maxResults, level);
+    if (!strategy) {
+      throw new Error(`Unknown retrieval strategy: ${strategyName}`);
     }
 
-    // Generate query embedding
-    let queryEmbedding: number[];
-    try {
-      queryEmbedding = await this.embeddingModel.embed(query);
-    } catch (error) {
-      logger.warn({ err: error as Error }, '[HMT] Failed to embed query, using keyword search');
-      return this.keywordSearch(query, maxResults, level);
-    }
+    logger.debug(`[HierarchicalMemory] Recalling with strategy: ${strategyName}`);
 
-    const results: MemorySearchResult[] = [];
+    const result = strategy.retrieve(
+      { query, domain, maxResults: limit },
+      this.storage
+    );
 
-    // Search all indexed nodes
-    for (const [id, node] of this.nodeIndex) {
-      if (id === 'root') continue;
-
-      // Filter by level if specified
-      if (level && node.level !== level) continue;
-
-      if (node.embeddings) {
-        const similarity = this.cosineSimilarity(queryEmbedding, node.embeddings);
-        if (similarity >= minRelevance) {
-          results.push({
-            node,
-            relevance: similarity
-          });
-        }
-      }
-    }
-
-    // Sort by relevance and return top results
-    return results
-      .sort((a, b) => b.relevance - a.relevance)
-      .slice(0, maxResults);
+    return result.nodes.map(node => ({
+      domain: node.domain,
+      content: node.content,
+      metadata: node.metadata
+    }));
   }
 
   /**
-   * Get memory context for LLM
+   * Get all memories in a domain
    */
-  async getMemoryContext(
-    task: string,
-    options: {
-      maxTokens?: number;
-      maxMemories?: number;
-    } = {}
-  ): Promise<string> {
-    const {
-      maxTokens = 2000,
-      maxMemories = 10
-    } = options;
-
-    const memories = await this.retrieveMemories(task, { maxResults: maxMemories });
-
-    if (memories.length === 0) {
-      return 'No relevant memories found.';
-    }
-
-    // Build context string
-    const lines: string[] = [];
-
-    for (const result of memories) {
-      const mem = result.node;
-      const age = this.getMemoryAge(mem);
-      const ageStr = age < 60 ? `${age}s ago` : age < 3600 ? `${Math.floor(age/60)}m ago` : `${Math.floor(age/86400)}d ago`;
-
-      lines.push(`- [${mem.level}, ${ageStr}, relevance: ${result.relevance.toFixed(2)}] ${mem.content}`);
-    }
-
-    return lines.join('\n');
+  getDomainMemories(domain: string): Memory[] {
+    const nodes = this.storage.getDomain(domain);
+    return nodes.map(node => ({
+      domain: node.domain,
+      content: node.content,
+      metadata: node.metadata
+    }));
   }
 
   /**
-   * Get specific memory by ID
+   * Get memory by ID
    */
-  getMemory(id: string): MemoryNode | null {
-    return this.nodeIndex.get(id) || null;
+  getMemory(id: string): Memory | null {
+    const node = this.storage.retrieve(id);
+    if (!node) return null;
+
+    return {
+      domain: node.domain,
+      content: node.content,
+      metadata: node.metadata
+    };
   }
 
   /**
-   * Update memory content
+   * Update a memory
    */
-  updateMemory(id: string, content: string): boolean {
-    const node = this.nodeIndex.get(id);
+  updateMemory(id: string, updates: Partial<Memory>): boolean {
+    const node = this.storage.retrieve(id);
     if (!node) return false;
 
-    node.content = content;
-    if (node.metadata) {
-      node.metadata.timestamp = Date.now();
+    // Apply updates
+    if (updates.content !== undefined) node.content = updates.content;
+    if (updates.domain !== undefined) node.domain = updates.domain;
+    if (updates.metadata !== undefined) {
+      node.metadata = { ...node.metadata, ...updates.metadata };
     }
+    node.timestamp = Date.now();
 
-    logger.debug({ id }, '[HMT] Memory updated');
-    return true;
+    const result = this.storage.store(node);
+    return result.success;
   }
 
   /**
-   * Delete memory
+   * Delete a memory
    */
   deleteMemory(id: string): boolean {
-    const node = this.nodeIndex.get(id);
-    if (!node) return false;
-
-    // Remove from parent
-    if (node.parentId) {
-      const parent = this.nodeIndex.get(node.parentId);
-      if (parent) {
-        parent.children = parent.children.filter(child => child.id !== id);
-      }
-    }
-
-    // Delete children recursively
-    for (const child of node.children) {
-      this.deleteMemory(child.id);
-    }
-
-    // Remove from index
-    this.nodeIndex.delete(id);
-
-    logger.debug({ id }, '[HMT] Memory deleted');
-    return true;
-  }
-
-  /**
-   * Get memory statistics
-   */
-  getStats(): MemoryStats {
-    const stats: MemoryStats = {
-      totalNodes: this.nodeIndex.size - 1, // Exclude root
-      nodesByLevel: {
-        step: 0,
-        task: 0,
-        session: 0,
-        global: 0
-      },
-      totalMemories: 0
-    };
-
-    let oldest: number | undefined;
-    let newest: number | undefined;
-
-    for (const [id, node] of this.nodeIndex) {
-      if (id === 'root') continue;
-
-      stats.nodesByLevel[node.level]++;
-      stats.totalMemories++;
-
-      if (node.metadata?.timestamp) {
-        if (!oldest || node.metadata.timestamp < oldest) {
-          oldest = node.metadata.timestamp;
-        }
-        if (!newest || node.metadata.timestamp > newest) {
-          newest = node.metadata.timestamp;
-        }
-      }
-    }
-
-    stats.oldestMemory = oldest;
-    stats.newestMemory = newest;
-
-    return stats;
+    const result = this.storage.delete(id);
+    return result.success;
   }
 
   /**
    * Clear all memories
    */
   clear(): void {
-    this.root = {
-      id: 'root',
-      level: 'global',
-      content: 'Root memory node',
-      children: []
+    this.storage.clear();
+    logger.info('[HierarchicalMemory] Cleared all memories');
+  }
+
+  /**
+   * Get memory statistics
+   */
+  getStats(): { total: number; byDomain: Record<string, number> } {
+    const stats = this.storage.getStats();
+    return {
+      total: stats.totalNodes,
+      byDomain: stats.domainCounts
     };
-    this.nodeIndex.clear();
-    this.nodeIndex.set('root', this.root);
-    logger.info('[HMT] All memories cleared');
   }
 
   /**
-   * Set embedding model for semantic search
+   * Compress memory to stay within limits
    */
-  setEmbeddingModel(model: any): void {
-    this.embeddingModel = model;
-    logger.info('[HMT] Embedding model set');
+  compress(options?: { maxNodes?: number; maxContentLength?: number }): { compressed: number; error?: string } {
+    const result = this.compression.compress(this.storage, options);
+    return {
+      compressed: result.compressed || 0,
+      error: result.error
+    };
   }
 
   /**
-   * Export memories as JSON
+   * Get hierarchical tree structure
    */
-  export(): string {
-    return JSON.stringify({
-      root: this.root,
-      nodes: Array.from(this.nodeIndex.entries())
-    }, null, 2);
-  }
+  getTree(domain?: string): any {
+    const nodes = domain
+      ? this.storage.getDomain(domain)
+      : Array.from(this.storage.nodes.values());
 
-  /**
-   * Import memories from JSON
-   */
-  import(data: string): boolean {
-    try {
-      const parsed = JSON.parse(data);
+    // Build tree structure
+    const roots = nodes.filter(n => !n.parentId);
+    const buildNode = (nodeId: string): any => {
+      const node = this.storage.retrieve(nodeId);
+      if (!node) return null;
 
-      if (parsed.root) {
-        this.root = parsed.root;
-      }
-
-      if (parsed.nodes) {
-        this.nodeIndex = new Map(parsed.nodes);
-      }
-
-      logger.info('[HMT] Memories imported');
-      return true;
-    } catch (error) {
-      logger.error({ err: error as Error }, '[HMT] Failed to import memories');
-      return false;
-    }
-  }
-
-  // ============================================================================
-  // Private Methods
-  // ============================================================================
-
-  private insertAtLevel(node: MemoryNode, level: MemoryLevel): void {
-    // Find or create level node
-    let levelNode = this.root.children.find(child => child.level === level);
-
-    if (!levelNode) {
-      levelNode = {
-        id: randomUUID(),
-        level,
-        content: `${level} memories`,
-        children: []
+      return {
+        ...node,
+        children: (node.children || []).map(buildNode).filter(n => n !== null)
       };
-      this.root.children.push(levelNode!);
-      this.nodeIndex.set(levelNode!.id, levelNode!);
-    }
+    };
 
-    // Add to level node
-    levelNode!.children.push(node);
-    node.parentId = levelNode!.id;
+    return {
+      roots: roots.map(buildNode).filter(n => n !== null),
+      total: nodes.length
+    };
   }
 
-  private cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) return 0;
-
-    let dotProduct = 0;
-    let normA = 0;
-    let normB = 0;
-
-    for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-
-    normA = Math.sqrt(normA);
-    normB = Math.sqrt(normB);
-
-    if (normA === 0 || normB === 0) return 0;
-
-    return dotProduct / (normA * normB);
+  /**
+   * Generate unique node ID
+   */
+  private generateNodeId(domain: string): string {
+    const timestamp = Date.now().toString(36);
+    const random = Math.random().toString(36).substr(2, 9);
+    return `${domain}_${timestamp}_${random}`;
   }
 
-  private keywordSearch(
-    query: string,
-    maxResults: number,
-    level?: MemoryLevel
-  ): MemorySearchResult[] {
-    const queryLower = query.toLowerCase();
-    const queryWords = queryLower.split(/\s+/).filter(w => w.length > 2);
-
-    const results: MemorySearchResult[] = [];
-
-    for (const [id, node] of this.nodeIndex) {
-      if (id === 'root') continue;
-      if (level && node.level !== level) continue;
-
-      const contentLower = node.content.toLowerCase();
-      let score = 0;
-
-      // Exact phrase match
-      if (contentLower.includes(queryLower)) {
-        score += 10;
-      }
-
-      // Word matches
-      for (const word of queryWords) {
-        if (contentLower.includes(word)) {
-          score += 2;
-        }
-      }
-
-      if (score > 0) {
-        results.push({
-          node,
-          relevance: Math.min(1, score / 20) // Normalize to 0-1
-        });
-      }
-    }
-
-    return results
-      .sort((a, b) => b.relevance - a.relevance)
-      .slice(0, maxResults);
+  /**
+   * Lifecycle hook - called at start of turn
+   */
+  async onTurnStart(): Promise<void> {
+    // No-op for hierarchical memory
   }
 
-  private getMemoryAge(node: MemoryNode): number {
-    if (!node.metadata?.timestamp) return 0;
-    return Math.floor((Date.now() - node.metadata.timestamp) / 1000);
+  /**
+   * Lifecycle hook - called at end of session
+   */
+  async onSessionEnd(): Promise<void> {
+    // Optional: Persist to disk if needed
+  }
+
+  /**
+   * Get storage instance (for advanced use)
+   */
+  getStorage(): MemoryStorage {
+    return this.storage;
+  }
+
+  /**
+   * Get all retrieval strategies
+   */
+  getRetrievalStrategies(): string[] {
+    return Array.from(this.retrievalStrategies.keys());
+  }
+
+  /**
+   * Check if memory is empty
+   */
+  isEmpty(): boolean {
+    const stats = this.storage.getStats();
+    return stats.totalNodes === 0;
   }
 }
-
-// ============================================================================
-// Singleton Instance
-// ============================================================================
-
-export const hmt = new HierarchicalMemoryTree();

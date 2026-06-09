@@ -1,0 +1,481 @@
+/**
+ * Skills Page Styles
+ * Professional styling for skills management interface
+ */
+
+/* === Skills Page Container === */
+.skills-page {
+  background-color: var(--vscode-background);
+  color: var(--vscode-foreground);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* === Skills Page Header === */
+.skills-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--vscode-border-color);
+  background-color: var(--vscode-background);
+  color: var(--vscode-foreground);
+  min-height: 40px;
+}
+
+.skills-header-icon {
+  color: var(--vscode-secondary-text);
+}
+
+.skills-header-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--vscode-foreground);
+}
+
+.skills-header-subtitle {
+  font-size: var(--text-xs);
+  color: var(--vscode-secondary-text);
+}
+
+/* === Skills Counter Badge === */
+.skills-counter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1_5) var(--space-3);
+  background-color: var(--vscode-input-background);
+  border-radius: var(--radius-sm);
+}
+
+.skills-counter-icon {
+  color: var(--vscode-secondary-text);
+}
+
+.skills-counter-value {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--vscode-foreground);
+}
+
+/* === Recording Status Badge === */
+.recording-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1_5) var(--space-3);
+  background-color: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: var(--radius-sm);
+}
+
+.recording-badge-icon {
+  color: var(--vscode-focusBorder);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.recording-badge-text {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--vscode-focusBorder);
+}
+
+/* === Skills Search Section === */
+.skills-search-section {
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--vscode-border-color);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.skills-search-input {
+  width: 100%;
+  padding-left: 36px;
+  padding-right: var(--space-3);
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  background-color: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--radius-sm);
+  color: var(--vscode-input-foreground);
+  min-height: 26px;
+  outline: none;
+  transition: all 150ms ease-out;
+}
+
+.skills-search-input:focus {
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.skills-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--vscode-secondary-text);
+}
+
+/* === Skills Filter Buttons === */
+.skills-filter-group {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.skills-filter-button {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms ease-out;
+  background: transparent;
+  color: var(--vscode-secondary-text);
+}
+
+.skills-filter-button:hover {
+  background-color: var(--vscode-list-hoverBackground);
+  border-color: var(--vscode-border-color);
+}
+
+.skills-filter-button.active {
+  background-color: var(--vscode-button-primary-background);
+  color: var(--vscode-button-primary-foreground);
+  border-color: transparent;
+}
+
+/* === Recording Button === */
+.recording-button {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms ease-out;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 26px;
+}
+
+.recording-button.idle {
+  background-color: var(--vscode-button-primary-background);
+  color: var(--vscode-button-primary-foreground);
+}
+
+.recording-button.idle:hover {
+  background-color: var(--vscode-button-primaryHoverBackground);
+}
+
+.recording-button.recording {
+  background-color: var(--vscode-errorForeground);
+  color: white;
+}
+
+/* === Skills Content === */
+.skills-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6);
+}
+
+/* === Skills Category Section === */
+.skills-category {
+  margin-bottom: var(--space-6);
+}
+
+.skills-category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--vscode-sideBarSectionHeader-background);
+  border: 1px solid var(--vscode-border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+}
+
+.skills-category-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--vscode-foreground);
+  text-transform: capitalize;
+}
+
+.skills-category-count {
+  font-size: var(--text-xs);
+  color: var(--vscode-secondary-text);
+}
+
+/* === Skills Grid === */
+.skills-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-4);
+}
+
+/* === Skill Card === */
+.skill-card {
+  background-color: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  transition: all 150ms ease-out;
+}
+
+.skill-card:hover {
+  border-color: var(--vscode-focusBorder);
+}
+
+/* === Skill Card Header === */
+.skill-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.skill-card-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--vscode-input-background);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.skill-card-title-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.skill-card-name {
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  color: var(--vscode-foreground);
+  margin-bottom: var(--space-1);
+}
+
+.skill-card-description {
+  font-size: var(--text-sm);
+  color: var(--vscode-secondary-text);
+  line-height: 1.4;
+}
+
+/* === Skill Card Status === */
+.skill-card-status {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.skill-card-status.installed {
+  background-color: var(--vscode-testing-iconPassed);
+  color: var(--vscode-foreground);
+}
+
+.skill-card-status.available {
+  background-color: var(--vscode-descriptionForeground);
+  color: var(--vscode-foreground);
+}
+
+/* === Skill Card Metadata === */
+.skill-card-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--vscode-secondary-text);
+}
+
+.skill-card-metadata-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.skill-card-metadata-value {
+  font-family: var(--font-mono);
+  color: var(--vscode-foreground);
+}
+
+/* === Skill Card Actions === */
+.skill-card-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.skill-card-button {
+  padding: var(--space-1_5) var(--space-3);
+  font-size: var(--text-xs);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms ease-out;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-system);
+}
+
+.skill-card-button.primary {
+  background-color: var(--vscode-button-primary-background);
+  color: var(--vscode-button-primary-foreground);
+}
+
+.skill-card-button.primary:hover {
+  background-color: var(--vscode-button-primaryHoverBackground);
+}
+
+.skill-card-button.secondary {
+  background-color: transparent;
+  color: var(--vscode-foreground);
+  border-color: var(--vscode-input-border);
+}
+
+.skill-card-button.secondary:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.skill-card-button.danger {
+  background-color: transparent;
+  color: var(--vscode-errorForeground);
+  border-color: var(--vscode-input-border);
+}
+
+.skill-card-button.danger:hover {
+  background-color: var(--vscode-errorBackground);
+}
+
+/* === Skill Code Modal === */
+.skill-code-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: var(--space-4);
+}
+
+.skill-code-modal-content {
+  background-color: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-border-color);
+  border-radius: var(--radius-md);
+  max-width: 800px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.skill-code-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--vscode-border-color);
+}
+
+.skill-code-modal-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--vscode-foreground);
+}
+
+.skill-code-modal-close {
+  padding: var(--space-1);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  transition: all 150ms ease-out;
+}
+
+.skill-code-modal-close:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.skill-code-modal-body {
+  padding: var(--space-4);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.skill-code-modal-code {
+  background-color: var(--vscode-sideBar-background);
+  border: 1px solid var(--vscode-border-color);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--vscode-foreground);
+  overflow-x: auto;
+  white-space: pre;
+  max-height: 60vh;
+}
+
+/* === Empty State === */
+.skills-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12);
+  text-align: center;
+  color: var(--vscode-secondary-text);
+}
+
+.skills-empty-icon {
+  margin-bottom: var(--space-4);
+  opacity: 0.5;
+}
+
+.skills-empty-title {
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  color: var(--vscode-foreground);
+  margin-bottom: var(--space-2);
+}
+
+.skills-empty-description {
+  font-size: var(--text-sm);
+  color: var(--vscode-secondary-text);
+}
+
+/* === Loading State === */
+.skills-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+}
+
+.skills-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--vscode-progress-background);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}

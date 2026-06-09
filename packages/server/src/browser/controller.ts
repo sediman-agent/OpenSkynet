@@ -4,6 +4,8 @@ import logger from "../core/logging";
 import { BrowserSession } from "./session";
 import { DISMISS_OVERLAYS_JS } from "./scripts/dismiss-overlays";
 import { SNAPSHOT_JS } from "./scripts/snapshot";
+import { CDPInteractions, createCDPInteractions } from "./cdp/index.js";
+import { createElementResolver } from "./element-resolution/index.js";
 
 // Types
 export interface ElementInfo {
@@ -63,6 +65,8 @@ export interface BrowserActionResult {
 export class BrowserController {
   private session: BrowserSession;
   private onStep?: (action: string, detail: string) => void;
+  private cdpInteractions: CDPInteractions | null = null;
+  private elementResolver = createElementResolver();
 
   constructor(opts?: {
     headless?: boolean;
@@ -82,11 +86,40 @@ export class BrowserController {
     this.onStep = opts?.onStep;
   }
 
+  /**
+   * Get or create CDP interactions instance for current page
+   */
+  private getCDP(): CDPInteractions {
+    if (!this.cdpInteractions) {
+      this.cdpInteractions = createCDPInteractions(this.page());
+    }
+    return this.cdpInteractions;
+  }
+
   // Get current page
   private page(): Page {
-    const pages = this.session?.context?.pages();
+    if (!this.session) {
+      console.error('[BrowserController] No session set');
+      throw new Error("no session - browser controller not initialized");
+    }
+
+    const context = this.session.context;
+    if (!context) {
+      console.error('[BrowserController] Session exists but no context. Session type:', typeof this.session);
+      throw new Error("no context in browser session");
+    }
+
+    const pages = context.pages();
+    console.log('[BrowserController] Page check:', {
+      hasContext: !!context,
+      pagesCount: pages?.length || 0,
+      sessionType: typeof this.session,
+      isExternal: (this.session as any)._isExternalBrowser
+    });
+
     if (!pages || pages.length === 0) {
-      throw new Error("no active page - browser may not be started");
+      console.error('[BrowserController] No pages available. Context:', context);
+      throw new Error("no active page - browser may not be started. Context exists but no pages");
     }
     return pages[0];
   }
@@ -132,6 +165,7 @@ export class BrowserController {
           console.log('[BrowserController] Navigation succeeded on attempt', attempt);
           break;
         } catch (gotoError: any) {
+          console.log('[BrowserController] Attempt', attempt, 'failed:', gotoError.message);
           console.log('[BrowserController] Attempt', attempt, 'failed:', gotoError.message);
           if (attempt === 3) {
             // Last attempt failed, try with just load state
@@ -381,27 +415,11 @@ export class BrowserController {
 
   // === CDP input dispatch ===
   async dispatchMouse(type: string, x: number, y: number, button: string = 'left', buttons: number = 1): Promise<void> {
-    const page = this.page();
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Input.dispatchMouseEvent', {
-      type,
-      x,
-      y,
-      button: type === 'mouseMoved' ? 'none' : button,
-      buttons: type === 'mouseReleased' ? 0 : buttons,
-      clickCount: 1,
-    } as any);
+    await this.getCDP().dispatchMouseEvent(type as any, x, y, button as any, buttons);
   }
 
   async dispatchKey(type: string, key: string, _code?: string, _text?: string): Promise<void> {
-    const page = this.page();
-    // Use Playwright's keyboard API for reliable text input
-    // CDP Input.dispatchKeyEvent is notoriously unreliable for text
-    if (type === 'keyDown') {
-      await page.keyboard.down(key as any);
-    } else if (type === 'keyUp') {
-      await page.keyboard.up(key as any);
-    }
+    await this.getCDP().dispatchKeyEvent(type as any, key);
   }
 
   async getUrl(): Promise<string> {
@@ -414,58 +432,7 @@ export class BrowserController {
 
   // Element resolution
   private async resolveElement(page: Page, refId: number): Promise<any> {
-    const byRef = page.locator(`[data-sediman-ref-id="${refId}"]`).first();
-
-    if ((await byRef.count()) > 0) {
-      return byRef;
-    }
-
-    // Fallback: search by attributes
-    const candidates = await page.evaluate(() => {
-      const results: Array<{
-        tag: string;
-        text: string;
-        role: string;
-        placeholder: string;
-        href: string;
-        ariaLabel: string;
-      }> = [];
-
-      const interactive = ["a", "button", "input", "select", "textarea", "[role]", "[tabindex]"];
-      for (const sel of interactive) {
-        for (const el of Array.from(document.querySelectorAll(sel))) {
-          results.push({
-            tag: el.tagName.toLowerCase(),
-            text: (el.textContent || "").slice(0, 100),
-            role: el.getAttribute("role") || "",
-            placeholder: el.getAttribute("placeholder") || "",
-            href: el.getAttribute("href") || "",
-            ariaLabel: el.getAttribute("aria-label") || "",
-          });
-        }
-      }
-
-      return results;
-    });
-
-    if (refId >= 0 && refId < candidates.length) {
-      const info = candidates[refId];
-      if (!info) return null;
-
-      // Try multiple selectors
-      const locators = [
-        info.ariaLabel ? page.locator(`[aria-label="${info.ariaLabel}"]`).first() : null,
-        info.href ? page.locator(`a[href="${info.href}"]`).first() : null,
-        info.text ? page.getByText(info.text.slice(0, 50), { exact: false }).first() : null,
-        info.role ? page.locator(`[role="${info.role}"]`).first() : null,
-      ];
-
-      for (const loc of locators) {
-        if (loc && (await loc.count()) > 0) return loc;
-      }
-    }
-
-    return null;
+    return this.elementResolver.resolve(page, refId);
   }
 
   // === Advanced browser interactions ===
@@ -473,67 +440,12 @@ export class BrowserController {
   async dragAndDrop(sourceRefId: number, targetRefId: number): Promise<string> {
     try {
       const page = this.page();
-      const sourceElement = await this.resolveElement(page, sourceRefId);
-      const targetElement = await this.resolveElement(page, targetRefId);
-
-      if (!sourceElement || !targetElement) {
-        return `Failed to resolve elements: source=${sourceRefId}, target=${targetRefId}`;
-      }
-
-      // Get bounding boxes
-      const sourceBox = await sourceElement.boundingBox();
-      const targetBox = await targetElement.boundingBox();
-
-      if (!sourceBox || !targetBox) {
-        return 'Failed to get element bounding boxes';
-      }
-
-      // Calculate center points
-      const sourceX = sourceBox.x + sourceBox.width / 2;
-      const sourceY = sourceBox.y + sourceBox.height / 2;
-      const targetX = targetBox.x + targetBox.width / 2;
-      const targetY = targetBox.y + targetBox.height / 2;
-
-      // Perform drag and drop using CDP
-      const cdp = await page.context().newCDPSession(page);
-
-      // Mouse down on source
-      await cdp.send('Input.dispatchMouseEvent', {
-        type: 'mousePressed',
-        x: sourceX,
-        y: sourceY,
-        button: 'left',
-        buttons: 1,
-        clickCount: 1,
-      } as any);
-
-      // Wait a bit
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Move to target
-      await cdp.send('Input.dispatchMouseEvent', {
-        type: 'mouseMoved',
-        x: targetX,
-        y: targetY,
-        button: 'left',
-        buttons: 1,
-        clickCount: 0,
-      } as any);
-
-      // Wait for drag animation
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      // Mouse up
-      await cdp.send('Input.dispatchMouseEvent', {
-        type: 'mouseReleased',
-        x: targetX,
-        y: targetY,
-        button: 'left',
-        buttons: 0,
-        clickCount: 1,
-      } as any);
-
-      return `Dragged element ${sourceRefId} to element ${targetRefId}`;
+      const result = await this.getCDP().dragAndDrop(
+        sourceRefId,
+        targetRefId,
+        (refId) => this.resolveElement(page, refId)
+      );
+      return result.message;
     } catch (error: any) {
       return `Drag and drop failed: ${error.message}`;
     }

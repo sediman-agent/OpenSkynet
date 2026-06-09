@@ -13,6 +13,7 @@ export interface TaskPlan {
   requiresBrowser: boolean;
   requiresVision: boolean;
   strategy: string;
+  steps: Array<{ description: string }>;
 }
 
 export interface TaskClassificationResult {
@@ -129,7 +130,8 @@ export function createPlan(task: string, category: TaskCategory): TaskPlan {
     estimatedSteps: Math.round(estimatedSteps),
     requiresBrowser,
     requiresVision,
-    strategy
+    strategy,
+    steps: []
   };
 }
 

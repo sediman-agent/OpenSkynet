@@ -1,0 +1,207 @@
+/**
+ * Component-Specific Styles
+ * VS Code-style styles for specific UI components
+ */
+
+/* === Button Styles === */
+button {
+  font-family: var(--font-system);
+  font-weight: var(--font-medium);
+  letter-spacing: 0.01em;
+  user-select: none;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* === Input Styles === */
+input, textarea {
+  font-family: var(--font-system);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+  opacity: 0.7;
+}
+
+/* === Form Input Styles === */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="url"],
+input[type="search"],
+input[type="number"],
+input[type="tel"],
+textarea,
+select {
+  width: 100%;
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-system);
+  border-radius: var(--radius-sm);
+  transition: all 150ms ease-out;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus,
+input[type="url"]:focus,
+input[type="search"]:focus,
+input[type="number"]:focus,
+input[type="tel"]:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+input[type="file"] {
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+}
+
+/* === Checkbox Styles === */
+input[type="checkbox"] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background-color: var(--vscode-checkbox-background);
+  border: 1px solid var(--vscode-checkbox-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  position: relative;
+}
+
+input[type="checkbox"]:checked {
+  background-color: var(--vscode-checkbox-foreground);
+  border-color: var(--vscode-checkbox-foreground);
+}
+
+input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0;
+  width: 4px;
+  height: 8px;
+  border: solid;
+  border-width: 0 0 2px 0;
+  border-color: var(--vscode-checkbox-foreground);
+  transform: rotate(45deg);
+  clip-path: polygon(6px 16px, 6px 0, 16px 6px);
+}
+
+input[type="checkbox"]:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+/* === Radio Styles === */
+input[type="radio"] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background-color: var(--vscode-checkbox-background);
+  border: 1px solid var(--vscode-checkbox-border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+input[type="radio"]:checked {
+  background-color: var(--vscode-checkbox-foreground);
+  border-color: var(--vscode-checkbox-foreground);
+}
+
+input[type="radio"]:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+/* === Range Input === */
+input[type="range"] {
+  appearance: none;
+  width: 100%;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  background: var(--vscode-input-border);
+  border-radius: var(--radius-sm);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--vscode-button-secondary-background);
+  border: 1px solid var(--vscode-button-iconHoverBackground);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* === Table Styles === */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+thead {
+  background-color: var(--vscode-input-background);
+  border-bottom: 2px solid var(--vscode-border-color);
+}
+
+th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  font-weight: var(--font-medium);
+  color: var(--vscode-foreground);
+}
+
+td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--vscode-border-color);
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+/* === Code Block Styles === */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 0.125em 0.25em;
+  background: var(--vscode-text-block-background);
+  color: var(--vscode-text-block-foreground);
+  border-radius: var(--radius-sm);
+}
+
+pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  padding: var(--space-3);
+  background: var(--vscode-sideBar-background);
+  border: 1px solid var(--vscode-border-color);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+pre code {
+  padding: 0;
+  background: transparent;
+  border: none;
+}

@@ -44,12 +44,17 @@ export function AgentMessages({
   };
 
   return (
-    <div className="relative flex-1 overflow-hidden">
+    <div className="flex-1 overflow-hidden" style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
       {/* Messages Container */}
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="absolute inset-0 overflow-y-auto"
+        className="flex-1 overflow-y-auto"
+        style={{
+          position: 'relative',
+          width: '100%',
+          overflowY: messages.length === 0 ? 'hidden' : 'auto'
+        }}
       >
         <div className="max-w-3xl mx-auto px-4 py-6">
           {/* Welcome Message */}

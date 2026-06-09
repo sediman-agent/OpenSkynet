@@ -1,474 +1,215 @@
 /**
- * Structured LLM Provider
+ * Structured Provider - Simplified
  *
- * Extends LLM provider with guaranteed structured output
- * Supports multiple providers (OpenAI, Anthropic, etc.)
- *
- * @module llm/structured
+ * Refactored from 474 lines to ~150 lines
+ * Parsing extracted to ResponseParser
+ * Validation extracted to TypeValidator
+ * Retry logic extracted to RetryHandler
  */
 
-import type { z } from 'zod';
-import { createLogger } from '../../core/logging';
+import type { LLMProvider, Message } from "../../provider.js";
+import type { ToolDefinition } from "../../core/types.js";
+import { StructuredResponseParser } from "./parsers/response-parser.js";
+import { TypeValidator } from "./validators/type-validator.js";
+import { RetryHandler } from "./handlers/retry-handler.js";
+import { createLogger } from "../../core/logging.js";
 
-const logger = createLogger('structured-llm');
+const logger = createLogger('StructuredProvider');
 
-// ============================================================================
-// Type Definitions
-// ============================================================================
-
-export interface Message {
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | Array<{ type: string; [key: string]: any }>;
-  tool_call_id?: string;
-  name?: string;
+export interface StructuredProviderOptions {
+  parser?: StructuredResponseParser;
+  validator?: TypeValidator;
+  retryHandler?: RetryHandler;
+  maxRetries?: number;
 }
 
-export interface TokenUsage {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-}
-
-export interface StructuredChatOptions {
-  temperature?: number;
-  maxTokens?: number;
-  topP?: number;
-  timeout?: number;
-  retries?: number;
-}
-
-export interface StructuredLLMProvider {
-  /**
-   * Chat with guaranteed structured output
-   */
-  chatStructured<T>(
-    messages: Message[],
-    schema: z.ZodSchema<T>,
-    systemPrompt?: string,
-    options?: StructuredChatOptions
-  ): Promise<{
-    data: T;
-    usage: TokenUsage;
-    model: string;
-  }>;
-
-  /**
-   * Get provider name
-   */
-  getProviderName(): string;
-
-  /**
-   * Get current model
-   */
-  getModel(): string;
-}
-
-// ============================================================================
-// OpenAI Structured Provider
-// ============================================================================
-
-export class OpenAIStructuredProvider implements StructuredLLMProvider {
-  private client: any;
-  private model: string;
-  private fallbackModel?: string;
+/**
+ * Structured Provider handles LLM responses with structured output
+ * This coordinates parsing, validation, and retry logic
+ */
+export class StructuredProvider implements LLMProvider {
+  private parser: StructuredResponseParser;
+  private validator: TypeValidator;
+  private retryHandler: RetryHandler;
 
   constructor(
-    apiKey: string,
-    model: string = 'gpt-4o-2024-08-06',
-    fallbackModel?: string
+    private baseProvider: LLMProvider,
+    options: StructuredProviderOptions = {}
   ) {
-    try {
-      const OpenAI = require('openai');
-      this.client = new OpenAI({ apiKey });
-      this.model = model;
-      this.fallbackModel = fallbackModel;
-      logger.info({ model, fallbackModel }, 'OpenAI Structured Provider initialized');
-    } catch (error) {
-      throw new Error('OpenAI package not installed. Run: npm install openai');
-    }
-  }
-
-  getProviderName(): string {
-    return 'openai';
-  }
-
-  getModel(): string {
-    return this.model;
-  }
-
-  async chatStructured<T>(
-    messages: Message[],
-    schema: z.ZodSchema<T>,
-    systemPrompt?: string,
-    options: StructuredChatOptions = {}
-  ): Promise<{ data: T; usage: TokenUsage; model: string }> {
-    // Convert Zod schema to JSON Schema
-    const jsonSchema = this.zodToJsonSchema(schema);
-
-    const formattedMessages = [
-      { role: 'system', content: systemPrompt || 'You are a helpful assistant.' },
-      ...messages.map(m => ({
-        role: m.role,
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-      }))
-    ];
-
-    let retries = options.retries || 3;
-    let lastError: Error | undefined;
-    let currentModel = this.model;
-
-    while (retries > 0) {
-      try {
-        logger.info({ model: currentModel, retries }, 'Attempting structured chat');
-
-        const response = await this.client.chat.completions.create({
-          model: currentModel,
-          messages: formattedMessages,
-          response_format: {
-            type: 'json_schema',
-            json_schema: {
-              name: 'agent_response',
-              strict: true,
-              schema: jsonSchema
-            }
-          },
-          temperature: options.temperature || 0.7,
-          max_tokens: options.maxTokens || 4096,
-          top_p: options.topP || 1,
-          timeout: options.timeout || 90000
-        });
-
-        const content = response.choices[0].message.content || '{}';
-        const parsed = JSON.parse(content);
-
-        // Validate against schema
-        const validated = schema.safeParse(parsed);
-        if (!validated.success) {
-          logger.error({ errors: validated.error.errors }, 'Schema validation failed');
-          throw new Error(`Schema validation failed: ${validated.error.errors.map(e => e.message).join(', ')}`);
-        }
-
-        return {
-          data: validated.data,
-          usage: {
-            promptTokens: response.usage?.prompt_tokens || 0,
-            completionTokens: response.usage?.completion_tokens || 0,
-            totalTokens: response.usage?.total_tokens || 0
-          },
-          model: currentModel
-        };
-      } catch (error) {
-        lastError = error as Error;
-        logger.error({ err: lastError, retriesLeft: retries }, 'Structured chat failed');
-
-        retries--;
-
-        if (retries > 0) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-
-          // Try fallback model if available and this is the last retry
-          if (this.fallbackModel && retries === 0) {
-            logger.info('Switching to fallback model', { fallbackModel: this.fallbackModel });
-            currentModel = this.fallbackModel;
-          }
-        }
-      }
-    }
-
-    throw lastError || new Error('Structured output request failed after retries');
+    this.parser = options.parser ?? new StructuredResponseParser();
+    this.validator = options.validator ?? new TypeValidator();
+    this.retryHandler = options.retryHandler ?? new RetryHandler({
+      maxAttempts: options.maxRetries ?? 3
+    });
   }
 
   /**
-   * Convert Zod schema to JSON Schema
-   * Simple implementation for common types
+   * Get model identifier
    */
-  private zodToJsonSchema(zodSchema: z.ZodSchema<any>): any {
-    // Get the Zod type
-    const zodType = zodSchema._def;
-
-    // Handle object schemas
-    if (zodType.typeName === 'ZodObject') {
-      const properties: any = {};
-      const required: string[] = [];
-
-      for (const [key, value] of Object.entries(zodType.shape())) {
-        const fieldDef = (value as any)._def;
-        properties[key] = this.zodTypeToJsonSchemaType(fieldDef);
-
-        // Check if field is required
-        if (!fieldDef.isOptional?.() && !fieldDef.defaultValue) {
-          required.push(key);
-        }
-      }
-
-      return {
-        type: 'object',
-        properties,
-        required: required.length > 0 ? required : undefined
-      };
-    }
-
-    // Handle other schemas
-    return {
-      type: 'object',
-      properties: {},
-      additionalProperties: true
-    };
+  get model(): string {
+    return this.baseProvider.model;
   }
 
-  private zodTypeToJsonSchemaType(zodType: any): any {
-    const typeName = zodType.typeName;
-
-    switch (typeName) {
-      case 'ZodString':
-        return { type: 'string' };
-
-      case 'ZodNumber':
-        return { type: 'number' };
-
-      case 'ZodBoolean':
-        return { type: 'boolean' };
-
-      case 'ZodArray':
-        return {
-          type: 'array',
-          items: this.zodTypeToJsonSchemaType(zodType.element)
-        };
-
-      case 'ZodObject':
-        return this.zodToJsonSchema({ _def: zodType });
-
-      case 'ZodOptional':
-      case 'ZodDefault':
-        return this.zodTypeToJsonSchemaType(zodType.innerType);
-
-      case 'ZodLiteral':
-        return {
-          type: typeof zodType.value,
-          const: zodType.value
-        };
-
-      case 'ZodEnum':
-        return {
-          type: 'string',
-          enum: zodType.values
-        };
-
-      case 'ZodEffects':
-        return this.zodTypeToJsonSchemaType(zodType._def);
-
-      default:
-        logger.warn({ typeName }, 'Unknown Zod type, using any');
-        return {};
-    }
-  }
-}
-
-// ============================================================================
-// Anthropic Structured Provider
-// ============================================================================
-
-export class AnthropicStructuredProvider implements StructuredLLMProvider {
-  private client: any;
-  private model: string;
-
-  constructor(
-    apiKey: string,
-    model: string = 'claude-sonnet-4-20250514'
-  ) {
-    try {
-      const Anthropic = require('@anthropic-ai/sdk');
-      this.client = new Anthropic({ apiKey });
-      this.model = model;
-      logger.info({ model }, 'Anthropic Structured Provider initialized');
-    } catch (error) {
-      throw new Error('Anthropic package not installed. Run: npm install @anthropic-ai/sdk');
-    }
+  /**
+   * Chat with structured output
+   */
+  async chat(messages: Message[], systemPrompt?: string): Promise<string> {
+    return this.baseProvider.chat(messages, systemPrompt);
   }
 
-  getProviderName(): string {
-    return 'anthropic';
-  }
-
-  getModel(): string {
-    return this.model;
-  }
-
-  async chatStructured<T>(
+  /**
+   * Chat with tools and structured output parsing
+   */
+  async chatStreamWithTools(
     messages: Message[],
-    schema: z.ZodSchema<T>,
+    tools: ToolDefinition[],
     systemPrompt?: string,
-    options: StructuredChatOptions = {}
-  ): Promise<{ data: T; usage: TokenUsage; model: string }> {
-    // Convert Zod schema to JSON Schema
-    const jsonSchema = this.zodToJsonSchema(schema);
+    onChunk?: (chunk: string) => void
+  ): Promise<any> {
+    return this.baseProvider.chatStreamWithTools(messages, tools, systemPrompt, onChunk);
+  }
 
-    // Build system prompt with schema instructions
-    const schemaInstructions = `
-You must respond with a JSON object matching this schema:
-${JSON.stringify(jsonSchema, null, 2)}
+  /**
+   * Generate structured output
+   */
+  async generateStructured<T>(
+    prompt: string,
+    schema: any,
+    options: {
+      format?: 'json' | 'xml' | 'markdown' | 'auto';
+      systemPrompt?: string;
+      maxRetries?: number;
+    } = {}
+  ): Promise<T> {
+    const { format = 'auto', systemPrompt, maxRetries = 3 } = options;
 
-Respond ONLY with valid JSON. No additional text or explanation.
-`;
+    logger.info(`[StructuredProvider] Generating structured output (format: ${format})`);
 
-    const formattedMessages = messages.map(m => ({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-    }));
+    // Build prompt with schema instructions
+    const enhancedPrompt = this.buildPromptWithSchema(prompt, schema, format);
 
-    try {
-      const response = await this.client.messages.create({
-        model: this.model,
-        system: (systemPrompt || '') + schemaInstructions,
-        messages: formattedMessages,
-        temperature: options.temperature || 0.7,
-        max_tokens: options.maxTokens || 4096,
-        top_p: options.topP || 1
-      });
+    // Execute with retry
+    const result = await this.retryHandler.executeWithValidation(
+      async () => {
+        const response = await this.baseProvider.chat(
+          [{ role: 'user', content: enhancedPrompt }],
+          systemPrompt
+        );
+        return response;
+      },
+      (response) => this.validateAndParse(response, schema, format)
+    );
 
-      let parsed: any;
+    if (!result.success) {
+      throw new Error(`Failed to generate valid structured output: ${result.error}`);
+    }
 
-      // Extract content from response
-      const content = response.content[0];
-      if (content.type === 'text') {
-        parsed = JSON.parse(content.text);
-      } else if (content.type === 'tool_use' && content.input) {
-        parsed = content.input;
-      } else {
-        throw new Error('Unexpected response format from Anthropic');
-      }
+    return result.data as T;
+  }
 
-      // Validate against schema
-      const validated = schema.safeParse(parsed);
-      if (!validated.success) {
-        logger.error({ errors: validated.error.errors }, 'Schema validation failed');
-        throw new Error(`Schema validation failed: ${validated.error.errors.map(e => e.message).join(', ')}`);
-      }
+  /**
+   * Build prompt with schema instructions
+   */
+  private buildPromptWithSchema(prompt: string, schema: any, format: string): string {
+    const schemaInstructions = this.getSchemaInstructions(schema, format);
+    return `${prompt}\n\n${schemaInstructions}`;
+  }
 
-      return {
-        data: validated.data,
-        usage: {
-          promptTokens: response.usage?.input_tokens || 0,
-          completionTokens: response.usage?.output_tokens || 0,
-          totalTokens: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0)
-        },
-        model: this.model
-      };
-    } catch (error) {
-      logger.error({ err: error as Error }, 'Anthropic structured chat failed');
-      throw error;
+  /**
+   * Get schema formatting instructions
+   */
+  private getSchemaInstructions(schema: any, format: string): string {
+    const schemaStr = JSON.stringify(schema, null, 2);
+
+    switch (format) {
+      case 'json':
+        return `Respond with valid JSON matching this schema:\n\`\`\`json\n${schemaStr}\n\`\`\``;
+      case 'xml':
+        return `Respond with XML where each schema property is an element.`;
+      case 'markdown':
+        return `Respond with a Markdown table where columns represent schema properties.`;
+      default:
+        return `Respond with structured data matching this schema:\n${schemaStr}`;
     }
   }
 
   /**
-   * Convert Zod schema to JSON Schema (simplified for Anthropic)
+   * Validate and parse response
    */
-  private zodToJsonSchema(zodSchema: z.ZodSchema<any>): any {
-    const zodType = zodSchema._def;
+  private validateAndParse(response: string, schema: any, format: string): { valid: boolean; error?: string } {
+    // Parse based on format
+    let parseResult;
+    switch (format) {
+      case 'json':
+        parseResult = this.parser.parseJson(response);
+        break;
+      case 'xml':
+        parseResult = this.parser.parseXml(response);
+        break;
+      case 'markdown':
+        parseResult = this.parser.parseMarkdownTable(response);
+        break;
+      case 'auto':
+        parseResult = this.parser.autoParse(response);
+        break;
+      default:
+        parseResult = this.parser.parseJson(response);
+    }
 
-    if (zodType.typeName === 'ZodObject') {
-      const properties: any = {};
-      const required: string[] = [];
+    if (!parseResult.success) {
+      return { valid: false, error: `Parse failed: ${parseResult.error}` };
+    }
 
-      for (const [key, value] of Object.entries(zodType.shape())) {
-        const fieldDef = (value as any)._def;
-        properties[key] = this.zodTypeToJsonSchemaType(fieldDef);
+    // Validate against schema
+    const validationResult = this.validator.validate(parseResult.data, schema);
 
-        if (!fieldDef.isOptional?.() && !fieldDef.defaultValue) {
-          required.push(key);
-        }
-      }
-
+    if (!validationResult.success) {
       return {
-        type: 'object',
-        properties,
-        required: required.length > 0 ? required : undefined
+        valid: false,
+        error: `Validation failed: ${validationResult.errors.join(', ')}`
       };
     }
 
-    return {
-      type: 'object',
-      properties: {},
-      additionalProperties: true
-    };
+    return { valid: true };
   }
 
-  private zodTypeToJsonSchemaType(zodType: any): any {
-    const typeName = zodType.typeName;
+  /**
+   * Extract structured data from response
+   */
+  extractStructured<T>(response: string, schema: any): { success: boolean; data?: T; error?: string } {
+    logger.debug('[StructuredProvider] Extracting structured data from response');
 
-    switch (typeName) {
-      case 'ZodString':
-        return { type: 'string' };
-      case 'ZodNumber':
-        return { type: 'number' };
-      case 'ZodBoolean':
-        return { type: 'boolean' };
-      case 'ZodArray':
-        return {
-          type: 'array',
-          items: this.zodTypeToJsonSchemaType(zodType.element)
-        };
-      case 'ZodObject':
-        return this.zodToJsonSchema({ _def: zodType });
-      case 'ZodOptional':
-      case 'ZodDefault':
-        return this.zodTypeToJsonSchemaType(zodType.innerType);
-      case 'ZodLiteral':
-        return {
-          type: typeof zodType.value,
-          const: zodType.value
-        };
-      case 'ZodEnum':
-        return {
-          type: 'string',
-          enum: zodType.values
-        };
-      case 'ZodEffects':
-        return this.zodTypeToJsonSchemaType(zodType._def);
-      default:
-        return {};
+    // Auto-detect format and parse
+    const parseResult = this.parser.autoParse(response);
+
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: `Failed to parse response: ${parseResult.error}`
+      };
     }
-  }
-}
 
-// ============================================================================
-// Factory Function
-// ============================================================================
+    // Validate parsed data
+    const validationResult = this.validator.validate(parseResult.data, schema);
 
-export function createStructuredLLMProvider(
-  provider: 'openai' | 'anthropic',
-  apiKey: string,
-  model?: string,
-  fallbackModel?: string
-): StructuredLLMProvider {
-  switch (provider) {
-    case 'openai':
-      return new OpenAIStructuredProvider(apiKey, model, fallbackModel);
-    case 'anthropic':
-      return new AnthropicStructuredProvider(apiKey, model);
-    default:
-      throw new Error(`Unknown provider: ${provider}`);
+    if (!validationResult.success) {
+      return {
+        success: false,
+        error: `Validation failed: ${validationResult.errors.join(', ')}`
+      };
+    }
+
+    logger.info('[StructuredProvider] Successfully extracted and validated structured data');
+    return {
+      success: true,
+      data: validationResult.data as T
+    };
   }
 }
 
 /**
- * Create from environment variables
+ * Factory function to create a structured provider wrapping another provider
  */
-export function createStructuredLLMFromEnv(): StructuredLLMProvider | null {
-  const provider = process.env.SEDIMAN_PROVIDER || 'openai';
-  const apiKey = process.env.SEDIMAN_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
-
-  if (!apiKey) {
-    logger.warn('No API key found for structured LLM provider');
-    return null;
-  }
-
-  const model = process.env.SEDIMAN_MODEL;
-
-  if (provider === 'openai' || provider === 'anthropic') {
-    return createStructuredLLMProvider(provider as 'openai' | 'anthropic', apiKey, model);
-  }
-
-  logger.warn({ provider }, 'Unknown provider for structured LLM');
-  return null;
+export function createStructuredProvider(baseProvider: LLMProvider, options?: StructuredProviderOptions): StructuredProvider {
+  return new StructuredProvider(baseProvider, options);
 }

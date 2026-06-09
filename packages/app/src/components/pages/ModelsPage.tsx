@@ -1,9 +1,10 @@
+/**
+ * VS Code-Style ModelsPage
+ * Model selection with VS Code design system
+ */
+
 import { useState, useEffect } from 'react';
 import { Bot, Check, Copy, AlertCircle } from 'lucide-react';
-import { PageHeader } from '@/components/layout/PageHeader';
-import { Button } from '@/elements/actions/Button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/elements/data/Card';
-import { ScrollArea } from '@/elements/data/ScrollArea';
 import { useAppStore } from '@/stores/useAppStore';
 
 interface Model {
@@ -38,19 +39,17 @@ export function ModelsPage() {
     }
 
     try {
-      // Fetch models for the specific provider
       const response = await fetch(`http://localhost:3001/api/model/list?provider=${currentProvider}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });
       if (response.ok) {
         const data = await response.json();
-        // Map models from the provider-specific response
         const providerModels = (data.models || []).map((m: any) => ({
           id: m.id,
           name: m.name || m.id,
           provider: currentProvider,
-          contextLength: 128000, // Default context length
+          contextLength: 128000,
           description: `Model by ${currentProvider}`
         }));
         setModels(providerModels);
@@ -72,113 +71,154 @@ export function ModelsPage() {
 
   if (!currentProvider) {
     return (
-      <div className="flex flex-col h-full bg-background">
-        <PageHeader
-          icon={Bot}
-          title="Models"
-          subtitle="Select AI model for agent"
-        />
-        <ScrollArea className="flex-1">
-          <div className="max-w-2xl mx-auto p-6">
-            <Card className="border-warning">
-              <CardContent className="p-8 text-center text-muted-foreground">
-                <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-sm">
-                  Please configure a provider first in the Provider page
-                </p>
-              </CardContent>
-            </Card>
+      <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--vscode-background)' }}>
+        {/* Page Header */}
+        <div className="flex items-center gap-2 px-4 py-3 border-b" style={{
+          borderColor: 'var(--vscode-border-color)',
+          backgroundColor: 'var(--vscode-background)',
+          color: 'var(--vscode-foreground)',
+          minHeight: '40px'
+        }}>
+          <Bot size={18} style={{ color: 'var(--vscode-secondary-text)' }} />
+          <div>
+            <h1 className="text-sm font-medium" style={{ color: 'var(--vscode-foreground)' }}>Models</h1>
+            <p className="text-xs" style={{ color: 'var(--vscode-secondary-text)' }}>Select AI model for agent</p>
           </div>
-        </ScrollArea>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-2xl mx-auto p-8 flex flex-col items-center justify-center h-full">
+            <AlertCircle className="w-12 h-12 mb-4" style={{ color: 'var(--vscode-warning-foreground)' }} />
+            <p className="text-sm" style={{ color: 'var(--vscode-secondary-text)' }}>
+              Please configure a provider first in the Provider page
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      <PageHeader
-        icon={Bot}
-        title="Models"
-        subtitle={`Available models for ${currentProvider}`}
-      />
+    <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--vscode-background)' }}>
+      {/* Page Header */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b" style={{
+        borderColor: 'var(--vscode-border-color)',
+        backgroundColor: 'var(--vscode-background)',
+        color: 'var(--vscode-foreground)',
+        minHeight: '40px'
+      }}>
+        <Bot size={18} style={{ color: 'var(--vscode-secondary-text)' }} />
+        <div>
+          <h1 className="text-sm font-medium" style={{ color: 'var(--vscode-foreground)' }}>Models</h1>
+          <p className="text-xs" style={{ color: 'var(--vscode-secondary-text)' }}>
+            Available models for {currentProvider}
+          </p>
+        </div>
+      </div>
 
-      <ScrollArea className="flex-1">
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-6 space-y-6">
           {/* Current Selection */}
           {selectedModel && (
-            <Card className="border-primary bg-primary/5">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base">Current Model</CardTitle>
-                    <CardDescription>
-                      {models.find(m => m.id === selectedModel)?.name}
-                    </CardDescription>
+            <div className="px-4 py-3 border" style={{
+              borderColor: 'var(--vscode-focus-border)',
+              backgroundColor: 'rgba(0, 127, 212, 0.05)'
+            }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-medium uppercase mb-1" style={{ color: 'var(--vscode-secondary-text)' }}>Current Model</div>
+                  <div className="text-sm" style={{ color: 'var(--vscode-foreground)' }}>
+                    {models.find(m => m.id === selectedModel)?.name}
                   </div>
-                  <Check className="w-5 h-5 text-primary" />
                 </div>
-              </CardHeader>
-            </Card>
+                <Check className="w-5 h-5" style={{ color: 'var(--vscode-success-foreground)' }} />
+              </div>
+            </div>
           )}
 
           {/* Models */}
           {models.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-muted-foreground">
-                No models found for provider: {currentProvider}
-              </CardContent>
-            </Card>
+            <div className="px-4 py-8 border text-center" style={{
+              borderColor: 'var(--vscode-border-color)',
+              backgroundColor: 'var(--vscode-panel-background)'
+            }}>
+              <p style={{ color: 'var(--vscode-secondary-text)' }}>No models found for provider: {currentProvider}</p>
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {models.map((model) => (
-                <Card
+                <div
                   key={model.id}
-                  className={`cursor-pointer transition-all hover:shadow-lg ${
-                    selectedModel === model.id
-                      ? 'border-primary bg-primary/5'
-                      : 'hover:border-primary/50'
-                  }`}
+                  className="px-4 py-3 border cursor-pointer transition-all"
+                  style={{
+                    borderColor: selectedModel === model.id ? 'var(--vscode-focus-border)' : 'var(--vscode-border-color)',
+                    backgroundColor: selectedModel === model.id ? 'rgba(0, 127, 212, 0.05)' : 'var(--vscode-panel-background)'
+                  }}
                   onClick={() => handleSelectModel(model.id)}
+                  onMouseEnter={(e) => {
+                    if (selectedModel !== model.id) {
+                      e.currentTarget.style.borderColor = 'var(--vscode-focus-border)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (selectedModel !== model.id) {
+                      e.currentTarget.style.borderColor = 'var(--vscode-border-color)';
+                    }
+                  }}
                 >
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-base">{model.name}</CardTitle>
-                        <CardDescription className="text-xs mt-1">
-                          {model.description}
-                        </CardDescription>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <div className="text-sm font-medium mb-1" style={{ color: 'var(--vscode-foreground)' }}>
+                        {model.name}
                       </div>
-                      {selectedModel === model.id && (
-                        <Check className="w-5 h-5 text-primary" />
-                      )}
+                      <div className="text-xs" style={{ color: 'var(--vscode-secondary-text)' }}>
+                        {model.description}
+                      </div>
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
+                    {selectedModel === model.id && (
+                      <Check className="w-5 h-5" style={{ color: 'var(--vscode-success-foreground)' }} />
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Context</span>
-                      <span className="font-mono font-medium">
+                      <span style={{ color: 'var(--vscode-secondary-text)' }}>Context</span>
+                      <span className="font-mono font-medium" style={{ color: 'var(--vscode-foreground)' }}>
                         {(model.contextLength / 1000).toFixed(0)}K
                       </span>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full h-8"
+                    <button
+                      className="w-full px-3 py-1 text-xs font-mono border transition-colors flex items-center justify-center gap-2"
+                      style={{
+                        backgroundColor: 'transparent',
+                        borderColor: 'var(--vscode-border-color)',
+                        color: 'var(--vscode-foreground)'
+                      }}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleCopyId(model.id);
                       }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
                     >
-                      <Copy className="w-3 h-3 mr-1" />
+                      <Copy size={12} />
                       Copy ID
-                    </Button>
-                  </CardContent>
-                </Card>
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
+
+export default ModelsPage;

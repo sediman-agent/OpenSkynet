@@ -137,3 +137,11 @@ export class ContextCompressor {
     return result;
   }
 }
+
+/**
+ * Compress conversation text
+ */
+export function compressText(messages: Message[], maxTokens: number): Message[] {
+  const compressor = new ContextCompressor();
+  return compressor.compress(messages, maxTokens);
+}

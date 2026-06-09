@@ -3,54 +3,51 @@
  * Manages conversation state and operations
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useChatStore } from '@/stores/useChatStore';
 import type { Conversation } from '@/types';
 
 export function useConversationManager() {
-  const { createConversation, selectConversation, conversations, syncWithServer } = useChatStore();
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const { createConversation, selectConversation, syncWithServer } = useChatStore();
+  const conversations = useChatStore((state) => state.conversations);
+  const activeConversationId = useChatStore((state) => state.activeConversationId);
 
-  // Get active conversation
-  const activeConversation = conversations.find(c => c.id === conversationId);
+  // Get active conversation using store's activeConversationId
+  // This ensures we re-render when activeConversationId changes
+  const activeConversation = useChatStore((state) => {
+    return state.conversations.find((c) => c.id === state.activeConversationId) || null;
+  });
   const messages = activeConversation?.messages || [];
 
-  // Initialize conversation on mount
+  // Handle when active conversation is deleted
   useEffect(() => {
-    if (!conversationId) {
-      const existingConvos = conversations;
-      if (existingConvos.length > 0) {
-        // Sort by updated time
-        const sortedConvos = [...existingConvos].sort((a, b) => {
-          const aTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
-          const bTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
-          return bTime - aTime;
-        });
-        const latestConv = sortedConvos[0];
-        setConversationId(latestConv.id);
-        selectConversation(latestConv.id);
-      } else {
-        // Create new conversation
-        createConversation('New Chat').then(newConv => {
-          setConversationId(newConv.id);
-          selectConversation(newConv.id);
-        });
-      }
+    const currentConvos = useChatStore.getState().conversations;
+    const currentActiveId = useChatStore.getState().activeConversationId;
+
+    // If active conversation was deleted (null but there are other conversations), select the latest
+    if (!currentActiveId && currentConvos.length > 0) {
+      const sortedConvos = [...currentConvos].sort((a, b) => {
+        const aTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        const bTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
+      const latestConv = sortedConvos[0];
+      selectConversation(latestConv.id);
     }
-  }, [conversationId, conversations, createConversation, selectConversation]);
+    // If no conversations at all, create a new one
+    else if (!currentActiveId && currentConvos.length === 0) {
+      createConversation('New Chat');
+    }
+  }, [conversations, createConversation, selectConversation]);
 
   // Create new conversation
   const createNewConversation = useCallback(async () => {
-    const newConv = await createConversation('New Chat');
-    setConversationId(newConv.id);
-    selectConversation(newConv.id);
-    return newConv;
-  }, [createConversation, selectConversation]);
+    return await createConversation('New Chat');
+  }, [createConversation]);
 
   // Switch conversation
-  const switchConversation = useCallback((convId: string) => {
-    setConversationId(convId);
-    selectConversation(convId);
+  const switchConversation = useCallback(async (convId: string) => {
+    await selectConversation(convId);
   }, [selectConversation]);
 
   // Refresh conversations from server
@@ -59,11 +56,10 @@ export function useConversationManager() {
   }, [syncWithServer]);
 
   return {
-    conversationId,
+    conversationId: activeConversationId,
     activeConversation,
     messages,
     conversations,
-    setConversationId,
     createNewConversation,
     switchConversation,
     refreshConversations

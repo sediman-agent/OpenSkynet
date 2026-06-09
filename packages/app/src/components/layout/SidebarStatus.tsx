@@ -1,5 +1,9 @@
+/**
+ * VS Code-Style Sidebar Status
+ * Connection and agent status display
+ */
+
 import { Circle, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/useAppStore';
 
 export function SidebarStatus() {
@@ -9,18 +13,26 @@ export function SidebarStatus() {
     <div className="flex items-center gap-3">
       <div className="flex items-center gap-2">
         <Circle
-          className={cn(
-            'h-2 w-2',
-            agentStatus.rpcConnected
-              ? 'fill-primary text-primary'
-              : 'fill-destructive text-destructive'
-          )}
+          size={8}
+          className="shrink-0"
+          style={{
+            fill: agentStatus.rpcConnected
+              ? 'var(--vscode-success-foreground)'
+              : 'var(--vscode-error-foreground)',
+            color: agentStatus.rpcConnected
+              ? 'var(--vscode-success-foreground)'
+              : 'var(--vscode-error-foreground)'
+          }}
           aria-hidden="true"
         />
-        <span className={cn(
-          'text-xs font-medium',
-          agentStatus.rpcConnected ? 'text-foreground' : 'text-destructive'
-        )}>
+        <span
+          className="text-xs font-medium"
+          style={{
+            color: agentStatus.rpcConnected
+              ? 'var(--vscode-sideBar-foreground)'
+              : 'var(--vscode-error-foreground)'
+          }}
+        >
           {agentStatus.rpcConnected ? 'Connected' : 'Disconnected'}
         </span>
       </div>
@@ -28,24 +40,34 @@ export function SidebarStatus() {
       <div className="flex items-center gap-2">
         {agentStatus.state === 'running' ? (
           <>
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-foreground" aria-hidden="true" />
-            <span className="text-xs font-medium">Running</span>
+            <Loader2 size={14} className="animate-spin shrink-0" style={{ color: 'var(--vscode-sideBar-foreground)' }} aria-hidden="true" />
+            <span className="text-xs font-medium" style={{ color: 'var(--vscode-sideBar-foreground)' }}>
+              Running
+            </span>
           </>
         ) : (
           <>
             <Circle
-              className={cn(
-                'h-2 w-2',
-                agentStatus.state === 'idle'
-                  ? 'fill-success text-success'
-                  : 'fill-destructive text-destructive'
-              )}
+              size={8}
+              className="shrink-0"
+              style={{
+                fill: agentStatus.state === 'idle'
+                  ? 'var(--vscode-success-foreground)'
+                  : 'var(--vscode-error-foreground)',
+                color: agentStatus.state === 'idle'
+                  ? 'var(--vscode-success-foreground)'
+                  : 'var(--vscode-error-foreground)'
+              }}
               aria-hidden="true"
             />
-            <span className={cn(
-              'text-xs font-medium capitalize',
-              agentStatus.state === 'idle' ? 'text-foreground' : 'text-destructive'
-            )}>
+            <span
+              className="text-xs font-medium capitalize"
+              style={{
+                color: agentStatus.state === 'idle'
+                  ? 'var(--vscode-sideBar-foreground)'
+                  : 'var(--vscode-error-foreground)'
+              }}
+            >
               {agentStatus.state}
             </span>
           </>
@@ -54,3 +76,5 @@ export function SidebarStatus() {
     </div>
   );
 }
+
+export default SidebarStatus;

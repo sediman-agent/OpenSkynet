@@ -2,8 +2,7 @@ import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './styles/index.css';
-import './styles/vscode-streaming.css';
-import './styles/vscode-theme.css';
+import './styles/vscode-modern.css';
 import { useAppStore } from './stores/useAppStore';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
 

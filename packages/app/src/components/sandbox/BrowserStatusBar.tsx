@@ -1,27 +1,16 @@
 /**
- * VS Code-Style BrowserStatusBar Component
- * Status bar showing browser state - matching VS Code status bar
+ * VS Code-Style BrowserStatusBar Component - Industrial Grade
+ * Enhanced status bar with professional visual hierarchy and styling
  */
 
-import { Wifi, AlertCircle } from 'lucide-react';
-
-// ============================================================================
-// VS Code Design Tokens
-// ============================================================================
-const VS_CODES = {
-  border: '#3c3c3c',
-  bg: '#007acc', // VS Code status bar blue
-  text: '#cccccc',
-  textMuted: '#858585',
-  success: '#4ec9b0',
-  error: '#f48771',
-  warning: '#dcdcaa',
-} as const;
+import { Wifi, AlertCircle, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { BrowserStatus } from '@/hooks/browser/types';
+import { VS_CODES } from '@/styles/vscode-constants';
 
 // ============================================================================
 // Types
 // ============================================================================
-import { BrowserStatus } from '@/hooks/browser/types';
 
 interface BrowserStatusBarProps {
   browserStatus: BrowserStatus;
@@ -29,19 +18,41 @@ interface BrowserStatusBarProps {
 }
 
 // ============================================================================
-// Status Item Component
+// Status Item Component - Enhanced
 // ============================================================================
 interface StatusItemProps {
   icon: React.ReactNode;
   label: string;
   color: string;
+  isAnimated?: boolean;
 }
 
-function StatusItem({ icon, label, color }: StatusItemProps) {
+function StatusItem({ icon, label, color, isAnimated = false }: StatusItemProps) {
+  const [isHovered, setIsHovered] = useState(false);
+
   return (
-    <div className="flex items-center gap-1.5">
-      <span style={{ color }}>{icon}</span>
-      <span className="text-[10px] font-mono" style={{ color: VS_CODES.text }}>
+    <div
+      className="flex items-center gap-1.5 px-2 py-0.5 transition-all duration-150"
+      style={{
+        cursor: 'default',
+        backgroundColor: isHovered ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+        borderRadius: '2px'
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <span style={{ color }} className={isAnimated ? 'animate-spin' : ''}>
+        {icon}
+      </span>
+      <span
+        className="font-mono uppercase tracking-wider"
+        style={{
+          color: 'var(--vscode-statusBar-foreground)',
+          fontSize: '11px',
+          fontWeight: 500,
+          letterSpacing: '0.3px'
+        }}
+      >
         {label}
       </span>
     </div>
@@ -57,55 +68,67 @@ export function BrowserStatusBar({ browserStatus, browserUrl }: BrowserStatusBar
       case 'ready':
         return (
           <StatusItem
-            icon={<Wifi size={10} />}
+            icon={<Wifi size={11} />}
             label="READY"
-            color={VS_CODES.success}
+            color="var(--vscode-success-foreground)"
           />
         );
       case 'connecting':
         return (
           <StatusItem
-            icon={<Wifi size={10} className="animate-pulse" />}
+            icon={<Loader2 size={11} />}
             label="CONNECTING"
-            color={VS_CODES.warning}
+            color="var(--vscode-warning-foreground)"
+            isAnimated={true}
           />
         );
       case 'error':
         return (
           <StatusItem
-            icon={<AlertCircle size={10} />}
+            icon={<AlertCircle size={11} />}
             label="ERROR"
-            color={VS_CODES.error}
+            color="var(--vscode-error-foreground)"
           />
         );
       default:
         return (
           <StatusItem
-            icon={<Wifi size={10} />}
+            icon={<Wifi size={11} />}
             label="IDLE"
-            color={VS_CODES.textMuted}
+            color="var(--vscode-secondary-text)"
           />
         );
     }
   };
 
+  const displayUrl = browserUrl || 'about:blank';
+  const truncatedUrl = displayUrl.length > 60 ? displayUrl.slice(0, 60) + '...' : displayUrl;
+
   return (
     <div
-      className="flex items-center justify-between px-2 py-0.5 font-mono text-[10px]"
+      className="flex items-center justify-between font-mono"
       style={{
-        backgroundColor: VS_CODES.bg,
-        color: VS_CODES.text,
-        borderTop: `1px solid ${VS_CODES.border}`
+        backgroundColor: 'var(--vscode-statusBar-background)',
+        color: 'var(--vscode-statusBar-foreground)',
+        borderTop: `1px solid var(--vscode-statusBar-border)`,
+        height: '22px',
+        padding: '0 8px'
       }}
     >
       {getStatusDisplay()}
 
-      <span
-        className="truncate max-w-[300px]"
-        style={{ color: VS_CODES.textMuted }}
+      <div
+        className="truncate font-mono"
+        style={{
+          color: 'var(--vscode-statusBar-foreground)',
+          fontSize: '11px',
+          opacity: 0.85,
+          maxWidth: '400px'
+        }}
+        title={displayUrl}
       >
-        {browserUrl || 'about:blank'}
-      </span>
+        {truncatedUrl}
+      </div>
     </div>
   );
 }

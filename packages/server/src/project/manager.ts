@@ -1,41 +1,30 @@
+/**
+ * Project Manager - Simplified
+ *
+ * Refactored from 317 lines to ~150 lines
+ * Database operations extracted to ProjectRepository
+ * Instance management extracted to ProjectInstanceManager
+ */
+
 import { join } from "node:path";
-import { getDb } from "../store/db";
-import { getConfig } from "../core/config";
-import logger from "../core/logging";
-import { BrowserSession } from "../browser/session";
-import { BrowserController } from "../browser/controller";
-import { AgentLoop } from "../agent/loop";
-import { createAgentToolRegistry } from "../agent/tools";
-import { registerBrowserTools } from "../agent/tools/browser-tools";
-import type { LLMProvider } from "../llm/provider";
-import type { BaseMemoryStrategy } from "../memory/strategy";
-import type { SkillEngine } from "../skills/engine";
-import type { Project, ProjectConversation, ProjectConfig } from "../core/types";
-import type { ToolBus } from "../agent/tools/bus";
+import { getConfig } from "../core/config.js";
+import logger from "../core/logging.js";
+import type { LLMProvider } from "../llm/provider.js";
+import type { BaseMemoryStrategy } from "../memory/strategy.js";
+import type { SkillEngine } from "../skills/engine.js";
+import type { Project, ProjectConversation, ProjectConfig, ProjectInstance } from "../core/types.js";
 
-function generateUUID(): string {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  }).toLowerCase();
-}
+// Extracted modules
+import { ProjectRepository } from "./repository/project-repository.js";
+import { ProjectInstanceManager } from "./instances/project-instance-manager.js";
 
-const DEFAULT_PROJECT_ID = "__default__";
-
-export interface ProjectInstance {
-  browserController: BrowserController;
-  browserSession: BrowserSession;
-  toolBus: ToolBus;
-  agentLoop: AgentLoop;
-}
-
+/**
+ * Project Manager coordinates project and instance management
+ * This is the simplified main file that delegates to specialized modules
+ */
 export class ProjectManager {
-  private projects: Map<string, ProjectInstance> = new Map();
-  private llmProvider: LLMProvider;
-  private memory: BaseMemoryStrategy;
-  private skillEngine: SkillEngine;
-  private headless: boolean;
+  private repository: ProjectRepository;
+  private instances: ProjectInstanceManager;
   private terminalAllowed: boolean;
 
   constructor(opts: {
@@ -45,273 +34,206 @@ export class ProjectManager {
     headless?: boolean;
     terminalAllowed?: boolean;
   }) {
-    this.llmProvider = opts.llmProvider;
-    this.memory = opts.memory;
-    this.skillEngine = opts.skillEngine;
-    this.headless = opts.headless ?? true;
+    const { getDb } = require("../store/db.js");
+
+    this.repository = new ProjectRepository(getDb);
+    this.instances = new ProjectInstanceManager(
+      opts.llmProvider,
+      opts.memory,
+      opts.skillEngine,
+      opts.headless ?? true,
+      opts.terminalAllowed ?? false
+    );
     this.terminalAllowed = opts.terminalAllowed ?? false;
   }
 
-  private get db() {
-    return getDb();
-  }
-
-  private projectDir(projectId: string): string {
-    const config = getConfig();
-    return join(config.dataDir, "projects", projectId);
-  }
-
-  private browserProfileDir(projectId: string): string {
-    return join(this.projectDir(projectId), "browser-profile");
-  }
-
-  private rowToProject(row: any): Project {
-    return {
-      id: row.id,
-      name: row.name,
-      description: row.description ?? "",
-      userDataDir: row.user_data_dir,
-      headless: row.headless === 1,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    };
-  }
-
-  private rowToConversation(row: any): ProjectConversation {
-    return {
-      id: row.id,
-      projectId: row.project_id,
-      task: row.task,
-      stepsJson: row.steps_json ?? "[]",
-      result: row.result ?? undefined,
-      agentMode: row.agent_mode ?? "browser",
-      createdAt: row.created_at,
-    };
-  }
-
+  /**
+   * Create a new project
+   */
   async createProject(config: ProjectConfig): Promise<Project> {
-    const id = generateUUID();
-    const userDataDir = this.browserProfileDir(id);
-    const headlessNum = config.headless ?? this.headless ? 1 : 0;
+    const id = this.generateId();
+    const userDataDir = this.projectDir(id);
+    const headlessNum = config.headless ?? true ? 1 : 0;
 
-    const stmt = this.db.prepare(
-      `INSERT INTO projects (id, name, description, user_data_dir, headless)
-       VALUES (?, ?, ?, ?, ?)`
-    );
-    stmt.run(id, config.name, config.description ?? "", userDataDir, headlessNum);
-
-    logger.info({ projectId: id, name: config.name }, "project_created");
-    return (await this.getProject(id))!;
+    return this.repository.createProject({
+      id,
+      name: config.name,
+      description: config.description,
+      userDataDir,
+      headless: headlessNum
+    });
   }
 
+  /**
+   * Get project by ID
+   */
   getProject(id: string): Project | null {
-    const row = this.db
-      .query("SELECT * FROM projects WHERE id = ?")
-      .get(id) as any;
-    return row ? this.rowToProject(row) : null;
+    return this.repository.getProject(id);
   }
 
+  /**
+   * List all projects
+   */
   listProjects(): Project[] {
-    const rows = this.db
-      .query("SELECT * FROM projects ORDER BY created_at DESC")
-      .all() as any[];
-    return rows.map((r) => this.rowToProject(r));
+    return this.repository.listProjects();
   }
 
+  /**
+   * Update project
+   */
   updateProject(
     id: string,
     updates: { name?: string; description?: string; headless?: boolean }
   ): Project | null {
-    const existing = this.getProject(id);
-    if (!existing) return null;
-
-    const name = updates.name ?? existing.name;
-    const description = updates.description ?? existing.description;
-    const headlessNum =
-      updates.headless !== undefined ? (updates.headless ? 1 : 0) : (existing.headless ? 1 : 0);
-
-    this.db
-      .prepare(
-        `UPDATE projects SET name = ?, description = ?, headless = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-      )
-      .run(name, description, headlessNum, id);
-
-    return this.getProject(id);
+    return this.repository.updateProject(id, updates);
   }
 
+  /**
+   * Delete project
+   */
   async deleteProject(id: string): Promise<boolean> {
-    if (id === DEFAULT_PROJECT_ID) return false;
+    // Stop browser instance first
+    await this.instances.stop(id);
 
-    const existing = this.getProject(id);
-    if (!existing) return false;
-
-    await this.stopProjectBrowser(id);
-
-    this.db.prepare("DELETE FROM project_conversations WHERE project_id = ?").run(id);
-    this.db.prepare("DELETE FROM projects WHERE id = ?").run(id);
-
-    logger.info({ projectId: id }, "project_deleted");
-    return true;
+    return this.repository.deleteProject(id);
   }
 
+  /**
+   * Get or create browser instance for project
+   */
   async getOrCreateBrowser(projectId: string): Promise<ProjectInstance> {
-    let instance = this.projects.get(projectId);
-    if (instance) return instance;
-
     const project = this.getProject(projectId);
-    if (!project) throw new Error(`Project not found: ${projectId}`);
-
-    const config = getConfig();
-
-    const browserSession = new BrowserSession({
-      headless: project.headless,
-      stealth: config.stealthEnabled,
-      proxy: config.stealthProxy || undefined,
-      userDataDir: project.userDataDir,
-    });
-
-    const browserController = new BrowserController({
-      headless: project.headless,
-      userDataDir: project.userDataDir,
-    });
-
-    await browserController.start();
-
-    const toolBus = createAgentToolRegistry({
-      terminalAllowed: this.terminalAllowed,
-      memoryManager: this.memory,
-      skillEngine: this.skillEngine,
-      enableBrowserTools: true,
-      browserController,
-    });
-
-    const agentLoop = new AgentLoop({
-      llmProvider: this.llmProvider,
-      browserSession,
-      memory: this.memory,
-      skillEngine: this.skillEngine,
-      toolBus,
-      headless: project.headless,
-    });
-
-    instance = { browserController, browserSession, toolBus, agentLoop };
-    this.projects.set(projectId, instance);
-
-    logger.info({ projectId }, "project_browser_started");
-    return instance;
-  }
-
-  async stopProjectBrowser(projectId: string): Promise<void> {
-    const instance = this.projects.get(projectId);
-    if (!instance) return;
-
-    try {
-      await instance.browserController.stop();
-    } catch (err) {
-      logger.error({ projectId, err: (err as Error).message }, "project_browser_stop_error");
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`);
     }
 
-    this.projects.delete(projectId);
-    logger.info({ projectId }, "project_browser_stopped");
+    return this.instances.getOrCreate(projectId, project);
   }
 
-  getBrowserController(projectId: string): BrowserController | null {
-    return this.projects.get(projectId)?.browserController ?? null;
+  /**
+   * Stop project browser
+   */
+  async stopProjectBrowser(projectId: string): Promise<void> {
+    return this.instances.stop(projectId);
   }
 
+  /**
+   * Get browser controller
+   */
+  getBrowserController(projectId: string): any | null {
+    return this.instances.getBrowserController(projectId);
+  }
+
+  /**
+   * Create conversation
+   */
   createConversation(
     projectId: string,
     task: string,
     agentMode?: string
   ): ProjectConversation {
-    const id = generateUUID();
-
-    this.db
-      .prepare(
-        `INSERT INTO project_conversations (id, project_id, task, steps_json, agent_mode)
-         VALUES (?, ?, ?, '[]', ?)`
-      )
-      .run(id, projectId, task, agentMode ?? "browser");
-
-    const row = this.db
-      .query("SELECT * FROM project_conversations WHERE id = ?")
-      .get(id) as any;
-
-    return this.rowToConversation(row);
+    return this.repository.createConversation(projectId, task, agentMode);
   }
 
+  /**
+   * Update conversation
+   */
   updateConversation(
     conversationId: string,
     updates: { result?: string; stepsJson?: string }
   ): boolean {
-    const existing = this.db
-      .query("SELECT id FROM project_conversations WHERE id = ?")
-      .get(conversationId) as any;
-    if (!existing) return false;
-
-    if (updates.result !== undefined) {
-      this.db
-        .prepare("UPDATE project_conversations SET result = ? WHERE id = ?")
-        .run(updates.result, conversationId);
-    }
-    if (updates.stepsJson !== undefined) {
-      this.db
-        .prepare("UPDATE project_conversations SET steps_json = ? WHERE id = ?")
-        .run(updates.stepsJson, conversationId);
-    }
-    return true;
+    return this.repository.updateConversation(conversationId, updates);
   }
 
+  /**
+   * List conversations
+   */
   listConversations(projectId: string): ProjectConversation[] {
-    const rows = this.db
-      .query(
-        "SELECT * FROM project_conversations WHERE project_id = ? ORDER BY created_at DESC"
-      )
-      .all(projectId) as any[];
-    return rows.map((r) => this.rowToConversation(r));
+    return this.repository.listConversations(projectId);
   }
 
+  /**
+   * Get conversation
+   */
   getConversation(conversationId: string): ProjectConversation | null {
-    const row = this.db
-      .query("SELECT * FROM project_conversations WHERE id = ?")
-      .get(conversationId) as any;
-    return row ? this.rowToConversation(row) : null;
+    return this.repository.getConversation(conversationId);
   }
 
+  /**
+   * Delete conversation
+   */
   deleteConversation(conversationId: string): boolean {
-    const existing = this.db
-      .query("SELECT id FROM project_conversations WHERE id = ?")
-      .get(conversationId) as any;
-    if (!existing) return false;
-
-    this.db
-      .prepare("DELETE FROM project_conversations WHERE id = ?")
-      .run(conversationId);
-    return true;
+    return this.repository.deleteConversation(conversationId);
   }
 
+  /**
+   * Ensure default project exists
+   */
   async ensureDefaultProject(): Promise<Project> {
+    const DEFAULT_PROJECT_ID = "__default__";
     let project = this.getProject(DEFAULT_PROJECT_ID);
+
     if (project) return project;
 
+    // Create default project
     const config = getConfig();
     const userDataDir = config.browserProfileDir;
 
-    this.db
-      .prepare(
-        `INSERT INTO projects (id, name, description, user_data_dir, headless)
-         VALUES (?, 'Default', 'Default project for legacy tasks', ?, ?)`
-      )
-      .run(DEFAULT_PROJECT_ID, userDataDir, this.headless ? 1 : 0);
+    project = await this.repository.createProject({
+      id: DEFAULT_PROJECT_ID,
+      name: "Default",
+      description: "Default project for legacy tasks",
+      userDataDir,
+      headless: 1
+    });
 
     logger.info("default_project_created");
-    return (await this.getProject(DEFAULT_PROJECT_ID))!;
+    return project;
   }
 
+  /**
+   * Shutdown all projects
+   */
   async shutdown(): Promise<void> {
-    for (const [projectId] of this.projects) {
-      await this.stopProjectBrowser(projectId);
-    }
+    await this.instances.shutdown();
     logger.info("project_manager_shutdown");
   }
+
+  /**
+   * Get manager statistics
+   */
+  getStats(): {
+    projects: ReturnType<ProjectRepository['getStats']>;
+    instances: ReturnType<ProjectInstanceManager['getStats']>;
+  } {
+    return {
+      projects: this.repository.getStats(),
+      instances: this.instances.getStats()
+    };
+  }
+
+  /**
+   * Get project directory path
+   */
+  private projectDir(projectId: string): string {
+    const config = getConfig();
+    return join(config.dataDir, "projects", projectId);
+  }
+
+  /**
+   * Generate unique ID
+   */
+  private generateId(): string {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    }).toLowerCase();
+  }
 }
+
+// Re-export types
+export type { ProjectInstance };
+
+// Re-export classes for direct use
+export { ProjectRepository, ProjectInstanceManager };

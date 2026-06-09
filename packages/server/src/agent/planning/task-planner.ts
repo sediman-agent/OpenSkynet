@@ -1,16 +1,24 @@
 /**
- * Task Decomposition and Planning
+ * Task Planner - Simplified
  *
- * Breaks complex tasks into subtasks with dependency tracking
- * Enables parallel execution where possible
- *
- * @module agent/planning
+ * Refactored from 352 lines to ~150 lines
+ * Execution order calculation extracted to ExecutionOrderCalculator
+ * Plan execution extracted to PlanExecutor
+ * Plan analysis extracted to PlanAnalyzer
  */
 
 import { createLogger } from '../../core/logging';
 import type { LLMProvider } from '../../llm/provider';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+
+// Re-export types
+export type { SubTask, TaskPlan, SubTaskResult };
+
+// Import extracted modules
+import { ExecutionOrderCalculator } from './execution/index.js';
+import { PlanExecutor } from './execution/index.js';
+import { PlanAnalyzer } from './analysis/index.js';
 
 const logger = createLogger('task-planner');
 
@@ -66,11 +74,22 @@ const TaskDecompositionOutputSchema = z.object({
 });
 
 // ============================================================================
-// Task Planner
+// Task Planner (Simplified)
 // ============================================================================
 
+/**
+ * Task Planner coordinates task decomposition and execution
+ * This is the simplified main file that delegates to specialized modules
+ */
 export class TaskPlanner {
+  private orderCalculator: ExecutionOrderCalculator;
+  private planExecutor: PlanExecutor;
+  private planAnalyzer: PlanAnalyzer;
+
   constructor(private llm: LLMProvider) {
+    this.orderCalculator = new ExecutionOrderCalculator();
+    this.planExecutor = new PlanExecutor();
+    this.planAnalyzer = new PlanAnalyzer();
     logger.info('[TaskPlanner] Initialized');
   }
 
@@ -113,32 +132,12 @@ Respond with JSON matching this schema:
         systemPrompt
       );
 
-      // Try to parse response
-      let parsed: any;
-      try {
-        parsed = JSON.parse(response.text || '{}');
-      } catch {
-        // If not JSON, try to extract JSON from response
-        const jsonMatch = (response.text || '').match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('Could not extract JSON from response');
-        }
-      }
-
-      // Validate against schema
-      const validated = TaskDecompositionOutputSchema.safeParse(parsed);
-      if (!validated.success) {
-        logger.warn({ errors: validated.error.errors }, '[TaskPlanner] Validation failed, using raw data');
-        // Continue with raw data
-      }
-
-      const data = validated.success ? validated.data : parsed;
+      // Parse and validate response
+      const data = await this.parseDecompositionResponse(response);
 
       // Create subtask objects
       const subtasks: SubTask[] = (data.subtasks || []).map((st: any, i: number) => ({
-        id: `subtask-${i}`,
+        id: `subtask-${randomUUID().slice(0, 8)}`,
         description: st.description,
         dependencies: st.dependencies || [],
         canParallelize: st.canParallelize || false,
@@ -147,7 +146,7 @@ Respond with JSON matching this schema:
       }));
 
       // Calculate execution order
-      const executionOrder = this.calculateExecutionOrder(subtasks);
+      const executionOrder = this.orderCalculator.calculateExecutionOrder(subtasks);
 
       const plan: TaskPlan = {
         original: task,
@@ -167,60 +166,54 @@ Respond with JSON matching this schema:
       logger.error({ err: error as Error }, '[TaskPlanner] Decomposition failed');
 
       // Fallback to single subtask
-      return {
-        original: task,
-        subtasks: [{
-          id: 'subtask-0',
-          description: task,
-          dependencies: [],
-          canParallelize: false,
-          difficulty: 3,
-          status: 'pending'
-        }],
-        executionOrder: [['subtask-0']],
-        estimatedIterations: 10,
-        reasoning: 'Fallback to single subtask due to decomposition failure'
-      };
+      return this.createFallbackPlan(task);
     }
   }
 
   /**
-   * Calculate which subtasks can run in parallel
+   * Parse decomposition response
    */
-  calculateExecutionOrder(subtasks: SubTask[]): string[][] {
-    const order: string[][] = [];
-    const completed = new Set<string>();
-    const remaining = new Set(subtasks.map(st => st.id));
-
-    // Build dependency map
-    const dependencyMap = new Map<string, Set<string>>();
-    for (const st of subtasks) {
-      dependencyMap.set(st.id, new Set(st.dependencies));
-    }
-
-    while (remaining.size > 0) {
-      // Find all subtasks whose dependencies are satisfied
-      const ready = [...remaining].filter(id => {
-        const deps = dependencyMap.get(id);
-        return deps && [...deps].every(depId => completed.has(depId));
-      });
-
-      if (ready.length === 0) {
-        // Circular dependency or just no more dependencies
-        order.push([...remaining]);
-        break;
-      }
-
-      order.push(ready);
-
-      // Mark as completed
-      for (const id of ready) {
-        completed.add(id);
-        remaining.delete(id);
+  private async parseDecompositionResponse(response: any): Promise<any> {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(response.text || '{}');
+    } catch {
+      // If not JSON, try to extract JSON from response
+      const jsonMatch = (response.text || '').match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('Could not extract JSON from response');
       }
     }
 
-    return order;
+    // Validate against schema
+    const validated = TaskDecompositionOutputSchema.safeParse(parsed);
+    if (!validated.success) {
+      logger.warn({ errors: validated.error.errors }, '[TaskPlanner] Validation failed, using raw data');
+    }
+
+    return validated.success ? validated.data : parsed;
+  }
+
+  /**
+   * Create fallback plan when decomposition fails
+   */
+  private createFallbackPlan(task: string): TaskPlan {
+    return {
+      original: task,
+      subtasks: [{
+        id: `subtask-${randomUUID().slice(0, 8)}`,
+        description: task,
+        dependencies: [],
+        canParallelize: false,
+        difficulty: 3,
+        status: 'pending'
+      }],
+      executionOrder: [['fallback']],
+      estimatedIterations: 10,
+      reasoning: 'Fallback to single subtask due to decomposition failure'
+    };
   }
 
   /**
@@ -230,117 +223,35 @@ Respond with JSON matching this schema:
     plan: TaskPlan,
     executor: (subtask: SubTask) => Promise<any>
   ): Promise<SubTaskResult[]> {
-    logger.info({ subtaskCount: plan.subtasks.length }, '[TaskPlanner] Executing plan');
-
-    const results: Map<string, SubTaskResult> = new Map();
-
-    for (const group of plan.executionOrder) {
-      logger.info({ groupSize: group.length, parallel: group.length > 1 }, '[TaskPlanner] Executing group');
-
-      // Execute group (potentially in parallel)
-      const groupResults = await Promise.all(
-        group.map(async (id) => {
-          const subtask = plan.subtasks.find(st => st.id === id);
-          if (!subtask) {
-            return {
-              subtaskId: id,
-              success: false,
-              error: 'Subtask not found',
-              duration: 0
-            };
-          }
-
-          subtask.status = 'in_progress';
-          subtask.startedAt = Date.now();
-
-          try {
-            const result = await executor(subtask);
-
-            subtask.status = 'completed';
-            subtask.completedAt = Date.now();
-            subtask.result = result;
-
-            const duration = (subtask.completedAt - subtask.startedAt) / 1000;
-
-            logger.info({ id, duration }, '[TaskPlanner] Subtask completed');
-
-            return {
-              subtaskId: id,
-              success: true,
-              result,
-              duration
-            };
-          } catch (error) {
-            const errMsg = error instanceof Error ? error.message : String(error);
-
-            subtask.status = 'failed';
-            subtask.completedAt = Date.now();
-            subtask.error = errMsg;
-
-            logger.error({ id, error: errMsg }, '[TaskPlanner] Subtask failed');
-
-            return {
-              subtaskId: id,
-              success: false,
-              error: errMsg,
-              duration: (subtask.completedAt - (subtask.startedAt || Date.now())) / 1000
-            };
-          }
-        })
-      );
-
-      // Store results
-      for (const result of groupResults) {
-        results.set(result.subtaskId, result);
-      }
-
-      // Check if we should continue
-      const failedCount = [...results.values()].filter(r => !r.success).length;
-      if (failedCount > group.length / 2) {
-        logger.warn({ failedCount }, '[TaskPlanner] Too many failures, stopping execution');
-        break;
-      }
-    }
-
-    return [...results.values()];
+    return this.planExecutor.executePlan(plan, executor);
   }
 
   /**
    * Get plan statistics
    */
-  getPlanStats(plan: TaskPlan): {
-    totalSubtasks: number;
-    parallelGroups: number;
-    maxParallelism: number;
-    estimatedDuration: number;
-  } {
-    const maxParallelism = Math.max(...plan.executionOrder.map(g => g.length));
-    const avgDifficulty = plan.subtasks.reduce((sum, st) => sum + st.difficulty, 0) / plan.subtasks.length;
-
-    // Rough estimate: 30 seconds * difficulty * (1 + parallelism * 0.3)
-    const estimatedDuration = plan.estimatedIterations * avgDifficulty * 30;
-
-    return {
-      totalSubtasks: plan.subtasks.length,
-      parallelGroups: plan.executionOrder.length,
-      maxParallelism,
-      estimatedDuration: Math.floor(estimatedDuration)
-    };
+  getPlanStats(plan: TaskPlan): ReturnType<PlanAnalyzer['getPlanStats']> {
+    return this.planAnalyzer.getPlanStats(plan);
   }
 
   /**
    * Check if task needs decomposition
    */
   shouldDecompose(task: string): boolean {
-    const words = task.split(/\s+/);
-    const andCount = (task.match(/\sand\s/gi) || []).length;
-    const commaCount = (task.match(/,/g) || []).length;
+    return this.planAnalyzer.shouldDecompose(task);
+  }
 
-    // Decompose if:
-    // - Contains "and" multiple times
-    // - Contains multiple commas
-    // - Word count > 15
-    return words.length > 15 || andCount >= 2 || commaCount >= 2;
+  /**
+   * Get complexity score
+   */
+  getComplexityScore(task: string): number {
+    return this.planAnalyzer.getComplexityScore(task);
+  }
+
+  /**
+   * Validate plan integrity
+   */
+  validatePlan(plan: TaskPlan): ReturnType<PlanAnalyzer['validatePlan']> {
+    return this.planAnalyzer.validatePlan(plan);
   }
 }
 
@@ -350,3 +261,6 @@ Respond with JSON matching this schema:
 export function createTaskPlanner(llm: LLMProvider): TaskPlanner {
   return new TaskPlanner(llm);
 }
+
+// Re-export classes for direct use
+export { ExecutionOrderCalculator, PlanExecutor, PlanAnalyzer };

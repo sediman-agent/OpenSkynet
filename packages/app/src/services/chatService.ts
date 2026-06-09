@@ -165,72 +165,74 @@ class ChatService {
         apiStream(
           '/api/agent/run',
           requestBody,
-          (type, data) => {
-            switch (type) {
-              case 'chunk':
-                options.onChunk(data.delta, data.phase);
-                break;
-              case 'progress':
-                options.onProgress?.(data);
-                break;
-              case 'done':
-                if (!isDone) {
-                  isDone = true;
-                  options.onDone?.(data);
-                  resolve();
-                }
-                break;
-              case 'error':
-                options.onError?.(data.error || 'Unknown error');
-                break;
-              case 'intervention':
-                options.onIntervention?.(data.message, data.id);
-                break;
-              case 'browser_open_required':
-                options.onBrowserOpenRequired?.(data.reason, data.task);
-                break;
-            }
-          },
-          () => {
-            if (!isDone) {
-              isDone = true;
-              options.onDone?.();
-              resolve();
-            }
-          },
-          async (err) => {
-            if (!isDone) {
-              // Classify error properly
-              const classification = classifyError(err);
-
-              // Determine if we should retry
-              const shouldRetry =
-                (classification.strategy === RetryStrategy.RETRY) ||
-                (classification.strategy === RetryStrategy.UNKNOWN && config.retryUnknownErrors);
-
-              if (shouldRetry && attempt < config.maxRetries) {
-                attempt++;
-                const delay = calculateBackoff(attempt, config.baseDelay, config.maxDelay);
-
-                console.warn(
-                  `[ChatService] Request failed (${classification.reason}), ` +
-                  `retrying in ${Math.round(delay)}ms (attempt ${attempt}/${config.maxRetries})`,
-                  err instanceof Error ? err.message : String(err)
-                );
-                options.onRetry?.(attempt, config.maxRetries);
-
-                await new Promise(r => setTimeout(r, delay));
-                await attemptRequest().then(resolve).catch(reject);
-              } else {
+          {
+            onEvent: (event) => {
+              switch (event.type) {
+                case 'chunk':
+                  options.onChunk(event.data.delta, event.data.phase);
+                  break;
+                case 'progress':
+                  options.onProgress?.(event.data);
+                  break;
+                case 'done':
+                  if (!isDone) {
+                    isDone = true;
+                    options.onDone?.(event.data);
+                    resolve();
+                  }
+                  break;
+                case 'error':
+                  options.onError?.(event.data.error || 'Unknown error');
+                  break;
+                case 'intervention':
+                  options.onIntervention?.(event.data.message, event.data.id);
+                  break;
+                case 'browser_open_required':
+                  options.onBrowserOpenRequired?.(event.data.reason, event.data.task);
+                  break;
+              }
+            },
+            onDone: () => {
+              if (!isDone) {
                 isDone = true;
+                options.onDone?.();
+                resolve();
+              }
+            },
+            onError: async (err) => {
+              if (!isDone) {
+                // Classify error properly
+                const classification = classifyError(err);
 
-                // Provide clear error message
-                const errorMessage = classification.strategy === RetryStrategy.NO_RETRY
-                  ? `Non-retryable error (${classification.reason}): ${err instanceof Error ? err.message : String(err)}`
-                  : `Failed after ${config.maxRetries} retries (${classification.reason}): ${err instanceof Error ? err.message : String(err)}`;
+                // Determine if we should retry
+                const shouldRetry =
+                  (classification.strategy === RetryStrategy.RETRY) ||
+                  (classification.strategy === RetryStrategy.UNKNOWN && config.retryUnknownErrors);
 
-                options.onError?.(errorMessage);
-                reject(err);
+                if (shouldRetry && attempt < config.maxRetries) {
+                  attempt++;
+                  const delay = calculateBackoff(attempt, config.baseDelay, config.maxDelay);
+
+                  console.warn(
+                    `[ChatService] Request failed (${classification.reason}), ` +
+                    `retrying in ${Math.round(delay)}ms (attempt ${attempt}/${config.maxRetries})`,
+                    err instanceof Error ? err.message : String(err)
+                  );
+                  options.onRetry?.(attempt, config.maxRetries);
+
+                  await new Promise(r => setTimeout(r, delay));
+                  await attemptRequest().then(resolve).catch(reject);
+                } else {
+                  isDone = true;
+
+                  // Provide clear error message
+                  const errorMessage = classification.strategy === RetryStrategy.NO_RETRY
+                    ? `Non-retryable error (${classification.reason}): ${err instanceof Error ? err.message : String(err)}`
+                    : `Failed after ${config.maxRetries} retries (${classification.reason}): ${err instanceof Error ? err.message : String(err)}`;
+
+                  options.onError?.(errorMessage);
+                  reject(err);
+                }
               }
             }
           }

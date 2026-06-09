@@ -1,34 +1,44 @@
 /**
- * VS Code-Style Message Bubble
- * Exact replica of VS Code Copilot message display
- * Using official VS Code Webview UI Toolkit design tokens
+ * MessageBubble Component - Industrial Grade with Elegant Violet Theme
+ * Professional message display with enhanced readability and visual hierarchy
  */
 
-import { Copy, Check, FileText, FileImage, FileType, File, Bot, ChevronDown, ChevronRight } from 'lucide-react';
+import { Copy, Check, FileText, FileImage, FileType, File, Bot, ChevronDown } from 'lucide-react';
 import { Message } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatRelativeTime } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+// @ts-ignore - rehype-highlight types are incompatible with react-markdown
 import rehypeHighlight from 'rehype-highlight';
 import { useState, memo, useCallback } from 'react';
 import { ExecutionDisplay } from './ExecutionDisplay';
 import { formatThinkLabel } from '@/utils/thinkTagParser';
-import { VS_CODE_DESIGN } from '@/styles/vscode-design-system';
+import { VS_CODES, SPACING, TYPOGRAPHY, RADIUS } from '@/styles/vscode-constants';
 
 // ============================================================================
-// VS Code Design Tokens (using CSS variables for theme support)
+// VS Code Chat Theme - Clean, Minimal Design
 // ============================================================================
-const VS_CODES = {
-  // Typography
-  fontSize: 13,                // typeRampBaseFontSize
-  fontSizeSmall: 11,          // typeRampMinus1FontSize
-  lineHeight: 1.4,
 
-  // Spacing
-  padding: '8px',              // 2x designUnit
-  borderRadius: 0,             // Sharp corners
-  borderRadiusRound: 2,       // 2px for specific elements
+const VSCODE_CHAT = {
+  // User message - Subtle background like VS Code input
+  userBg: 'var(--vscode-input-background)',
+  userFg: 'var(--vscode-input-foreground)',
+  userBorder: 'var(--vscode-input-border)',
+
+  // User message hover
+  userBgHover: 'var(--vscode-list-hoverBackground)',
+
+  // Spacing - Professional 4px grid
+  messageSpacing: '16px',
+  userPadding: '12px 16px',
+  assistantPadding: '0',
+
+  // Border radius - Minimal
+  radius: '6px',
+
+  // Shadow - Subtle
+  shadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
 } as const;
 
 // ============================================================================
@@ -64,7 +74,7 @@ function formatFileSize(bytes: number): string {
 }
 
 // ============================================================================
-// Thinking Block Component
+// Thinking Block Component - Enhanced
 // ============================================================================
 
 interface ThinkingBlockProps {
@@ -81,35 +91,58 @@ const ThinkingBlock = memo(function ThinkingBlock({
   onToggle
 }: ThinkingBlockProps) {
   return (
-    <div className="mb-2 font-mono text-xs">
+    <div className="mb-2 font-mono" style={{ fontSize: '12px' }}>
       <button
         onClick={onToggle}
-        className="flex items-center gap-1 transition-colors"
-        style={{ color: 'var(--vscode-secondary-text)' }}
+        className="flex items-center gap-1.5 transition-all duration-150 px-2 py-1 rounded"
+        style={{
+          color: 'var(--vscode-descriptionForeground)',
+          backgroundColor: 'transparent',
+        }}
         onMouseEnter={(e) => {
           e.currentTarget.style.color = 'var(--vscode-foreground)';
+          e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)';
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.color = 'var(--vscode-secondary-text)';
+          e.currentTarget.style.color = 'var(--vscode-descriptionForeground)';
+          e.currentTarget.style.backgroundColor = 'transparent';
         }}
       >
-        {isExpanded ? (
+        <div
+          className="transition-transform duration-150"
+          style={{
+            transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+          }}
+        >
           <ChevronDown size={12} />
-        ) : (
-          <ChevronRight size={12} />
-        )}
-        <span className="uppercase tracking-wider">
+        </div>
+        <span
+          className="uppercase tracking-wide"
+          style={{
+            fontSize: '11px',
+            fontWeight: 500,
+            letterSpacing: '0.05em'
+          }}
+        >
           {label || 'Thinking'}
         </span>
       </button>
 
       {isExpanded && (
-        <div className="mt-1 pl-4 whitespace-pre-wrap break-words" style={{ color: 'var(--vscode-secondary-text)' }}>
+        <div
+          className="mt-1.5 pl-4 whitespace-pre-wrap break-words border-l-2"
+          style={{
+            color: 'var(--vscode-descriptionForeground)',
+            borderColor: 'var(--vscode-border-color)',
+            padding: '8px 12px',
+            lineHeight: 1.5,
+          }}
+        >
           {content}
         </div>
       )}
     </div>
-  );
+);
 });
 
 // ============================================================================
@@ -161,15 +194,29 @@ export const MessageBubble = memo(function MessageBubble({
   const toolCallsSafe = message.toolCalls ?? [];
 
   return (
-    <div className={cn(
-      "font-mono text-sm py-1",
-      isUser ? "px-2" : "px-2"
-    )}>
+    <div
+      className={cn(
+        "transition-all duration-150",
+        isUser ? "px-3 py-3 flex justify-end" : "px-3 py-3"
+      )}
+      style={{
+        fontFamily: isUser ? 'var(--font-system)' : 'var(--font-mono)',
+      }}
+    >
       {/* Message Header - Avatar + Name for Assistant */}
       {!isUser && (
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-2">
           <Bot size={14} style={{ color: 'var(--vscode-secondary-text)' }} />
-          <span className="text-[11px] font-medium" style={{ color: 'var(--vscode-secondary-text)' }}>ASSISTANT</span>
+          <span
+            className="font-medium uppercase tracking-wide"
+            style={{
+              fontSize: '11px',
+              color: 'var(--vscode-secondary-text)',
+              fontWeight: 500
+            }}
+          >
+            ASSISTANT
+          </span>
         </div>
       )}
 
@@ -186,7 +233,7 @@ export const MessageBubble = memo(function MessageBubble({
 
       {/* Tool Calls / Execution Display */}
       {hasToolCalls && (
-        <div className="mb-2">
+        <div className="mb-3">
           <ExecutionDisplay
             steps={toolCallsSafe.map(tc => ({
               id: tc.id,
@@ -207,29 +254,48 @@ export const MessageBubble = memo(function MessageBubble({
         </div>
       )}
 
-      {/* Attachments */}
+      {/* Attachments - Minimal VS Code Style */}
       {attachments && attachments.length > 0 && (
-        <div className={cn(
-          "flex flex-wrap gap-1 mb-1",
-          isUser ? "justify-end" : "justify-start"
-        )}>
+        <div
+          className={cn(
+            "flex flex-wrap gap-2 mb-2",
+            isUser ? "justify-end" : "justify-start"
+          )}
+        >
           {attachments.map((attachment) => (
             <div
               key={attachment.id}
-              className="flex items-center gap-2 px-2 py-1 rounded border"
+              className="flex items-center gap-2 px-2.5 py-1.5 border transition-colors duration-150 cursor-default"
               style={{
                 borderColor: 'var(--vscode-border-color)',
-                backgroundColor: 'var(--vscode-panel-background)'
+                backgroundColor: 'var(--vscode-editor-background)',
+                borderRadius: '3px',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'var(--vscode-focus-border)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'var(--vscode-border-color)';
               }}
             >
-              <div style={{ color: 'var(--vscode-secondary-text)' }}>
+              <div style={{ color: 'var(--vscode-descriptionForeground)' }}>
                 {getFileIcon(attachment.type)}
               </div>
               <div className="flex flex-col">
-                <span className="text-xs max-w-[120px] truncate" style={{ color: 'var(--vscode-foreground)' }}>
+                <span
+                  className="text-xs truncate"
+                  style={{
+                    color: 'var(--vscode-foreground)',
+                    maxWidth: '120px',
+                    fontFamily: 'var(--font-system)',
+                  }}
+                >
                   {attachment.name}
                 </span>
-                <span className="text-[10px]" style={{ color: 'var(--vscode-secondary-text)' }}>
+                <span
+                  className="text-[10px]"
+                  style={{ color: 'var(--vscode-descriptionForeground)' }}
+                >
                   {formatFileSize(attachment.size)}
                 </span>
               </div>
@@ -240,18 +306,25 @@ export const MessageBubble = memo(function MessageBubble({
 
       {/* Main Content */}
       <div className="relative group">
-        {/* User Message - VS Code Primary Button Style */}
+        {/* User Message - VS Code Style */}
         {isUser ? (
-          <div className="relative inline-block max-w-full">
+          <div className="relative inline-block max-w-[85%]">
             <div
-              className="px-3 py-1"
+              className="px-4 py-2.5 inline-block transition-colors duration-150"
               style={{
-                backgroundColor: 'var(--vscode-user-message-bg)',
-                color: 'var(--vscode-user-message-fg)',
-                borderRadius: `${VS_CODES.borderRadius}px`,
-                fontFamily: VS_CODE_DESIGN.fontFamily,
-                fontSize: `${VS_CODES.fontSize}px`,
-                lineHeight: `${VS_CODES.lineHeight}`,
+                backgroundColor: VSCODE_CHAT.userBg,
+                color: VSCODE_CHAT.userFg,
+                borderRadius: VSCODE_CHAT.radius,
+                fontSize: '13px',
+                lineHeight: '1.5',
+                fontWeight: 400,
+                border: '1px solid transparent',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = VSCODE_CHAT.userBgHover;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = VSCODE_CHAT.userBg;
               }}
             >
               <div className="whitespace-pre-wrap break-words">
@@ -259,45 +332,72 @@ export const MessageBubble = memo(function MessageBubble({
               </div>
             </div>
 
-            {/* Copy Button - User */}
+            {/* Copy Button - User - VS Code Style */}
             <button
               onClick={handleCopy}
-              className="absolute -top-5 -right-5 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute -top-2 -right-10 p-1.5 rounded transition-all duration-150 opacity-0 group-hover:opacity-100"
               style={{
-                backgroundColor: 'transparent',
-                border: 'none',
+                backgroundColor: 'var(--vscode-editor-background)',
+                border: '1px solid var(--vscode-widget-border)',
+                color: 'var(--vscode-foreground)',
                 cursor: 'pointer',
+                opacity: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--vscode-toolbar-hoverBackground)';
+                e.currentTarget.style.opacity = '1';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--vscode-editor-background)';
+                e.currentTarget.style.opacity = '';
               }}
               title="Copy"
             >
               {copied ? (
-                <Check size={12} style={{ color: 'var(--vscode-secondary-text)' }} />
+                <Check size={14} />
               ) : (
-                <Copy size={12} style={{ color: 'var(--vscode-secondary-text)' }} />
+                <Copy size={14} />
               )}
             </button>
           </div>
         ) : (
-          /* Assistant Message - Clean markdown */
+          /* Assistant Message - Enhanced Markdown */
           <div className={cn("relative", isStreaming && "streaming-content is-streaming")}>
-            <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1" style={{ color: 'var(--vscode-foreground)' }}>
+            <div
+              className="max-w-none"
+              style={{
+                color: 'var(--vscode-foreground)',
+                fontSize: `${VS_CODES.fontSize}px`,
+                lineHeight: `${VS_CODES.lineHeight}`
+              }}
+            >
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeHighlight]}
                 components={{
-                  p: ({ children }) => <p className="my-1 last:mb-0">{children}</p>,
-                  ul: ({ children }) => <ul className="my-1 space-y-0.5 pl-4">{children}</ul>,
-                  ol: ({ children }) => <ol className="my-1 space-y-0.5 pl-4">{children}</ol>,
+                  p: ({ children }) => <p className="my-2 last:mb-0">{children}</p>,
+                  ul: ({ children }) => <ul className="my-2 space-y-1 pl-4">{children}</ul>,
+                  ol: ({ children }) => <ol className="my-2 space-y-1 pl-4">{children}</ol>,
                   strong: ({ children }) => (
-                    <strong className="font-semibold" style={{ color: 'var(--vscode-foreground)' }}>{children}</strong>
+                    <strong
+                      className="font-semibold"
+                      style={{ color: 'var(--vscode-foreground)' }}
+                    >
+                      {children}
+                    </strong>
                   ),
                   code: ({ children, className }) => {
                     const isInline = !className;
                     return isInline ? (
-                      <code className="px-1 py-0.5 rounded text-xs font-mono" style={{
-                        backgroundColor: 'var(--vscode-background)',
-                        color: 'var(--vscode-foreground)'
-                      }}>
+                      <code
+                        className="px-1.5 py-0.5 rounded"
+                        style={{
+                          backgroundColor: 'var(--vscode-text-block-background)',
+                          color: 'var(--vscode-text-block-foreground)',
+                          fontSize: '12px',
+                          fontFamily: 'var(--font-mono)'
+                        }}
+                      >
                         {children}
                       </code>
                     ) : (
@@ -305,18 +405,26 @@ export const MessageBubble = memo(function MessageBubble({
                     );
                   },
                   pre: ({ children }) => (
-                    <pre className="p-2 rounded-sm text-xs overflow-x-auto my-2" style={{
-                      backgroundColor: 'var(--vscode-background)',
-                      border: '1px solid var(--vscode-border-color)'
-                    }}>
+                    <pre
+                      className="p-3 overflow-x-auto my-3 text-xs border-l-2"
+                      style={{
+                        backgroundColor: 'var(--vscode-textBlock-background)',
+                        borderColor: 'var(--vscode-textBlock-border)',
+                        borderRadius: VS_CODES.radiusLg,
+                        fontFamily: 'var(--font-mono)',
+                        lineHeight: 1.4
+                      }}
+                    >
                       {children}
                     </pre>
                   ),
                   a: ({ children, href }) => (
                     <a
                       href={href}
-                      style={{ color: 'var(--vscode-link-foreground)' }}
-                      className="hover:underline"
+                      style={{
+                        color: 'var(--vscode-link-foreground)',
+                        textDecoration: 'underline'
+                      }}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -329,30 +437,48 @@ export const MessageBubble = memo(function MessageBubble({
               </ReactMarkdown>
             </div>
 
-            {/* Copy Button - Assistant */}
+            {/* Copy Button - Assistant - VS Code Style */}
             <button
               onClick={handleCopy}
-              className="absolute top-0 right-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute top-0 right-0 p-1.5 rounded transition-all duration-150 opacity-0 group-hover:opacity-100"
+              style={{
+                backgroundColor: 'var(--vscode-editor-background)',
+                border: '1px solid var(--vscode-widget-border)',
+                color: 'var(--vscode-foreground)',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--vscode-toolbar-hoverBackground)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--vscode-editor-background)';
+              }}
               title="Copy"
             >
               {copied ? (
-                <Check size={12} style={{ color: 'var(--vscode-secondary-text)' }} />
+                <Check size={14} />
               ) : (
-                <Copy size={12} style={{ color: 'var(--vscode-secondary-text)' }} />
+                <Copy size={14} />
               )}
             </button>
 
             {isStreaming && <span className="typing-cursor" />}
           </div>
         )}
-      </div>
 
-      {/* Timestamp */}
-      {message.timestamp && (
-        <span className="text-[10px] mt-0.5 block" style={{ color: 'var(--vscode-secondary-text)' }}>
-          {formatRelativeTime(message.timestamp)}
-        </span>
-      )}
+        {/* Timestamp - Minimal */}
+        {message.timestamp && (
+          <span
+            className="text-[11px] mt-1.5 block opacity-50"
+            style={{
+              color: 'var(--vscode-descriptionForeground)',
+              fontFamily: 'var(--font-system)'
+            }}
+          >
+            {formatRelativeTime(message.timestamp)}
+          </span>
+        )}
+      </div>
     </div>
   );
 });

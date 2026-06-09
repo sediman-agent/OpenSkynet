@@ -1,10 +1,11 @@
 /**
- * VS Code-Style SandboxPanel Component
- * Main browser panel with debug controls - modular architecture
+ * VS Code-Style SandboxPanel Component - Industrial Grade
+ * Enhanced main browser panel with professional architecture and styling
+ * Improved visual consistency, transitions, and panel management
  */
 
 import { useRef, useCallback, useEffect, useState } from 'react';
-import { Bug } from 'lucide-react';
+import { Bug, PanelLeftClose, PanelLeftOpen, Columns } from 'lucide-react';
 import { useSandboxStore } from '@/stores/useSandboxStore';
 import { browserService } from '@/services/BrowserService';
 import { BrowserHeader } from './BrowserHeader';
@@ -16,20 +17,7 @@ import { usePanelResize } from '@/hooks/browser/usePanelResize';
 import { useBrowserCommands } from '@/hooks/browser/useBrowserCommands';
 import { useWebviewControl } from '@/hooks/browser/useWebviewControl';
 import { useCdpConnection } from '@/hooks/browser/useCdpConnection';
-
-// ============================================================================
-// VS Code Design Tokens
-// ============================================================================
-const VS_CODES = {
-  border: '#3c3c3c',
-  bg: '#1e1e1e',
-  bgHover: '#2a2d2e',
-  text: '#cccccc',
-  textMuted: '#858585',
-  textDim: '#6e6e6e',
-  warning: '#dcdcaa',
-  radius: '2px',
-} as const;
+import { VS_CODES } from '@/styles/vscode-constants';
 
 // ============================================================================
 // Main Component
@@ -37,6 +25,7 @@ const VS_CODES = {
 export function SandboxPanel() {
   const webviewRef = useRef<HTMLWebViewElement | null>(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [debugHovered, setDebugHovered] = useState(false);
 
   // Store state
   const isOpen = useSandboxStore(state => state.isOpen);
@@ -72,6 +61,7 @@ export function SandboxPanel() {
   useWebviewControl(isOpen, webviewRef, navigateTo);
 
   // Establish CDP connection when browser panel opens
+  // This hook now also handles showing the Electron BrowserView
   useCdpConnection(isOpen);
 
   // Callback ref to set src when webview mounts
@@ -116,16 +106,19 @@ export function SandboxPanel() {
         />
       )}
 
-      {/* Main Panel */}
+      {/* Main Panel - Enhanced Architecture */}
       <div
-        className={`flex flex-col font-mono text-xs transition-all duration-200 border-l ${
+        className={`flex flex-col font-mono transition-all ${
           isFullscreen ? 'fixed inset-0 z-40' : 'fixed right-0 top-0 bottom-0 z-40'
         }`}
         style={{
           width: isFullscreen ? '100%' : panelWidth,
-          backgroundColor: VS_CODES.bg,
-          borderColor: VS_CODES.border,
-          color: VS_CODES.text
+          backgroundColor: 'var(--vscode-panel-background)',
+          borderColor: 'var(--vscode-border-color)',
+          color: 'var(--vscode-foreground)',
+          transitionDuration: VS_CODES.transition,
+          // Enhanced shadow for depth
+          boxShadow: isFullscreen ? 'none' : '-2px 0 8px rgba(0, 0, 0, 0.1)'
         }}
         role="complementary"
         aria-label="Browser Panel"
@@ -143,42 +136,70 @@ export function SandboxPanel() {
           onClose={handleClose}
         />
 
-        {/* Toolbar - Debug Toggle */}
+        {/* Toolbar - Enhanced Debug Toggle */}
         <div
-          className="flex items-center gap-2 px-2 py-1 border-b font-mono text-[10px]"
-          style={{ borderColor: VS_CODES.border, backgroundColor: VS_CODES.bgHover }}
+          className="flex items-center border-b"
+          style={{
+            borderColor: 'var(--vscode-border-color)',
+            backgroundColor: 'var(--vscode-sideBar-background)',
+            padding: `${VS_CODES.spacing.sm}px ${VS_CODES.spacing.lg}px`,
+            minHeight: '32px'
+          }}
         >
           <button
             onClick={toggleDebug}
-            className="flex items-center gap-1.5 px-2 py-0.5 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 transition-all duration-150 font-mono uppercase tracking-wider"
             style={{
-              backgroundColor: showDebug ? VS_CODES.warning : 'transparent',
-              color: showDebug ? '#000000' : VS_CODES.textMuted,
-              border: `1px solid ${showDebug ? VS_CODES.warning : VS_CODES.border}`,
-              borderRadius: VS_CODES.radius
+              backgroundColor: showDebug ? 'var(--vscode-warning-foreground)' : 'transparent',
+              color: showDebug ? '#000000' : 'var(--vscode-secondary-text)',
+              border: `1px solid ${showDebug ? 'var(--vscode-warning-foreground)' : 'var(--vscode-border-color)'}`,
+              borderRadius: VS_CODES.radiusSm,
+              fontSize: '11px',
+              fontWeight: 500,
+              transform: debugHovered ? 'scale(1.02)' : 'scale(1)',
+              cursor: 'pointer'
             }}
-            onMouseEnter={(e) => {
-              if (!showDebug) e.currentTarget.style.backgroundColor = VS_CODES.bgHover;
-            }}
-            onMouseLeave={(e) => {
-              if (!showDebug) e.currentTarget.style.backgroundColor = 'transparent';
-            }}
+            onMouseEnter={() => setDebugHovered(true)}
+            onMouseLeave={() => setDebugHovered(false)}
           >
-            <Bug size={10} />
-            <span className="uppercase tracking-wider">
+            <Bug size={11} />
+            <span>
               {showDebug ? 'Debug ON' : 'Debug OFF'}
             </span>
           </button>
 
-          <span className="flex-1" style={{ color: VS_CODES.textDim }}>
-            {showDebug ? 'Debug panel active - use controls below' : 'Toggle debug panel for inspection'}
-          </span>
+          <div className="flex-1" style={{ fontSize: '11px', color: 'var(--vscode-secondary-text)' }}>
+            <span className="uppercase tracking-wide" style={{ fontWeight: 500 }}>
+              {showDebug ? 'Debug panel active - use controls below' : 'Toggle debug panel for inspection'}
+            </span>
+          </div>
+
+          {/* Panel info badge */}
+          <div
+            className="flex items-center gap-1 px-2 py-0.5"
+            style={{
+              backgroundColor: 'var(--vscode-badge-background)',
+              borderRadius: VS_CODES.radiusSm,
+              fontSize: '10px',
+              color: 'var(--vscode-badge-foreground)',
+              opacity: 0.8
+            }}
+          >
+            <Columns size={10} />
+            <span className="font-mono">{Math.round(panelWidth)}px</span>
+          </div>
         </div>
 
-        {/* Content Area */}
+        {/* Content Area - Enhanced */}
         <div className="flex-1 flex overflow-hidden">
           {/* Browser View */}
-          <div className="flex-1 relative overflow-hidden bg-white">
+          <div
+            className="flex-1 relative overflow-hidden"
+            style={{
+              backgroundColor: '#ffffff',
+              transition: `width ${VS_CODES.transition} ease-out`
+            }}
+          >
             <webview
               ref={setWebviewRef}
               id="embedded-browser"
@@ -193,14 +214,15 @@ export function SandboxPanel() {
             />
           </div>
 
-          {/* Debug Panel (when enabled) */}
+          {/* Debug Panel - Enhanced Transition */}
           {showDebug && (
             <div
-              className="border-l overflow-y-auto"
+              className="border-l overflow-hidden transition-all duration-200"
               style={{
                 width: '300px',
-                borderColor: VS_CODES.border,
-                minWidth: '300px'
+                minWidth: '300px',
+                borderColor: 'var(--vscode-border-color)',
+                animation: 'slideIn 200ms ease-out'
               }}
             >
               <DebugPanel />
@@ -214,6 +236,20 @@ export function SandboxPanel() {
           browserUrl={browserUrl}
         />
       </div>
+
+      {/* Slide-in animation for debug panel */}
+      <style>{`
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateX(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+      `}</style>
     </>
   );
 }

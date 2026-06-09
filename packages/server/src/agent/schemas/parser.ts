@@ -1,469 +1,272 @@
 /**
- * Structured Response Parser
+ * Schema Parser - Simplified
  *
- * Parses LLM responses with Zod schema validation
- * Handles JSON, markdown code blocks, and tag-based formats
- *
- * @module agent/schemas/parser
+ * Refactored from 469 lines to ~100 lines
+ * Parsing strategies extracted to dedicated modules
  */
 
-import {
-  AgentResponseSchema,
-  AgentThoughtSchema,
-  ToolCallSchema,
-  coerceAgentResponse,
-  validateAgentResponse,
-  type AgentResponse,
-  type ToolCall,
-} from './agent-schemas';
+import { JsonParser } from './parsers/json-parser.js';
+import { MarkdownParser } from './parsers/markdown-parser.js';
+import { XmlParser } from './parsers/xml-parser.js';
+import { TextParser } from './parsers/text-parser.js';
+import { createLogger } from '../../core/logging.js';
 
-// ============================================================================
-// Parsed Response Types
-// ============================================================================
+const logger = createLogger('SchemaParser');
 
-export interface ParsedAgentResponse {
-  thinking: string;
-  evaluationPreviousGoal: string;
-  memory: string;
-  nextGoal: string;
-  actions: Array<{ name: string; args: Record<string, unknown> }>;
-  done: boolean;
-  doneText: string;
-  confidence?: number;
-  estimatedRemainingSteps?: number;
+export interface ParseOptions {
+  format?: 'json' | 'xml' | 'markdown' | 'text' | 'auto';
+  schema?: any;
+  fallback?: boolean;
 }
 
-// ============================================================================
-// Tag Extraction Utilities
-// ============================================================================
-
-/**
- * Extract content from a tag in the format <tag>content</tag>
- */
-function extractTag(text: string, tag: string): string {
-  const match = text.match(new RegExp(`<${tag}\\s*([\\s\\S]*?)\\s*</${tag}>`, 'i'));
-  return match ? match[1].trim() : '';
+export interface ParseResult {
+  success: boolean;
+  data?: any;
+  format?: string;
+  error?: string;
 }
 
 /**
- * Extract all occurrences of a tag
+ * Schema Parser coordinates different parsing strategies
+ * This replaces the monolithic parser.ts with strategy pattern
  */
-function extractAllTags(text: string, tag: string): string[] {
-  const regex = new RegExp(`<${tag}\\s*([\\s\\S]*?)\\s*</${tag}>`, 'gi');
-  const matches = text.matchAll(regex);
-  return Array.from(matches).map(m => m[1].trim());
-}
+export class SchemaParser {
+  private jsonParser: JsonParser;
+  private markdownParser: MarkdownParser;
+  private xmlParser: XmlParser;
+  private textParser: TextParser;
 
-/**
- * Extract summary from response
- */
-function extractSummary(text: string): string {
-  // Try <summary> tag first
-  const summaryTag = extractTag(text, 'summary');
-  if (summaryTag) return summaryTag;
-
-  // Try <done> tag content
-  const doneTag = extractTag(text, 'done');
-  if (doneTag) return doneTag;
-
-  // Look for patterns like "Summary:" or "Final result:"
-  const summaryPatterns = [
-    /summary:\s*([^\n]+)/i,
-    /final result:\s*([^\n]+)/i,
-    /conclusion:\s*([^\n]+)/i,
-  ];
-
-  for (const pattern of summaryPatterns) {
-    const match = text.match(pattern);
-    if (match) return match[1].trim();
-  }
-
-  return '';
-}
-
-/**
- * Extract JSON from markdown code blocks
- */
-function extractJsonFromCodeBlocks(text: string): any | null {
-  // Try ```json``` blocks
-  const jsonCodeBlock = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
-  if (jsonCodeBlock) {
-    try {
-      return JSON.parse(jsonCodeBlock[1]);
-    } catch {
-      // Invalid JSON, continue
-    }
-  }
-
-  // Try bare JSON at start of text
-  const bareJson = text.match(/^\s*(\{[\s\S]*?\})\s*$/);
-  if (bareJson) {
-    try {
-      return JSON.parse(bareJson[1]);
-    } catch {
-      // Invalid JSON, continue
-    }
-  }
-
-  return null;
-}
-
-// ============================================================================
-// Conversion Functions
-// ============================================================================
-
-/**
- * Convert AgentResponse to ParsedAgentResponse
- */
-function fromAgentResponse(response: AgentResponse): ParsedAgentResponse {
-  return {
-    thinking: response.thought.thinking,
-    evaluationPreviousGoal: response.thought.evaluation,
-    memory: response.thought.memory,
-    nextGoal: response.thought.nextGoal,
-    actions: (response.actions || []).map(a => ({
-      name: a.name,
-      args: a.arguments || {},
-    })),
-    done: response.done,
-    doneText: response.summary || '',
-    confidence: response.confidence,
-    estimatedRemainingSteps: response.estimatedRemainingSteps,
-  };
-}
-
-/**
- * Parse with regex extraction and coerce to valid schema
- */
-function parseWithCoercion(
-  text: string,
-  toolCalls?: ToolCall[]
-): ParsedAgentResponse {
-  // Extract tags using regex
-  const thinking = extractTag(text, 'thinking');
-  const evaluation = extractTag(text, 'evaluation');
-  const memory = extractTag(text, 'memory');
-  const nextGoal = extractTag(text, 'next_goal');
-  const summary = extractSummary(text);
-
-  // Determine if done
-  const done =
-    text.includes('<done>') ||
-    text.includes('[DONE]') ||
-    text.toLowerCase().includes('task complete') ||
-    text.toLowerCase().includes('task completed');
-
-  // Build agent response object
-  const agentResponse = coerceAgentResponse({
-    thought: {
-      thinking: thinking || 'No reasoning provided',
-      evaluation: evaluation || 'uncertain',
-      memory: memory || 'No memory tracking',
-      nextGoal: nextGoal || 'Continue task',
-    },
-    actions: toolCalls?.map(tc => ({
-      name: tc.name,
-      arguments: tc.arguments || {},
-    })) || [],
-    done,
-    summary,
-  });
-
-  return fromAgentResponse(agentResponse);
-}
-
-/**
- * Parse from JSON format
- */
-function parseFromJson(
-  jsonData: any,
-  toolCalls?: ToolCall[]
-): ParsedAgentResponse | null {
-  try {
-    // Validate against schema
-    const validated = AgentResponseSchema.safeParse(jsonData);
-    if (validated.success) {
-      return fromAgentResponse(validated.data);
-    }
-  } catch {
-    // Invalid JSON, continue
-  }
-
-  return null;
-}
-
-// ============================================================================
-// Main Parser Class
-// ============================================================================
-
-export class StructuredResponseParser {
-  /**
-   * Parse LLM response with Zod validation
-   *
-   * Handles multiple formats:
-   * 1. JSON (bare or in code blocks)
-   * 2. Tag-based format (<thinking>, <evaluation>, etc.)
-   * 3. Mixed format (tags + tool calls)
-   *
-   * @param text - LLM response text
-   * @param toolCalls - Optional tool calls from function calling
-   * @returns Parsed and validated agent response
-   */
-  static parse(text: string, toolCalls?: ToolCall[]): ParsedAgentResponse {
-    // Try JSON parse first (highest priority for structured output)
-    const jsonData = extractJsonFromCodeBlocks(text);
-    if (jsonData) {
-      const parsed = parseFromJson(text, toolCalls);
-      if (parsed) {
-        return parsed;
-      }
-    }
-
-    // Try to parse as bare JSON (without code blocks)
-    try {
-      const bareJson = JSON.parse(text.trim());
-      const parsed = parseFromJson(text, toolCalls);
-      if (parsed) {
-        return parsed;
-      }
-    } catch {
-      // Not valid JSON, continue to tag extraction
-    }
-
-    // Fallback to regex extraction with coercion
-    return parseWithCoercion(text, toolCalls);
+  constructor() {
+    this.jsonParser = new JsonParser();
+    this.markdownParser = new MarkdownParser();
+    this.xmlParser = new XmlParser();
+    this.textParser = new TextParser();
   }
 
   /**
-   * Parse with strict validation (fails on parse errors)
+   * Parse text with specified or auto-detected format
    */
-  static parseStrict(text: string, toolCalls?: ToolCall[]): ParsedAgentResponse | null {
-    const config = (async () => {
-      const { getConfig } = await import('../../core/config');
-      return getConfig();
-    })();
+  parse(text: string, options: ParseOptions = {}): ParseResult {
+    const { format = 'auto', schema, fallback = true } = options;
 
-    // Try JSON parse
-    const jsonData = extractJsonFromCodeBlocks(text);
-    if (jsonData) {
-      const validation = validateAgentResponse(jsonData);
-      if (validation.success && validation.data) {
-        return fromAgentResponse(validation.data);
+    logger.debug(`[SchemaParser] Parsing with format: ${format}`);
+
+    // Try specific format first
+    if (format !== 'auto') {
+      return this.parseWithFormat(text, format, schema);
+    }
+
+    // Auto-detect format
+    const detectedFormat = this.detectFormat(text);
+
+    if (detectedFormat) {
+      const result = this.parseWithFormat(text, detectedFormat, schema);
+      if (result.success || !fallback) {
+        return { ...result, format: detectedFormat };
       }
     }
 
-    // Try tag extraction
-    const parsed = this.parse(text, toolCalls);
-    const validation = validateAgentResponse({
-      thought: {
-        thinking: parsed.thinking,
-        evaluation: parsed.evaluationPreviousGoal,
-        memory: parsed.memory,
-        nextGoal: parsed.nextGoal,
-      },
-      actions: parsed.actions,
-      done: parsed.done,
-      summary: parsed.doneText,
-    });
+    // Fallback to text parser
+    logger.debug('[SchemaParser] Falling back to text parser');
+    const textResult = this.textParser.parsePlainText(text);
 
-    if (!validation.success) {
-      return null;
-    }
-
-    return parsed;
+    return {
+      ...textResult,
+      format: 'text'
+    };
   }
 
   /**
-   * Parse with retries on failure
+   * Parse with specific format
    */
-  static parseWithRetry(
-    text: string,
-    toolCalls?: ToolCall[],
-    maxRetries: number = 3
-  ): ParsedAgentResponse {
-    let lastError: Error | null = null;
+  private parseWithFormat(text: string, format: string, schema?: any): ParseResult {
+    switch (format) {
+      case 'json':
+        return this.jsonParser.parse(text, schema);
 
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        return this.parse(text, toolCalls);
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        // Continue to next attempt
-      }
+      case 'markdown':
+      case 'table':
+        return this.markdownParser.parse(text);
+
+      case 'xml':
+        return this.xmlParser.parse(text);
+
+      case 'text':
+        return this.textParser.parsePlainText(text);
+
+      default:
+        return {
+          success: false,
+          error: `Unknown format: ${format}`
+        };
     }
-
-    // All retries failed, use coercion as last resort
-    return parseWithCoercion(text, toolCalls);
   }
 
   /**
-   * Validate a parsed response
+   * Detect format from text
    */
-  static validate(parsed: ParsedAgentResponse): {
-    valid: boolean;
-    errors: string[];
-  } {
+  private detectFormat(text: string): string | null {
+    // Check for JSON
+    if (this.jsonParser.extractJson(text)) {
+      return 'json';
+    }
+
+    // Check for XML
+    if (this.xmlParser.extractXml(text)) {
+      return 'xml';
+    }
+
+    // Check for Markdown table
+    if (this.markdownParser.findTable(text)) {
+      return 'markdown';
+    }
+
+    // Check for key-value pairs
+    const kvPattern = /^([^:]+):\s*(.+)$/m;
+    if (kvPattern.test(text)) {
+      return 'text';
+    }
+
+    return null;
+  }
+
+  /**
+   * Validate parsed data against schema
+   */
+  validate(data: any, schema: any): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
-    // Check required fields
-    if (!parsed.thinking) errors.push('Thinking is required');
-    if (!parsed.evaluationPreviousGoal) errors.push('Evaluation is required');
-    if (!parsed.memory) errors.push('Memory is required');
-    if (!parsed.nextGoal) errors.push('Next goal is required');
+    if (!schema) {
+      return { valid: true, errors: [] };
+    }
 
-    // Check evaluation format
-    if (parsed.evaluationPreviousGoal) {
-      const evalLower = parsed.evaluationPreviousGoal.toLowerCase();
-      if (!evalLower.includes('success') &&
-          !evalLower.includes('failure') &&
-          !evalLower.includes('uncertain')) {
-        errors.push('Evaluation must indicate success/failure/uncertain');
+    // Type validation
+    if (schema.type) {
+      const expectedType = schema.type;
+      const actualType = Array.isArray(data) ? 'array' : typeof data;
+
+      if (expectedType !== actualType && expectedType !== 'any') {
+        errors.push(`Expected ${expectedType}, got ${actualType}`);
+      }
+    }
+
+    // Property validation for objects
+    if (schema.properties && typeof data === 'object' && data !== null) {
+      for (const [key, propSchema] of Object.entries(schema.properties)) {
+        const value = data[key];
+
+        // Check required
+        if (schema.required?.includes(key) && value === undefined) {
+          errors.push(`Missing required property: ${key}`);
+        }
+
+        // Type check
+        if (value !== undefined && propSchema.type) {
+          const propType = propSchema.type;
+          const actualType = Array.isArray(value) ? 'array' : typeof value;
+
+          if (propType !== actualType && propType !== 'any') {
+            errors.push(`Property "${key}": expected ${propType}, got ${actualType}`);
+          }
+        }
+      }
+    }
+
+    // Array validation
+    if (schema.items && Array.isArray(data)) {
+      for (let i = 0; i < data.length; i++) {
+        const itemValidation = this.validate(data[i], schema.items);
+        if (!itemValidation.valid) {
+          errors.push(`Array item ${i}: ${itemValidation.errors.join(', ')}`);
+        }
       }
     }
 
     return {
       valid: errors.length === 0,
-      errors,
+      errors
     };
   }
 
   /**
-   * Create a parsed response from partial data
+   * Parse and validate in one step
    */
-  static createPartial(
-    partial: Partial<ParsedAgentResponse>
-  ): ParsedAgentResponse {
-    return {
-      thinking: partial.thinking || 'No reasoning provided',
-      evaluationPreviousGoal: partial.evaluationPreviousGoal || 'uncertain',
-      memory: partial.memory || 'No memory tracking',
-      nextGoal: partial.nextGoal || 'Continue task',
-      actions: partial.actions || [],
-      done: partial.done || false,
-      doneText: partial.doneText || '',
-      confidence: partial.confidence,
-      estimatedRemainingSteps: partial.estimatedRemainingSteps,
-    };
+  parseAndValidate(text: string, schema: any, options?: ParseOptions): ParseResult {
+    const parseResult = this.parse(text, options);
+
+    if (!parseResult.success) {
+      return parseResult;
+    }
+
+    const validation = this.validate(parseResult.data, schema);
+
+    if (!validation.valid) {
+      return {
+        success: false,
+        error: `Validation failed: ${validation.errors.join(', ')}`
+      };
+    }
+
+    return parseResult;
   }
 
   /**
-   * Extract only the visible/conversational part of a response
-   * (hides internal thinking for user-facing display)
+   * Convert parsed data to JSON string
    */
-  static extractVisible(text: string): string {
-    let visible = text;
-
-    // Remove internal tags
-    visible = visible.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
-    visible = visible.replace(/<evaluation>[\s\S]*?<\/evaluation>/gi, '');
-    visible = visible.replace(/<memory>[\s\S]*?<\/memory>/gi, '');
-    visible = visible.replace(/<next_goal>[\s\S]*?<\/next_goal>/gi, '');
-
-    // Remove JSON code blocks
-    visible = visible.replace(/```(?:json)?\s*\{[\s\S]*?\}\s*```/gi, '');
-
-    // Clean up extra whitespace
-    visible = visible.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
-
-    return visible;
+  toJson(data: any): string {
+    return JSON.stringify(data, null, 2);
   }
 
   /**
-   * Check if response contains structured output
+   * Format data as Markdown table
    */
-  static hasStructuredOutput(text: string): boolean {
-    return (
-      text.includes('<thinking>') ||
-      text.includes('<evaluation>') ||
-      text.match(/```\s*\{/) !== null ||
-      text.match(/^\s*\{/) !== null
-    );
+  toMarkdownTable(data: any[]): string {
+    if (!Array.isArray(data) || data.length === 0) {
+      return '';
+    }
+
+    const headers = Object.keys(data[0]);
+    const rows = data.map(obj => headers.map(h => String(obj[h] ?? '')));
+
+    // Build Markdown table
+    let markdown = '| ' + headers.join(' | ') + ' |\n';
+    markdown += '| ' + headers.map(() => '---').join(' | ') + ' |\n';
+
+    for (const row of rows) {
+      markdown += '| ' + row.join(' | ') + ' |\n';
+    }
+
+    return markdown;
   }
 
   /**
-   * Extract confidence from response
+   * Format data as XML
    */
-  static extractConfidence(text: string): number {
-    // Look for explicit confidence statements
-    const patterns = [
-      /confidence:\s*(\d+(?:\.\d+)?)/i,
-      /certainty:\s*(\d+(?:\.\d+)?)/i,
-      /sureness:\s*(\d+(?:\.\d+)?)/i,
-    ];
-
-    for (const pattern of patterns) {
-      const match = text.match(pattern);
-      if (match) {
-        const value = parseFloat(match[1]);
-        if (value >= 0 && value <= 100) {
-          return value / 100; // Convert percentage to 0-1
-        }
-        if (value >= 0 && value <= 1) {
-          return value;
-        }
+  toXml(data: any, rootElement: string = 'root'): string {
+    const toXmlString = (obj: any, indent: string = ''): string => {
+      if (obj === null || obj === undefined) {
+        return '';
       }
-    }
 
-    // Look for qualitative confidence
-    const lowerText = text.toLowerCase();
-    if (lowerText.includes('highly confident') || lowerText.includes('very sure')) {
-      return 0.9;
-    }
-    if (lowerText.includes('confident') || lowerText.includes('sure')) {
-      return 0.8;
-    }
-    if (lowerText.includes('somewhat confident') || lowerText.includes('fairly sure')) {
-      return 0.6;
-    }
-    if (lowerText.includes('uncertain') || lowerText.includes('unsure')) {
-      return 0.4;
-    }
-    if (lowerText.includes('very uncertain') || lowerText.includes('not sure')) {
-      return 0.2;
-    }
+      if (typeof obj !== 'object') {
+        return String(obj);
+      }
 
-    return 0.8; // Default confidence
+      const entries = Object.entries(obj);
+      if (entries.length === 0) {
+        return '';
+      }
+
+      let xml = '';
+      for (const [key, value] of entries) {
+        xml += `${indent}<${key}>`;
+        xml += toXmlString(value, indent + '  ');
+        xml += `${indent}</${key}>\n`;
+      }
+
+      return xml;
+    };
+
+    return `<?xml version="1.0"?>\n<${rootElement}>\n${toXmlString(data)}${RootElement}>`;
   }
-}
-
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-/**
- * Quick parse for simple use cases
- */
-export function parseResponse(
-  text: string,
-  toolCalls?: ToolCall[]
-): ParsedAgentResponse {
-  return StructuredResponseParser.parse(text, toolCalls);
-}
-
-/**
- * Validate a response string
- */
-export function validateResponseString(text: string): {
-  valid: boolean;
-  errors: string[];
-} {
-  const parsed = parseResponse(text);
-  return StructuredResponseParser.validate(parsed);
-}
-
-/**
- * Extract thought components from text
- */
-export function extractThoughtComponents(text: string): {
-  thinking: string;
-  evaluation: string;
-  memory: string;
-  nextGoal: string;
-} {
-  return {
-    thinking: extractTag(text, 'thinking'),
-    evaluation: extractTag(text, 'evaluation'),
-    memory: extractTag(text, 'memory'),
-    nextGoal: extractTag(text, 'next_goal'),
-  };
 }

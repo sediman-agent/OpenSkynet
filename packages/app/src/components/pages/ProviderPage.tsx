@@ -8,51 +8,6 @@ import { Server, Check, CheckCircle, ChevronRight, Search, X } from 'lucide-reac
 import { useAppStore } from '@/stores/useAppStore';
 import { toast } from 'sonner';
 
-// ============================================================================
-// VS Code Design Tokens
-// ============================================================================
-const VS_CODES = {
-  // Border colors
-  border: '#3c3c3c',
-  borderLight: '#454545',
-  borderFocus: '#007fd4',
-
-  // Background colors
-  bg: '#1e1e1e',
-  bgHover: '#2a2d2e',
-  bgSecondary: '#252526',
-  bgInput: '#3c3c3c',
-
-  // Text colors
-  text: '#cccccc',
-  textMuted: '#858585',
-  textDim: '#6e6e6e',
-
-  // Status colors
-  success: '#4ec9b0',
-  error: '#f48771',
-  warning: '#dcdcaa',
-  info: '#3794ff',
-
-  // Spacing
-  xs: '2px',
-  sm: '4px',
-  md: '8px',
-  lg: '12px',
-
-  // Typography
-  fontSize: '13px',
-  fontSizeSmall: '11px',
-
-  // Border radius
-  radius: '2px',
-  radiusSm: '3px',
-} as const;
-
-// ============================================================================
-// Types
-// ============================================================================
-
 interface ProviderInfo {
   name: string;
   display_name?: string;
@@ -61,43 +16,29 @@ interface ProviderInfo {
   has_key: boolean;
 }
 
-// ============================================================================
-// VS Code-Style Status Badge
-// ============================================================================
-
 function VSCodeStatusBadge({ status }: { status: 'connected' | 'disconnected' | 'error' | 'default' }) {
-  const styles = {
-    connected: { color: VS_CODES.success, text: 'CONFIGURED' },
-    disconnected: { color: VS_CODES.textMuted, text: 'NOT CONFIGURED' },
-    error: { color: VS_CODES.error, text: 'ERROR' },
-    default: { color: VS_CODES.textMuted, text: 'DEFAULT' }
+  const colors = {
+    connected: 'var(--vscode-success-foreground)',
+    disconnected: 'var(--vscode-secondary-text)',
+    error: 'var(--vscode-error-foreground)',
+    default: 'var(--vscode-secondary-text)'
   };
 
-  const style = styles[status];
+  const texts = {
+    connected: 'CONFIGURED',
+    disconnected: 'NOT CONFIGURED',
+    error: 'ERROR',
+    default: 'DEFAULT'
+  };
 
   return (
     <span
       className="text-[10px] font-mono uppercase tracking-wider"
-      style={{ color: style.color }}
+      style={{ color: colors[status] }}
     >
-      {style.text}
+      {texts[status]}
     </span>
   );
-}
-
-// ============================================================================
-// VS Code-Style Provider Item
-// ============================================================================
-
-interface VSCodeProviderItemProps {
-  provider: ProviderInfo;
-  isExpanded: boolean;
-  isSelected: boolean;
-  status: 'connected' | 'disconnected' | 'error' | 'default';
-  apiKey: string;
-  onToggle: () => void;
-  onApiKeyChange: (value: string) => void;
-  onSave: () => void;
 }
 
 function VSCodeProviderItem({
@@ -109,7 +50,16 @@ function VSCodeProviderItem({
   onToggle,
   onApiKeyChange,
   onSave
-}: VSCodeProviderItemProps) {
+}: {
+  provider: ProviderInfo;
+  isExpanded: boolean;
+  isSelected: boolean;
+  status: 'connected' | 'disconnected' | 'error' | 'default';
+  apiKey: string;
+  onToggle: () => void;
+  onApiKeyChange: (value: string) => void;
+  onSave: () => void;
+}) {
   const needsKey = provider.needs_api_key && !provider.has_key;
   const hasKey = provider.has_key;
 
@@ -117,42 +67,52 @@ function VSCodeProviderItem({
     <div
       className="border font-mono text-sm"
       style={{
-        borderColor: VS_CODES.border,
-        borderRadius: VS_CODES.radiusSm,
-        backgroundColor: isSelected ? VS_CODES.bgHover : VS_CODES.bg,
-        marginBottom: VS_CODES.sm
+        borderColor: 'var(--vscode-border-color)',
+        borderRadius: 'var(--vscode-corner-radius-round)',
+        backgroundColor: isSelected ? 'var(--vscode-list-hoverBackground)' : 'transparent',
+        marginBottom: 'var(--vscode-design-unit)'
       }}
     >
       {/* Main Row */}
       <button
         onClick={onToggle}
-        className="w-full px-2 py-1.5 flex items-center gap-2 text-left hover:bg-[#2a2d2e]/50 transition-colors"
+        className="w-full px-2 py-1.5 flex items-center gap-2 text-left transition-colors"
         style={{ minHeight: '32px' }}
+        onMouseEnter={(e) => {
+          if (!isSelected) {
+            e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isSelected) {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }
+        }}
       >
         {/* Status Indicator */}
         <div
           className="w-1.5 h-1.5 rounded-full shrink-0"
           style={{
-            backgroundColor: status === 'connected' ? VS_CODES.success :
-                         status === 'error' ? VS_CODES.error :
-                         hasKey ? VS_CODES.info :
-                         needsKey ? VS_CODES.warning :
-                         VS_CODES.textDim
+            backgroundColor: status === 'connected' ? 'var(--vscode-success-foreground)' :
+                         status === 'error' ? 'var(--vscode-error-foreground)' :
+                         hasKey ? 'var(--vscode-info-foreground)' :
+                         needsKey ? 'var(--vscode-warning-foreground)' :
+                         'var(--vscode-secondary-text)'
           }}
         />
 
         {/* Expand Icon */}
         <div className="shrink-0" style={{ width: '16px' }}>
           {isExpanded ? (
-            <ChevronRight size={12} style={{ color: VS_CODES.textMuted, transform: 'rotate(90deg)' }} />
+            <ChevronRight size={12} style={{ color: 'var(--vscode-secondary-text)', transform: 'rotate(90deg)' }} />
           ) : (
-            <ChevronRight size={12} style={{ color: VS_CODES.textMuted }} />
+            <ChevronRight size={12} style={{ color: 'var(--vscode-secondary-text)' }} />
           )}
         </div>
 
         {/* Provider Name */}
         <div className="flex-1 truncate">
-          <span style={{ color: VS_CODES.text, fontWeight: 500 }}>
+          <span style={{ color: 'var(--vscode-foreground)', fontWeight: 500 }}>
             {provider.display_name || provider.name}
           </span>
         </div>
@@ -164,7 +124,7 @@ function VSCodeProviderItem({
 
         {/* Selection Check */}
         {isSelected && (
-          <Check size={12} style={{ color: VS_CODES.success }} />
+          <Check size={12} style={{ color: 'var(--vscode-success-foreground)' }} />
         )}
       </button>
 
@@ -173,20 +133,20 @@ function VSCodeProviderItem({
         <div
           className="px-2 py-2 border-t overflow-hidden"
           style={{
-            borderColor: VS_CODES.border,
-            backgroundColor: VS_CODES.bgSecondary
+            borderColor: 'var(--vscode-border-color)',
+            backgroundColor: 'var(--vscode-input-background)'
           }}
         >
           {/* Category */}
-          <div className="text-[10px] mb-2" style={{ color: VS_CODES.textMuted }}>
-            CATEGORY: <span style={{ color: VS_CODES.text }}>{provider.category.toUpperCase()}</span>
+          <div className="text-[10px] mb-2" style={{ color: 'var(--vscode-secondary-text)' }}>
+            CATEGORY: <span style={{ color: 'var(--vscode-foreground)' }}>{provider.category.toUpperCase()}</span>
           </div>
 
           {/* API Key Input */}
           {needsKey ? (
             <div className="space-y-2">
               <div>
-                <label className="text-[10px] uppercase mb-1 block" style={{ color: VS_CODES.textMuted }}>
+                <label className="text-[10px] uppercase mb-1 block" style={{ color: 'var(--vscode-secondary-text)' }}>
                   API Key
                 </label>
                 <div className="flex gap-2">
@@ -197,31 +157,43 @@ function VSCodeProviderItem({
                     placeholder="sk-xxx..."
                     className="flex-1 px-2 py-1 text-xs font-mono outline-none"
                     style={{
-                      backgroundColor: VS_CODES.bgInput,
-                      border: `1px solid ${VS_CODES.border}`,
-                      borderRadius: VS_CODES.radius,
-                      color: VS_CODES.text,
-                      minHeight: '24px'
+                      backgroundColor: 'var(--vscode-input-background)',
+                      border: '1px solid var(--vscode-input-border)',
+                      borderRadius: 'var(--vscode-corner-radius)',
+                      color: 'var(--vscode-input-foreground)',
+                      minHeight: '26px',
+                      fontFamily: 'var(--vscode-font-family)'
                     }}
-                    onFocus={(e) => e.currentTarget.style.borderColor = VS_CODES.borderFocus}
-                    onBlur={(e) => e.currentTarget.style.borderColor = VS_CODES.border}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--vscode-focus-border)';
+                      e.currentTarget.style.boxShadow = '0 0 0 1px var(--vscode-focus-border)';
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--vscode-input-border)';
+                      e.currentTarget.style.boxShadow = 'none';
+                    }}
                   />
                   <button
                     onClick={onSave}
                     disabled={!apiKey}
                     className="px-3 py-1 text-xs font-mono uppercase tracking-wider transition-colors disabled:opacity-40"
                     style={{
-                      backgroundColor: apiKey ? VS_CODES.info : VS_CODES.bgHover,
-                      color: '#ffffff',
-                      border: `1px solid ${apiKey ? VS_CODES.info : VS_CODES.border}`,
-                      borderRadius: VS_CODES.radius,
-                      minHeight: '24px'
+                      backgroundColor: apiKey ? 'var(--vscode-button-primary-background)' : 'var(--vscode-button-secondary-background)',
+                      color: apiKey ? 'var(--vscode-button-primary-foreground)' : 'var(--vscode-button-secondary-foreground)',
+                      border: '1px solid transparent',
+                      borderRadius: 'var(--vscode-corner-radius)',
+                      minHeight: '26px',
+                      cursor: apiKey ? 'pointer' : 'not-allowed'
                     }}
                     onMouseEnter={(e) => {
-                      if (apiKey) e.currentTarget.style.backgroundColor = '#4da3ff';
+                      if (apiKey) {
+                        e.currentTarget.style.backgroundColor = 'var(--vscode-button-primary-hover-background)';
+                      }
                     }}
                     onMouseLeave={(e) => {
-                      if (apiKey) e.currentTarget.style.backgroundColor = VS_CODES.info;
+                      if (apiKey) {
+                        e.currentTarget.style.backgroundColor = 'var(--vscode-button-primary-background)';
+                      }
                     }}
                   >
                     Save
@@ -230,12 +202,12 @@ function VSCodeProviderItem({
               </div>
             </div>
           ) : hasKey ? (
-            <div className="flex items-center gap-2 text-xs" style={{ color: VS_CODES.success }}>
+            <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--vscode-success-foreground)' }}>
               <CheckCircle size={12} />
               <span>API key configured</span>
             </div>
           ) : (
-            <div className="text-xs" style={{ color: VS_CODES.textMuted }}>
+            <div className="text-xs" style={{ color: 'var(--vscode-secondary-text)' }}>
               No API key required
             </div>
           )}
@@ -244,10 +216,6 @@ function VSCodeProviderItem({
     </div>
   );
 }
-
-// ============================================================================
-// Main Component
-// ============================================================================
 
 export function ProviderPage() {
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
@@ -274,7 +242,6 @@ export function ProviderPage() {
         const data = await response.json();
         setProviders(data.providers || []);
 
-        // Initialize statuses based on has_key
         const initialStatuses: Record<string, 'connected' | 'disconnected' | 'error' | 'default'> = {};
         data.providers?.forEach((p: ProviderInfo) => {
           initialStatuses[p.name] = p.has_key ? 'connected' : 'default';
@@ -334,11 +301,11 @@ export function ProviderPage() {
   });
 
   return (
-    <div className="flex flex-col h-full font-mono text-sm" style={{ backgroundColor: VS_CODES.bg }}>
+    <div className="flex flex-col h-full font-mono text-sm" style={{ backgroundColor: 'var(--vscode-background)' }}>
       {/* Header - VS Code Style */}
-      <div className="border-b px-4 py-2 flex items-center gap-2" style={{ borderColor: VS_CODES.border }}>
-        <Server size={14} style={{ color: VS_CODES.textMuted }} />
-        <span className="font-medium" style={{ color: VS_CODES.text }}>Provider Configuration</span>
+      <div className="border-b px-4 py-2 flex items-center gap-2" style={{ borderColor: 'var(--vscode-border-color)' }}>
+        <Server size={14} style={{ color: 'var(--vscode-secondary-text)' }} />
+        <span className="font-medium" style={{ color: 'var(--vscode-foreground)' }}>Provider Configuration</span>
       </div>
 
       {/* Content Area */}
@@ -349,15 +316,15 @@ export function ProviderPage() {
             <Search
               size={12}
               className="absolute left-2 top-1/2 -translate-y-1/2"
-              style={{ color: VS_CODES.textDim }}
+              style={{ color: 'var(--vscode-secondary-text)' }}
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5"
-                style={{ color: VS_CODES.textMuted }}
-                onMouseEnter={(e) => e.currentTarget.style.color = VS_CODES.text}
-                onMouseLeave={(e) => e.currentTarget.style.color = VS_CODES.textMuted}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded transition-colors"
+                style={{ color: 'var(--vscode-secondary-text)' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hover-background)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 <X size={12} />
               </button>
@@ -369,31 +336,41 @@ export function ProviderPage() {
               placeholder="Search providers..."
               className="w-full pl-8 pr-8 py-1 text-xs outline-none font-mono"
               style={{
-                backgroundColor: VS_CODES.bgInput,
-                border: `1px solid ${VS_CODES.border}`,
-                borderRadius: VS_CODES.radius,
-                color: VS_CODES.text,
-                minHeight: '26px'
+                backgroundColor: 'var(--vscode-input-background)',
+                border: '1px solid var(--vscode-input-border)',
+                borderRadius: 'var(--vscode-corner-radius)',
+                color: 'var(--vscode-input-foreground)',
+                minHeight: '26px',
+                fontFamily: 'var(--vscode-font-family)'
               }}
-              onFocus={(e) => e.currentTarget.style.borderColor = VS_CODES.borderFocus}
-              onBlur={(e) => e.currentTarget.style.borderColor = VS_CODES.border}
+              onFocus={(e) => {
+                e.currentTarget.style.borderColor = 'var(--vscode-focus-border)';
+                e.currentTarget.style.boxShadow = '0 0 0 1px var(--vscode-focus-border)';
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = 'var(--vscode-input-border)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
             />
           </div>
 
           {/* Providers List */}
           {filteredProviders.length === 0 ? (
             <div className="py-16 text-center">
-              <div className="w-12 h-12 mx-auto mb-3 flex items-center justify-center" style={{ backgroundColor: VS_CODES.bgSecondary, borderRadius: VS_CODES.radius }}>
-                <Search size={20} style={{ color: VS_CODES.textDim }} />
+              <div className="w-12 h-12 mx-auto mb-3 flex items-center justify-center rounded" style={{
+                backgroundColor: 'var(--vscode-input-background)',
+                borderRadius: 'var(--vscode-corner-radius-round)'
+              }}>
+                <Search size={20} style={{ color: 'var(--vscode-secondary-text)' }} />
               </div>
-              <p className="text-xs" style={{ color: VS_CODES.textMuted }}>
+              <p className="text-xs" style={{ color: 'var(--vscode-secondary-text)' }}>
                 {searchQuery ? 'No providers match your search' : 'No providers available'}
               </p>
             </div>
           ) : (
             <div className="space-y-0">
               {/* Section Header */}
-              <div className="text-[10px] uppercase mb-2 tracking-wider" style={{ color: VS_CODES.textMuted }}>
+              <div className="text-[10px] uppercase mb-2 tracking-wider" style={{ color: 'var(--vscode-secondary-text)' }}>
                 Providers ({filteredProviders.length})
               </div>
 

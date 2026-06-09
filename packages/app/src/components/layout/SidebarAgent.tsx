@@ -1,3 +1,8 @@
+/**
+ * VS Code-Style Sidebar Agent
+ * Conversation list with exact VS Code styling
+ */
+
 import {
   Plus,
   MessageSquare,
@@ -8,11 +13,7 @@ import {
   Search,
 } from 'lucide-react';
 import { useState, memo, useRef, useEffect } from 'react';
-import { cn } from '@/lib/utils';
 import { useChatStore } from '@/stores/useChatStore';
-import { Button } from '@/elements/actions/Button';
-import { ScrollArea } from '@/elements/data/ScrollArea';
-import { Input } from '@/elements/form/Input';
 
 interface ConversationItemProps {
   id: string;
@@ -24,7 +25,7 @@ interface ConversationItemProps {
   onStartEdit: (id: string, title: string) => void;
   onSaveEdit: (id: string) => void;
   onCancelEdit: () => void;
-  onDelete: (id: string) => void | Promise<void>;
+  onDelete: (id: string) => Promise<boolean>;
   onEditTitleChange: (value: string) => void;
 }
 
@@ -45,20 +46,28 @@ const ConversationItem = memo(function ConversationItem({
 
   return (
     <div
-      className={cn(
-        'group flex items-center gap-2 px-3 py-1.5 text-sm',
-        'transition-all duration-150',
-        'border-l-2 rounded-r-md mx-1',
-        isActive
-          ? 'border-primary text-foreground bg-primary/5'
-          : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/50'
-      )}
+      className="group flex items-center gap-2 px-3 py-1.5 text-xs transition-all duration-150 border-l-2 mx-1"
+      style={{
+        borderColor: isActive ? 'var(--vscode-focus-border)' : 'transparent',
+        backgroundColor: isActive ? 'rgba(0, 127, 212, 0.1)' : 'transparent',
+        color: 'var(--vscode-sideBar-foreground)'
+      }}
+      onMouseEnter={(e) => {
+        if (!isActive) {
+          e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isActive) {
+          e.currentTarget.style.backgroundColor = 'transparent';
+        }
+      }}
     >
       <button
         onClick={() => onSelect(id)}
         className="flex-1 text-left flex items-center gap-2 min-w-0"
       >
-        <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+        <MessageSquare size={14} />
         {isEditing ? (
           <input
             type="text"
@@ -68,7 +77,23 @@ const ConversationItem = memo(function ConversationItem({
               if (e.key === 'Enter') onSaveEdit(id);
               if (e.key === 'Escape') onCancelEdit();
             }}
-            className="flex-1 bg-background border border-border rounded px-2 py-0.5 text-xs min-w-0 focus:outline-none focus:ring-1 focus:ring-ring"
+            className="flex-1 min-w-0 font-mono text-xs outline-none border"
+            style={{
+              backgroundColor: 'var(--vscode-input-background)',
+              borderColor: 'var(--vscode-input-border)',
+              color: 'var(--vscode-input-foreground)',
+              borderRadius: 'var(--vscode-corner-radius)',
+              padding: '2px 6px',
+              minHeight: '22px'
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = 'var(--vscode-focus-border)';
+              e.currentTarget.style.boxShadow = '0 0 0 1px var(--vscode-focus-border)';
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = 'var(--vscode-input-border)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
             autoFocus
             aria-label="Edit conversation title"
             onClick={(e) => e.stopPropagation()}
@@ -81,69 +106,75 @@ const ConversationItem = memo(function ConversationItem({
       <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 shrink-0 transition-opacity">
         {isEditing ? (
           <>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5"
+            <button
               onClick={() => onSaveEdit(id)}
+              className="h-5 w-5 flex items-center justify-center rounded transition-colors"
+              style={{ color: 'var(--vscode-success-foreground)' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               aria-label="Save title"
             >
-              <Check className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5"
+              <Check size={12} />
+            </button>
+            <button
               onClick={onCancelEdit}
+              className="h-5 w-5 flex items-center justify-center rounded transition-colors"
+              style={{ color: 'var(--vscode-secondary-text)' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               aria-label="Cancel editing"
             >
-              <X className="h-3 w-3" />
-            </Button>
+              <X size={12} />
+            </button>
           </>
         ) : confirmDelete ? (
           <>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 text-destructive hover:text-destructive"
+            <button
               onClick={async () => {
                 await onDelete(id);
                 setConfirmDelete(false);
               }}
+              className="h-5 w-5 flex items-center justify-center rounded transition-colors"
+              style={{ color: 'var(--vscode-error-foreground)' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               aria-label="Confirm delete"
             >
-              <Check className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5"
+              <Check size={12} />
+            </button>
+            <button
               onClick={() => setConfirmDelete(false)}
+              className="h-5 w-5 flex items-center justify-center rounded transition-colors"
+              style={{ color: 'var(--vscode-secondary-text)' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               aria-label="Cancel delete"
             >
-              <X className="h-3 w-3" />
-            </Button>
+              <X size={12} />
+            </button>
           </>
         ) : (
           <>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5"
+            <button
               onClick={() => onStartEdit(id, title)}
+              className="h-5 w-5 flex items-center justify-center rounded transition-colors"
+              style={{ color: 'var(--vscode-secondary-text)' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               aria-label={`Rename "${title}"`}
             >
-              <Edit2 className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 text-destructive hover:text-destructive"
+              <Edit2 size={12} />
+            </button>
+            <button
               onClick={() => setConfirmDelete(true)}
+              className="h-5 w-5 flex items-center justify-center rounded transition-colors"
+              style={{ color: 'var(--vscode-error-foreground)' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               aria-label={`Delete "${title}"`}
             >
-              <Trash2 className="h-3 w-3" />
-            </Button>
+              <Trash2 size={12} />
+            </button>
           </>
         )}
       </div>
@@ -214,8 +245,8 @@ export function SidebarAgent() {
   };
 
   const handleNewChat = async () => {
-    const conv = await createConversation('New Chat');
-    selectConversation(conv.id);
+    await createConversation('New Chat');
+    // createConversation now sets activeConversationId, no need to select again
   };
 
   const filtered = searchQuery
@@ -229,39 +260,57 @@ export function SidebarAgent() {
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between px-2 py-1">
-        <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--vscode-secondary-text)' }}>
           Conversations
         </span>
         <div className="flex items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
+          <button
             onClick={() => setShowSearch(!showSearch)}
+            className="h-6 w-6 flex items-center justify-center rounded transition-colors"
+            style={{ color: 'var(--vscode-sideBar-foreground)' }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             aria-label="Search conversations"
           >
-            <Search className="h-3 w-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
+            <Search size={12} />
+          </button>
+          <button
             onClick={handleNewChat}
+            className="h-6 w-6 flex items-center justify-center rounded transition-colors"
+            style={{ color: 'var(--vscode-sideBar-foreground)' }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             aria-label="New conversation"
           >
-            <Plus className="h-3 w-3" />
-          </Button>
+            <Plus size={12} />
+          </button>
         </div>
       </div>
 
       {showSearch && (
         <div className="px-2 pb-1">
-          <Input
+          <input
             ref={searchRef}
+            type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search..."
-            className="h-7 text-xs"
+            className="w-full px-2 py-1 text-xs font-mono outline-none border"
+            style={{
+              backgroundColor: 'var(--vscode-input-background)',
+              borderColor: 'var(--vscode-input-border)',
+              color: 'var(--vscode-input-foreground)',
+              borderRadius: 'var(--vscode-corner-radius)',
+              minHeight: '26px'
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = 'var(--vscode-focus-border)';
+              e.currentTarget.style.boxShadow = '0 0 0 1px var(--vscode-focus-border)';
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = 'var(--vscode-input-border)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 setSearchQuery('');
@@ -274,24 +323,33 @@ export function SidebarAgent() {
 
       {conversations.length === 0 ? (
         <div className="px-3 py-3 text-center">
-          <p className="text-xs text-muted-foreground mb-2">No conversations yet</p>
-          <Button
-            variant="outline"
-            size="sm"
+          <p className="text-xs mb-2" style={{ color: 'var(--vscode-secondary-text)' }}>
+            No conversations yet
+          </p>
+          <button
             onClick={handleNewChat}
-            className="h-7 text-xs w-full"
+            className="w-full px-3 py-1 text-xs font-mono border transition-colors"
+            style={{
+              backgroundColor: 'transparent',
+              color: 'var(--vscode-foreground)',
+              borderColor: 'var(--vscode-border-color)',
+              borderRadius: 'var(--vscode-corner-radius)',
+              minHeight: '26px'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
-            <Plus className="w-3 h-3 mr-1" />
+            <Plus size={12} className="mr-1" />
             New Chat
-          </Button>
+          </button>
         </div>
       ) : (
-        <ScrollArea className="h-56">
+        <div className="overflow-y-auto" style={{ maxHeight: '224px' }}>
           <nav className="space-y-0 py-1" aria-label="Conversations">
             {grouped.map((group) => (
               <div key={group.label}>
                 <div className="px-3 pt-2 pb-1">
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                  <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--vscode-secondary-text)' }}>
                     {group.label}
                   </span>
                 </div>
@@ -314,8 +372,10 @@ export function SidebarAgent() {
               </div>
             ))}
           </nav>
-        </ScrollArea>
+        </div>
       )}
     </div>
   );
 }
+
+export default SidebarAgent;

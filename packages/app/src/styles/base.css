@@ -1,0 +1,103 @@
+/**
+ * Base Reset and Foundation Styles
+ * VS Code-style foundation with professional defaults
+ */
+
+/* === Modern CSS Reset === */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* === Global Scrollbar Styling === */
+::-webkit-scrollbar {
+  width: var(--vscode-scrollbar-width);
+  height: var(--vscode-scrollbar-height);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: var(--vscode-scrollbarSlider-activeBackground);
+}
+
+/* === Focus Styles === */
+:focus-visible {
+  outline: 1px solid var(--vscode-focus-border);
+  outline-offset: 1px;
+}
+
+/* === Selection Styles === */
+::selection {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+/* === Disabled State === */
+[disabled],
+.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* === Link Styles === */
+a {
+  color: var(--vscode-link-foreground);
+  text-decoration: none;
+  transition: color 150ms ease-out;
+}
+
+a:hover {
+  color: var(--vscode-link-hoverForeground);
+}
+
+/* === Image Styles === */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* === Code Block Styles === */
+code, pre, .font-mono {
+  font-family: var(--vscode-font-family);
+  font-feature-settings: "liga" 0, "calt" 0;
+}
+
+/* === Smooth Transitions === */
+* {
+  transition-property: background-color, border-color, color;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+/* Disable transitions for specific elements */
+input, textarea, button {
+  transition-duration: 0ms;
+}
+
+button {
+  transition-property: background-color, border-color, color, opacity, transform;
+  transition-duration: 150ms;
+}
