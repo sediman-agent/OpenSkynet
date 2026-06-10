@@ -16,7 +16,7 @@ Teach it once. It repeats forever. 24/7 Slavery.
 
 ---
 
-<img width="1108" height="720" alt="Cap 2026-06-11 at 00 17 55" src="https://github.com/user-attachments/assets/f7cc8e44-4ceb-4a1a-905b-89d01738095a" />
+<img width="1108" height="720" alt="Cap2026-06-11at00 17 55-ezgif com-speed" src="https://github.com/user-attachments/assets/143a2023-5d7e-42e1-b611-afe9db254582" />
 
 ---
 
