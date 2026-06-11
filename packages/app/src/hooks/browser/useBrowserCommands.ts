@@ -93,14 +93,15 @@ export function useBrowserCommands(
   useEffect(() => {
     if (!isOpen) return;
 
-    const interval = setInterval(pollCommands, 1000); // Increased from 500ms to 1000ms (1 second)
-    pollIntervalRef.current = interval;
+    // DISABLED: BrowserService already handles polling, this was causing conflicts
+    // const interval = setInterval(pollCommands, 1000);
+    // pollIntervalRef.current = interval;
 
     return () => {
-      console.log('[BrowserCommands] Clearing polling interval');
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
+      console.log('[BrowserCommands] Polling disabled (handled by BrowserService)');
+      // if (pollIntervalRef.current) {
+      //   clearInterval(pollIntervalRef.current);
+      // }
     };
   }, [isOpen, pollCommands]);
 }
@@ -113,23 +114,53 @@ async function executeNavigate(webview: HTMLWebViewElement, params: any): Promis
   const url = params?.url || params;
   console.log('[BrowserCommands] Navigate to:', url);
 
+  // Set webview source
   webview.src = url;
+
+  // Wait for navigation to start
   await new Promise(resolve => setTimeout(resolve, 500));
 
-  // Wait for page to load and capture screenshot
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  // Wait for page to load with timeout
   try {
-    const screenshotResult = await executeScreenshot(webview);
-    return {
-      success: true,
-      output: `Navigated to ${url}`,
-      url,
-      screenshot: screenshotResult.screenshot
-    };
+    // Wait for 'did-finish-load' event or timeout
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        const handler = () => {
+          webview.removeEventListener('did-finish-load', handler);
+          resolve();
+        };
+        webview.addEventListener('did-finish-load', handler);
+      }),
+      new Promise(resolve => setTimeout(resolve, 8000)) // 8 second timeout
+    ]);
+
+    console.log('[BrowserCommands] Navigation completed (or timed out)');
+
+    // Wait a bit more for any dynamic content
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Try to capture screenshot
+    try {
+      const screenshotResult = await executeScreenshot(webview);
+      return {
+        success: true,
+        output: `Navigated to ${url}`,
+        url,
+        screenshot: screenshotResult.screenshot
+      };
+    } catch (e) {
+      console.warn('[BrowserCommands] Screenshot failed after navigation:', e);
+      return {
+        success: true,
+        output: `Navigated to ${url} (screenshot failed)`,
+        url
+      };
+    }
   } catch (e) {
+    console.error('[BrowserCommands] Navigation error:', e);
     return {
-      success: true,
-      output: `Navigated to ${url}`,
+      success: false,
+      error: `Navigation failed: ${e instanceof Error ? e.message : String(e)}`,
       url
     };
   }
@@ -145,6 +176,22 @@ async function executeSnapshot(
   if (result?.elements) {
     onSnapshotUpdate({ elements: result.elements });
     console.log('[BrowserCommands] Updated snapshot with', result.elements.length, 'elements');
+
+    // Submit snapshot to backend for browser controller to retrieve
+    try {
+      await fetch('http://localhost:3001/api/browser/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          snapshot: result,
+          url: webview.src,
+          title: result.title || ''
+        })
+      });
+      console.log('[BrowserCommands] Submitted snapshot to backend');
+    } catch (err) {
+      console.error('[BrowserCommands] Failed to submit snapshot to backend:', err);
+    }
   }
 
   return result;

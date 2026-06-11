@@ -272,10 +272,10 @@ export function SandboxPanel() {
                 border: 'none',
                 pointerEvents: 'auto'  // Ensure clickable
               }}
-              allowpopups="true"
-              nodeintegration="false"
-              plugins="true"
-              disablewebsecurity="true"
+              allowpopups={true}
+              nodeintegration={false}
+              plugins={true}
+              disablewebsecurity={true}
               webpreferences="enableAutomation=true,disablePopupBlocking=true,notificationsAllowed=true,javascript=true,contextIsolation=false,webSecurity=false"
             />
           </div>

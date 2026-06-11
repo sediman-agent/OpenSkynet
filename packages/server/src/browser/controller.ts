@@ -252,9 +252,22 @@ export class BrowserController {
       // Check if running in Electron mode with no Playwright context
       const RUNNING_IN_ELECTRON = process.env.SEDIMAN_MODE === 'electron';
       if (RUNNING_IN_ELECTRON && (!this.session.context || this.session.context.pages().length === 0)) {
-        console.log('[BrowserController] Electron mode - navigation handled via BrowserView IPC');
-        this.emit("navigate", url);
-        return `Navigated to ${url} (via Electron IPC)`;
+        console.log('[BrowserController] Electron mode - navigating via HTTP proxy');
+
+        // Import HTTP proxy service
+        const { navigateToUrl } = await import('./http-proxy-service.js');
+        const result = await navigateToUrl(url);
+
+        if (result.success) {
+          this.emit("navigate", url);
+          console.log('[BrowserController] HTTP proxy navigation succeeded:', result.title);
+          return result.result;
+        } else {
+          // HTTP proxy failed, emit navigate event for UI to handle
+          this.emit("navigate", url);
+          console.log('[BrowserController] HTTP proxy failed, emitting for UI:', result.error);
+          return result.result;
+        }
       }
 
       const page = this.page();
@@ -502,21 +515,73 @@ export class BrowserController {
 
   async snapshot(): Promise<PageSnapshot> {
     if (this.isElectronModeNoContext()) {
-      console.log('[BrowserController] Electron mode - snapshot handled via BrowserView IPC');
-      this.emit("snapshot", "0 elements (via Electron IPC)");
-      return {
-        url: '',
-        title: '',
-        elements: [],
-        textPreview: "",
-        output: "Snapshot not available in Electron mode",
-        scrollPosition: { x: 0, y: 0 },
-        viewport: { width: 600, height: 800 },
-        pageSize: { width: 600, height: 800 },
-        stats: { links: 0, interactive: 0, iframes: 0, images: 0, total: 0, textChars: 0 },
-        pagesAbove: 0,
-        pagesBelow: 0,
-      };
+      console.log('[BrowserController] Electron mode - fetching snapshot via IPC');
+
+      try {
+        // Fetch snapshot from IPC endpoint in Electron mode
+        const response = await fetch('http://localhost:3001/api/browser/snapshot');
+        if (!response.ok) {
+          throw new Error(`IPC snapshot failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Extract snapshot data from response
+        const snapshotData = data.snapshot;
+
+        if (!snapshotData || !snapshotData.elements) {
+          console.log('[BrowserController] No snapshot elements available yet');
+          // Return dummy result if no elements yet
+          return {
+            url: data.url || '',
+            title: data.title || '',
+            elements: [],
+            textPreview: "",
+            output: "Waiting for page to load...",
+            scrollPosition: { x: 0, y: 0 },
+            viewport: { width: 600, height: 800 },
+            pageSize: { width: 600, height: 800 },
+            stats: { links: 0, interactive: 0, iframes: 0, images: 0, total: 0, textChars: 0 },
+            pagesAbove: 0,
+            pagesBelow: 0,
+          };
+        }
+
+        // Transform IPC snapshot data to PageSnapshot format
+        const snapshot: PageSnapshot = {
+          url: data.url || snapshotData.url || '',
+          title: data.title || snapshotData.title || '',
+          elements: snapshotData.elements || [],
+          textPreview: snapshotData.textPreview || '',
+          output: snapshotData.output || '',
+          scrollPosition: snapshotData.scrollPosition || { x: 0, y: 0 },
+          viewport: snapshotData.viewport || { width: 600, height: 800 },
+          pageSize: snapshotData.pageSize || { width: 600, height: 800 },
+          stats: snapshotData.stats || { links: 0, interactive: 0, iframes: 0, images: 0, total: 0, textChars: 0 },
+          pagesAbove: snapshotData.pagesAbove || 0,
+          pagesBelow: snapshotData.pagesBelow || 0,
+        };
+
+        this.emit("snapshot", `${snapshot.elements.length} elements (via IPC)`);
+        return snapshot;
+      } catch (error) {
+        console.error('[BrowserController] IPC snapshot fetch failed:', error);
+        // Fall back to dummy result if IPC fails
+        this.emit("snapshot", "0 elements (IPC failed)");
+        return {
+          url: '',
+          title: '',
+          elements: [],
+          textPreview: "",
+          output: "Snapshot not available (IPC connection failed)",
+          scrollPosition: { x: 0, y: 0 },
+          viewport: { width: 600, height: 800 },
+          pageSize: { width: 600, height: 800 },
+          stats: { links: 0, interactive: 0, iframes: 0, images: 0, total: 0, textChars: 0 },
+          pagesAbove: 0,
+          pagesBelow: 0,
+        };
+      }
     }
 
     const page = this.page();

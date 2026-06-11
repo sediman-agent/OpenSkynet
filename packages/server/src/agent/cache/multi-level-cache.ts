@@ -317,7 +317,7 @@ export function getMultiLevelCache(): MultiLevelCache {
       l1MaxSize: 10 * 1024 * 1024,
       l2MaxEntries: 500,
       compressionThreshold: 1024,
-      enabled: true
+      enabled: false // DISABLED: Force new system prompt to take effect
     });
   }
   return globalCache;

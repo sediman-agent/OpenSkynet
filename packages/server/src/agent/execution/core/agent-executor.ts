@@ -77,8 +77,37 @@ export class AgentExecutor {
       return { done: true, result, success: false, steps: this.context.steps };
     }
 
-    // Get messages and build prompt
+    // === PHASE 1: Force reasoning text WITHOUT tools ===
     const messages = await this.getMessages();
+
+    // Call LLM WITHOUT tools to force text-only reasoning
+    const reasoningPrompt = `Based on the current context and messages, provide your next step reasoning. What will you do next? Keep it brief (1-2 sentences).`;
+
+    const reasoningMessages = [
+      ...messages.slice(-5), // Include last 5 messages for context
+      { role: 'user', content: reasoningPrompt }
+    ];
+
+    const reasoningResponse = await this.context.llmProvider.chatStreamWithTools(
+      reasoningMessages,
+      [], // NO tools - forces text-only response
+      systemPrompt,
+      (chunk: string) => {
+        this.context.streamEmitter.emitContent(chunk, false);
+        this.context.streamEmitter.forceFlush();
+      }
+    );
+
+    const reasoningText = reasoningResponse.text || '';
+
+    logger.info(`[AgentExecutor] Phase 1 (Reasoning): Generated ${reasoningText.length} chars of reasoning text`);
+
+    // Emit spacing if we got reasoning
+    if (reasoningText) {
+      this.context.streamEmitter.emitContent('\n\n', false);
+    }
+
+    // === PHASE 2: Execute tools with full context ===
     const response = await this.callLLM(messages, tools, systemPrompt);
 
     // Process tool calls or text response

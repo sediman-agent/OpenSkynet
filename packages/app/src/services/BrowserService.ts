@@ -95,19 +95,27 @@ class BrowserService extends EventEmitter {
     this.isPollingCommands = true;
 
     // Poll every 2000ms for pending commands (2 seconds - reduce noise)
-    setInterval(async () => {
-      try {
-        const response = await fetch('http://localhost:3001/api/browser/pending-commands');
-        if (response.ok) {
-          const data = await response.json();
-          if (data.commands && data.commands.length > 0) {
-            // Execute commands silently
-            await this.executeCommands(data.commands);
+    // Use non-blocking approach to prevent UI freezing
+    setInterval(() => {
+      // Don't use await inside setInterval to prevent blocking
+      fetch('http://localhost:3001/api/browser/pending-commands')
+        .then(response => {
+          if (response.ok) {
+            return response.json();
           }
-        }
-      } catch (err) {
-        // Ignore polling errors silently
-      }
+          throw new Error('Poll failed');
+        })
+        .then(data => {
+          if (data.commands && data.commands.length > 0) {
+            // Execute commands without blocking
+            this.executeCommands(data.commands).catch(err => {
+              // Silent error handling to prevent console spam
+            });
+          }
+        })
+        .catch(err => {
+          // Ignore polling errors silently
+        });
     }, 2000);
   }
 
@@ -134,44 +142,23 @@ class BrowserService extends EventEmitter {
               }
 
               if (url) {
-                // For external URLs, don't try to load in webview (will fail with ERR_ABORTED)
-                // Instead, emit server-navigate event and let backend handle it
+                // For external URLs, emit server-navigate event and update state
+                // The backend will handle HTTP proxy and return content separately
+                console.log('[BrowserService] Navigate to:', url);
                 this.emit('server-navigate', { url });
+                this.updateState({ url, isLoading: false });
 
-                // Wait a moment for backend to process navigation
-                await new Promise(resolve => setTimeout(resolve, 500));
-
-                // Wait for document to be ready
-                try {
-                  await this.webviewRef.executeJavaScript(`
-                    (async () => {
-                      return new Promise(resolve => {
-                        if (document.readyState === 'complete') {
-                          resolve(true);
-                        } else {
-                          window.addEventListener('load', () => resolve(true), { once: true });
-                          setTimeout(() => resolve(true), 5000); // Timeout after 5s
-                        }
-                      });
-                    })()
-                  `);
-                  // console.log('[BrowserService] Page loaded');
-                } catch (err) {
-                  // console.warn('[BrowserService] Page load check failed:', err);
-                }
+                // Don't try to load external URLs in webview (causes ERR_ABORTED)
+                // The backend will provide content via HTTP proxy
 
                 result = { success: true, url };
-
-                // Send result back to backend
                 await this.sendCommandResult(command.id, result, null);
               } else {
                 error = 'No URL found in command';
-                // console.error('[BrowserService] No URL found in command');
                 await this.sendCommandResult(command.id, null, error);
               }
             } else {
               error = 'No webview registered for navigation';
-              // console.error('[BrowserService] No webview registered for navigation');
               await this.sendCommandResult(command.id, null, error);
             }
             break;

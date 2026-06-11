@@ -30,6 +30,7 @@ export function createBrowserRoutes(browserSession: any): Hono {
   app.get('/screenshot', async (c) => handlers.handleScreenshot(c));
   app.post('/screenshot', async (c) => handlers.handleScreenshotSubmit(c));
   app.get('/snapshot', async (c) => handlers.handleSnapshot(c));
+  app.post('/snapshot', async (c) => handlers.handleScreenshotSubmit(c)); // Re-use screenshot submit handler for snapshot POST
   app.get('/state', async (c) => handlers.handleStateSnapshot(c));
 
   // === CDP Connection ===
@@ -59,6 +60,7 @@ app.post('/api/browser/exec/result', async (c) => handlers.handleExecResult(c));
 app.get('/api/browser/screenshot', async (c) => handlers.handleScreenshot(c));
 app.post('/api/browser/screenshot', async (c) => handlers.handleScreenshotSubmit(c));
 app.get('/api/browser/snapshot', async (c) => handlers.handleSnapshot(c));
+app.post('/api/browser/snapshot', async (c) => handlers.handleScreenshotSubmit(c)); // Re-use screenshot submit handler for snapshot POST
 app.get('/api/browser/state', async (c) => handlers.handleStateSnapshot(c));
 
 // === CDP Connection ===
