@@ -6,7 +6,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AgentHistoryEntry } from '../history-manager.js';
-import { createLogger } from '../../../../core/logging';
+import { createLogger } from '../../../../core/logging.js';
 
 const logger = createLogger('HistoryStats');
 

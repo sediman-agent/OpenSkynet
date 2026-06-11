@@ -4,7 +4,7 @@
  */
 
 import type { SubTask, SubTaskResult, TaskPlan } from '../task-planner.js';
-import { createLogger } from '../../../../core/logging';
+import { createLogger } from '../../../../core/logging.js';
 
 const logger = createLogger('PlanExecutor');
 

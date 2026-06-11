@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { writeFile, readFile, mkdir, readdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { createLogger } from '../../../../core/logging';
+import { createLogger } from '../../../../core/logging.js';
 import type { AgentHistoryEntry } from '../history-manager.js';
 
 const logger = createLogger('HistoryStorage');
