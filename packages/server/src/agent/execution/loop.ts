@@ -187,7 +187,13 @@ export class AgentLoop {
 
       logger.error(`  Processed Message: ${message}`);
 
-      return this.handleError(err instanceof Error ? err : new Error(message), startTime);
+      // Still save session for failed tasks
+      const errorResult = this.handleError(err instanceof Error ? err : new Error(message), startTime);
+      await this.handlePostExecution({
+        success: errorResult.success,
+        result: errorResult.result || message
+      });
+      return errorResult;
     }
   }
 

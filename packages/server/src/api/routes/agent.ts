@@ -129,19 +129,9 @@ export function createAgentRoutes(deps: {
             body.conversation
           );
 
-          // Save session to database after agent completes
-          try {
-            const { saveSession } = await import("../../memory/sessions.js");
-            await saveSession({
-              task: body.task,
-              steps: result.steps,
-              result: result.success ? result.result : undefined,
-            });
-            console.log('[API Agent] Session saved to database');
-          } catch (saveErr) {
-            // Don't fail the request if session save fails
-            console.warn('[API Agent] Failed to save session:', saveErr);
-          }
+          // Session is already saved by PostTaskHandler during handlePostExecution
+          // No need to save again here - prevents duplicate sessions
+          console.log('[API Agent] Agent execution completed, session already saved by PostTaskHandler');
 
           enqueue("done", {
             success: result.success,

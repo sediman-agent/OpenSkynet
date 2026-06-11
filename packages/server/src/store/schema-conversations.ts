@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS messages (
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     metadata_json TEXT DEFAULT '{}',
     thinking TEXT,
+    screenshot TEXT,
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
 

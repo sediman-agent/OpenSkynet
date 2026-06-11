@@ -80,6 +80,7 @@ export function createConversationRoutes(): Hono {
           timestamp: msg.timestamp,
           status: msg.status,
           thinking: msg.thinking || undefined,
+          screenshot: msg.screenshot || undefined,
         };
 
         // Add tool calls if present

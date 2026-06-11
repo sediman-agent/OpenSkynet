@@ -116,6 +116,17 @@ export function getDb(dbPath?: string): Database {
     for (const p of PRAGMAS) _db.exec(p);
     _db.exec(SCHEMA);
     _db.exec(CONVERSATIONS_SCHEMA);
+
+    // Migration: Add screenshot column to messages table if it doesn't exist
+    try {
+      _db.exec("ALTER TABLE messages ADD COLUMN screenshot TEXT");
+      console.log('[DB] Added screenshot column to messages table (migration)');
+    } catch (err: any) {
+      // Column already exists, ignore the error
+      if (!err.message.includes('duplicate column')) {
+        console.log('[DB] Migration info:', err.message);
+      }
+    }
   }
   return _db;
 }

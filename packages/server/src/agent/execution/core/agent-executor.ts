@@ -1,6 +1,7 @@
 /**
  * Agent Executor
  * Core execution logic extracted from AgentLoop
+ * Enhanced with performance optimizations and stability improvements
  */
 
 import type { LLMProvider } from '../../../llm/provider.js';
@@ -15,6 +16,9 @@ import { CheckpointManager } from '../../monitoring/checkpoint.js';
 import { compressText } from '../../memory/compressor.js';
 import { updatePageState, getLastPageState } from '../../tools/browser-tools.js';
 import type { PageSnapshot } from '../../../browser/controller.js';
+import { getMultiLevelCache } from '../../cache/multi-level-cache.js';
+import { circuitBreakerRegistry } from '../../stability/circuit-breaker.js';
+import { getPerformanceMonitor } from '../../performance/monitor.js';
 
 const logger = createLogger('AgentExecutor');
 
@@ -33,6 +37,12 @@ export class AgentExecutor {
   private loopDetector: LoopDetector;
   private checkpointManager: CheckpointManager;
   private compressor: any;
+  private perfMonitor = getPerformanceMonitor();
+  private llmCircuitBreaker = circuitBreakerRegistry.get('LLM', {
+    failureThreshold: 3,
+    successThreshold: 2,
+    timeoutMs: 30000
+  });
 
   constructor(
     private context: ExecutionContext,
@@ -143,7 +153,7 @@ export class AgentExecutor {
   }
 
   /**
-   * Call LLM with streaming
+   * Call LLM with streaming and performance optimizations
    */
   private async callLLM(messages: any[], tools: any[], systemPrompt: string): Promise<any> {
     logger.info(`[AgentExecutor] ========== CALLING LLM ==========`);
@@ -151,10 +161,25 @@ export class AgentExecutor {
     logger.info(`[AgentExecutor] Tools count: ${tools.length}`);
     logger.info(`[AgentExecutor] System prompt length: ${systemPrompt?.length || 0}`);
 
+    const startTime = performance.now();
+
     // Check if any message has vision
     const hasVision = messages.some((msg: any) =>
       Array.isArray(msg.content) && msg.content.some((item: any) => item.type === 'image_url')
     );
+
+    // Check multi-level cache first (only for non-vision queries)
+    if (!hasVision) {
+      const cache = getMultiLevelCache();
+      const cached = cache.get({ messages, systemPrompt, tools });
+      if (cached) {
+        this.perfMonitor.recordCacheHit();
+        logger.info('[AgentExecutor] Using cached response (multi-level cache hit)');
+        return cached;
+      } else {
+        this.perfMonitor.recordCacheMiss();
+      }
+    }
 
     logger.info(`[AgentExecutor] Has vision in messages: ${hasVision}`);
 
@@ -166,20 +191,45 @@ export class AgentExecutor {
       logger.info(`[Vision message]: ${JSON.stringify(visionMsg, null, 2).substring(0, 800)}`);
     }
 
-    let fullContent = '';
-    const stream = this.context.llmProvider.chatStreamWithTools(
-      messages,
-      tools,
-      systemPrompt,
-      (chunk: string) => {
-        fullContent += chunk;
-        this.context.streamEmitter.emitContent(chunk, false);
+    // Use circuit breaker for LLM calls
+    return this.llmCircuitBreaker.execute(
+      async () => {
+        let fullContent = '';
+        const stream = this.context.llmProvider.chatStreamWithTools(
+          messages,
+          tools,
+          systemPrompt,
+          (chunk: string) => {
+            fullContent += chunk;
+            this.context.streamEmitter.emitContent(chunk, false);
+          }
+        );
+
+        const response = await stream;
+        response.text = fullContent;
+
+        // Record performance
+        const duration = performance.now() - startTime;
+        this.perfMonitor.recordLLMCall(duration);
+
+        // Cache successful responses (multi-level cache)
+        if (!hasVision && response) {
+          getMultiLevelCache().set({ messages, systemPrompt, tools }, response);
+        }
+
+        return response;
+      },
+      // Fallback: return cached response or throw
+      () => {
+        const fallbackCache = getMultiLevelCache();
+        const cached = fallbackCache.get({ messages, systemPrompt, tools });
+        if (cached) {
+          logger.warn('[AgentExecutor] Using cached fallback due to circuit breaker');
+          return cached;
+        }
+        throw new Error('LLM service unavailable (circuit breaker open)');
       }
     );
-
-    const response = await stream;
-    response.text = fullContent;
-    return response;
   }
 
   /**
@@ -200,7 +250,13 @@ export class AgentExecutor {
     if (useBatch) {
       await this.executeBatch(tool_calls, formattedToolCalls);
     } else {
-      await this.executeSequential(tool_calls, formattedToolCalls);
+      // Use parallel execution for independent tools when enabled
+      const useParallel = config.enableParallelExecution && tool_calls.length > 1;
+      if (useParallel && this.canExecuteParallel(tool_calls)) {
+        await this.executeParallel(tool_calls, formattedToolCalls);
+      } else {
+        await this.executeSequential(tool_calls, formattedToolCalls);
+      }
     }
 
     // Inject browser vision if needed
@@ -259,6 +315,81 @@ export class AgentExecutor {
         break;
       }
     }
+  }
+
+  /**
+   * Check if tools can be executed in parallel
+   * Tools can be parallel if they don't depend on each other and are read-only
+   */
+  private canExecuteParallel(tool_calls: any[]): boolean {
+    // Tools that modify state or should run sequentially
+    const sequentialTools = new Set([
+      'browser_click',
+      'browser_type',
+      'browser_press_key',
+      'browser_drag_and_drop',
+      'browser_select',
+      'browser_upload',
+      'browser_go_back',
+      'browser_go_forward',
+      'browser_refresh',
+      'browser_close_tab',
+      'browser_end'
+    ]);
+
+    // Check if any tool requires sequential execution
+    for (const tc of tool_calls) {
+      if (sequentialTools.has(tc.name)) {
+        return false;
+      }
+    }
+
+    // All tools are read-only and can run in parallel
+    return true;
+  }
+
+  /**
+   * Execute tools in parallel for better performance
+   */
+  private async executeParallel(tool_calls: any[], formattedCalls: any[]): Promise<void> {
+    logger.debug(`[AgentExecutor] Executing ${tool_calls.length} tools in parallel`);
+
+    // Execute all tools in parallel
+    const results = await Promise.all(
+      tool_calls.map(async (tc, index) => {
+        const convTc = formattedCalls[index];
+
+        // Emit step start event
+        this.context.streamEmitter.emitStepStart('executing', tc.name, JSON.stringify(tc.arguments));
+
+        const result = await this.context.toolBus.execute(tc.name, tc.arguments);
+        const output = result.success ? result.output : result.error ?? 'Tool failed';
+
+        // Record action
+        this.context.recordAction(tc.name);
+        this.context.steps.push({
+          phase: 'executing',
+          action: tc.name,
+          detail: JSON.stringify(tc.arguments),
+          observation: output,
+        });
+
+        this.messageHandler.addToolResult(convTc?.id || tc.id, tc.name, output);
+
+        // Emit step complete event
+        this.context.streamEmitter.emitStepComplete('executing', tc.name, output, result.success);
+
+        // Check for browser_end (even though it's sequential, handle it)
+        if (tc.name === 'browser_end') {
+          const summaryMatch = output.match(/Task completed:\s*(.*)/s);
+          this.context.complete(summaryMatch?.[1] || output, true);
+        }
+
+        return { index, result, output };
+      })
+    );
+
+    logger.debug(`[AgentExecutor] Parallel execution completed for ${results.length} tools`);
   }
 
   /**

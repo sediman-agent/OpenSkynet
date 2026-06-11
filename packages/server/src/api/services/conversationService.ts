@@ -7,6 +7,25 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "../../store/db";
 import logger from "../../core/logging";
 
+/**
+ * Extract screenshot from a message content (handles vision messages)
+ */
+function extractScreenshotFromContent(content: string | any[]): string | null {
+  if (typeof content === 'string') {
+    return null;
+  }
+
+  if (Array.isArray(content)) {
+    // Vision message format: [{type: 'text', text: '...'}, {type: 'image_url', image_url: {url: 'data:image/png;base64,...'}}]
+    const imagePart = content.find((part: any) => part.type === 'image_url');
+    if (imagePart?.image_url?.url) {
+      return imagePart.image_url.url;
+    }
+  }
+
+  return null;
+}
+
 export interface ConversationDb {
   id: string;
   title: string;
@@ -18,11 +37,12 @@ export interface MessageDb {
   id: string;
   conversation_id: string;
   role: string;
-  content: string;
+  content: string | any[];
   status: string;
   timestamp: string;
   metadata_json: string;
   thinking: string | null;
+  screenshot?: string | null;
 }
 
 export interface ToolCallDb {
@@ -38,6 +58,7 @@ export interface ToolCallDb {
 
 export interface MessageWithToolCalls extends MessageDb {
   tool_calls?: ToolCallDb[];
+  screenshot?: string | null;
 }
 
 export interface ConversationWithMessages extends ConversationDb {
@@ -152,22 +173,45 @@ export function addMessage(
   conversationId: string,
   message: {
     role: string;
-    content: string;
+    content: string | any[];
     status?: string;
     metadata?: Record<string, unknown>;
     thinking?: string;
+    screenshot?: string | null;
   }
 ): MessageDb {
   const db = getDb();
   const id = randomUUID();
   const metadataJson = JSON.stringify(message.metadata || {});
 
-  console.log('[ConversationService] Adding message:', { messageId: id, conversationId, role: message.role, content: message.content });
+  // Extract screenshot from content if not explicitly provided
+  let screenshot = message.screenshot || null;
+  if (!screenshot && Array.isArray(message.content)) {
+    screenshot = extractScreenshotFromContent(message.content);
+  }
+
+  // Convert content to string for storage
+  let contentStr: string;
+  if (Array.isArray(message.content)) {
+    // For vision messages, store as JSON string
+    contentStr = JSON.stringify(message.content);
+  } else {
+    contentStr = message.content;
+  }
+
+  console.log('[ConversationService] Adding message:', {
+    messageId: id,
+    conversationId,
+    role: message.role,
+    contentLength: contentStr.length,
+    hasExplicitScreenshot: !!message.screenshot,
+    hasExtractedScreenshot: !!screenshot
+  });
 
   db.run(
-    `INSERT INTO messages (id, conversation_id, role, content, status, metadata_json, thinking)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [id, conversationId, message.role, message.content, message.status || 'done', metadataJson, message.thinking || null]
+    `INSERT INTO messages (id, conversation_id, role, content, status, metadata_json, thinking, screenshot)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, conversationId, message.role, contentStr, message.status || 'done', metadataJson, message.thinking || null, screenshot]
   );
 
   // Update conversation's updated_at
@@ -176,10 +220,10 @@ export function addMessage(
     [conversationId]
   );
 
-  logger.debug({ messageId: id, conversationId, role: message.role }, "message_added");
+  logger.debug({ messageId: id, conversationId, role: message.role, hasScreenshot: !!screenshot }, "message_added");
 
   const row = db.query("SELECT * FROM messages WHERE id = ?").get(id) as any;
-  console.log('[ConversationService] Message saved successfully:', { messageId: id, conversationId });
+  console.log('[ConversationService] Message saved successfully:', { messageId: id, conversationId, hasScreenshot: !!screenshot });
 
   return row;
 }

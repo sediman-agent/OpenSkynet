@@ -7,6 +7,13 @@ import { startApiServer } from "./api";
 import { buildServerDeps, toRpcDeps, toApiDeps } from "./cli/deps";
 import type { RPCHandlerDeps } from "./rpc/deps";
 
+// Production reliability imports
+import { getConfigManager } from "./core/production-config";
+import { getHealthCheckSystem } from "./core/health-check";
+import { getGracefulShutdown } from "./core/graceful-shutdown";
+import { initDatabaseReliability } from "./store/db-reliability";
+import { getErrorHandler } from "./core/error-handler";
+
 function parseMode(argv: string[]): "rpc" | "api" | "all" {
   const idx = argv.indexOf("--mode");
   if (idx !== -1 && idx + 1 < argv.length) {
@@ -19,9 +26,41 @@ function parseMode(argv: string[]): "rpc" | "api" | "all" {
 async function main() {
   const mode = parseMode(process.argv);
 
-  const logger = createLogger("server");
-  addLog("info", `Server starting in ${mode} mode`, "system");
+  // Initialize production configuration
+  const configManager = getConfigManager();
+  const config = configManager.getEnvironmentConfig();
 
+  // Setup logging with production config
+  setupLogging();
+  const logger = createLogger("server");
+
+  // Check production readiness
+  const productionCheck = configManager.isProductionReady();
+  if (!productionCheck.ready) {
+    logger.error("Configuration issues: " + productionCheck.issues.join(", "));
+  }
+  if (productionCheck.warnings.length > 0) {
+    logger.warn("Configuration warnings: " + productionCheck.warnings.join(", "));
+  }
+
+  addLog("info", `Server starting in ${config.environment} environment (${mode} mode)`, "system");
+
+  // Initialize error handling
+  const errorHandler = getErrorHandler();
+
+  // Initialize database reliability
+  try {
+    await initDatabaseReliability();
+    logger.info("Database reliability initialized");
+  } catch (error) {
+    logger.error("Failed to initialize database reliability: " + (error as Error).message);
+  }
+
+  // Initialize health check system
+  const healthSystem = getHealthCheckSystem();
+  healthSystem.startPeriodicChecks(60000); // Check every minute
+
+  // Build dependencies
   const deps = await buildServerDeps();
 
   if (mode === "rpc") {
@@ -34,17 +73,23 @@ async function main() {
 
     deps.memory.initialize().catch(() => {});
 
-    const shutdown = async (signal: string) => {
-      logger.info({ signal }, "shutting_down");
-      try { await rpcServer.stop(); } catch {}
-      try { await cleanupBrowserTools(); } catch {}
-      closeDb();
-      logger.info("shutdown_complete");
-      process.exit(0);
-    };
+    // Setup production graceful shutdown
+    const gracefulShutdown = getGracefulShutdown({
+      saveState: true,
+      createBackup: config.environment === 'production',
+      timeout: 30000,
+      forceTimeout: 60000
+    });
 
-    process.on("SIGINT", () => shutdown("SIGINT"));
-    process.on("SIGTERM", () => shutdown("SIGTERM"));
+    // Override default signal handlers
+    const signals: Array<NodeJS.Signals> = ["SIGINT", "SIGTERM"];
+    for (const signal of signals) {
+      process.removeAllListeners(signal);
+    }
+
+    process.on("SIGINT", () => gracefulShutdown.shutdown("SIGINT"));
+    process.on("SIGTERM", () => gracefulShutdown.shutdown("SIGTERM"));
+
     logger.info({ mode: "rpc" }, "sediman_server_ready");
     return;
   }
@@ -70,32 +115,31 @@ async function main() {
     logger.info({ mode: "api" }, "server_started");
   }
 
-  const shutdown = async (signal: string) => {
-    logger.info({ signal }, "shutting_down");
-    addLog("warning", `Server shutting down (${signal})`, "system");
-    for (const s of servers) {
-      try {
-        await s.stop();
-      } catch (err) {
-        logger.error({ err: (err as Error).message }, "server_stop_error");
-      }
-    }
+  // Setup production graceful shutdown
+  const gracefulShutdown = getGracefulShutdown({
+    saveState: true,
+    createBackup: config.environment === 'production',
+    timeout: 30000,
+    forceTimeout: 60000
+  });
 
-    try {
-      await cleanupBrowserTools();
-    } catch (err) {
-      logger.error({ err: (err as Error)?.message }, "browser_cleanup_error");
-    }
+  // Register server cleanup handlers
+  for (let i = 0; i < servers.length; i++) {
+    gracefulShutdown.registerHandler(`server_${i}_cleanup`, async () => {
+      await servers[i].stop();
+    });
+  }
 
-    closeDb();
-    logger.info("shutdown_complete");
-    process.exit(0);
-  };
+  // Override default signal handlers
+  const signals: Array<NodeJS.Signals> = ["SIGINT", "SIGTERM"];
+  for (const signal of signals) {
+    process.removeAllListeners(signal);
+  }
 
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => gracefulShutdown.shutdown("SIGINT"));
+  process.on("SIGTERM", () => gracefulShutdown.shutdown("SIGTERM"));
 
-  logger.info({ mode }, "sediman_server_ready");
+  logger.info({ mode, environment: config.environment }, "sediman_server_ready");
 }
 
 main().catch((err) => {
