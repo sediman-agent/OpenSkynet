@@ -1,9 +1,16 @@
 import { renderHook, act } from '@testing-library/react';
 import { useChatStore } from '@/stores/useChatStore';
 import type { Message } from '@/types';
+import type { ConversationService } from '@/services/conversationService';
+
+// Mock conversationService
+jest.mock('@/services/conversationService', () => ({
+  getConversationService: jest.fn(),
+}));
 
 describe('Streaming Flow', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     // Reset store before each test
     useChatStore.setState({
       conversations: [],
@@ -13,13 +20,28 @@ describe('Streaming Flow', () => {
   });
 
   describe('Message ID Preservation', () => {
-    it('should preserve message ID when provided', () => {
+    it('should preserve message ID when provided', async () => {
+      const mockService = {
+        createConversation: jest.fn().mockImplementation((title) =>
+          Promise.resolve({
+            id: '123',
+            title: title || 'New Chat',
+            messages: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+        ),
+      } as unknown as ConversationService;
+
+      const { getConversationService } = await import('@/services/conversationService');
+      (getConversationService as jest.Mock).mockReturnValue(mockService);
+
       const { result } = renderHook(() => useChatStore());
 
       const messageId = 'test-message-id-123';
 
-      act(() => {
-        const conversation = result.current.createConversation('Test Chat');
+      await act(async () => {
+        const conversation = await result.current.createConversation('Test Chat');
         // Add message with specific ID
         const message: Partial<Message> = {
           id: messageId,
@@ -37,11 +59,25 @@ describe('Streaming Flow', () => {
       expect(messages[0].id).toBe(messageId);
     });
 
-    it('should generate new ID when not provided', () => {
+    it('should generate new ID when not provided', async () => {
+      const mockService = {
+        createConversation: jest.fn().mockImplementation((title) =>
+          Promise.resolve({
+            id: '123',
+            title: title || 'New Chat',
+            messages: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+        ),
+      } as unknown as ConversationService;
+
+      const { getConversationService } = await import('@/services/conversationService');
+      (getConversationService as jest.Mock).mockReturnValue(mockService);
       const { result } = renderHook(() => useChatStore());
 
-      act(() => {
-        const conversation = result.current.createConversation('Test Chat');
+      await act(async () => {
+        const conversation = await result.current.createConversation('Test Chat');
         // Add message without ID
         result.current.addMessage(conversation.id, {
           role: 'assistant',
@@ -60,11 +96,26 @@ describe('Streaming Flow', () => {
   });
 
   describe('Chunk Accumulation', () => {
-    it('should accumulate chunks via appendToMessage', () => {
+    it('should accumulate chunks via appendToMessage', async () => {
+      const mockService = {
+        createConversation: jest.fn().mockImplementation((title) =>
+          Promise.resolve({
+            id: '123',
+            title: title || 'New Chat',
+            messages: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+        ),
+      } as unknown as ConversationService;
+
+      const { getConversationService } = await import('@/services/conversationService');
+      (getConversationService as jest.Mock).mockReturnValue(mockService);
+
       const { result } = renderHook(() => useChatStore());
 
-      act(() => {
-        const conversation = result.current.createConversation('Test Chat');
+      await act(async () => {
+        const conversation = await result.current.createConversation('Test Chat');
         result.current.addMessage(conversation.id, {
           role: 'assistant',
           content: '',
@@ -86,11 +137,26 @@ describe('Streaming Flow', () => {
       expect(updatedMessage.content).toBe('Hello World');
     });
 
-    it('should increment version on each chunk', () => {
+    it('should increment version on each chunk', async () => {
+      const mockService = {
+        createConversation: jest.fn().mockImplementation((title) =>
+          Promise.resolve({
+            id: '123',
+            title: title || 'New Chat',
+            messages: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+        ),
+      } as unknown as ConversationService;
+
+      const { getConversationService } = await import('@/services/conversationService');
+      (getConversationService as jest.Mock).mockReturnValue(mockService);
+
       const { result } = renderHook(() => useChatStore());
 
-      act(() => {
-        const conversation = result.current.createConversation('Test Chat');
+      await act(async () => {
+        const conversation = await result.current.createConversation('Test Chat');
         result.current.addMessage(conversation.id, {
           role: 'assistant',
           content: '',
@@ -112,15 +178,30 @@ describe('Streaming Flow', () => {
   });
 
   describe('Complete Streaming Flow', () => {
-    it('should handle complete streaming flow from start to finish', () => {
+    it('should handle complete streaming flow from start to finish', async () => {
+      const mockService = {
+        createConversation: jest.fn().mockImplementation((title) =>
+          Promise.resolve({
+            id: '123',
+            title: title || 'New Chat',
+            messages: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+        ),
+      } as unknown as ConversationService;
+
+      const { getConversationService } = await import('@/services/conversationService');
+      (getConversationService as jest.Mock).mockReturnValue(mockService);
+
       const { result } = renderHook(() => useChatStore());
 
       // Step 1: Create conversation
       let conversationId: string;
       let messageId: string;
 
-      act(() => {
-        const conversation = result.current.createConversation('Test Chat');
+      await act(async () => {
+        const conversation = await result.current.createConversation('Test Chat');
         conversationId = conversation.id;
 
         // Add user message
@@ -175,15 +256,30 @@ describe('Streaming Flow', () => {
       expect(messages[1].status).toBe('done');
     });
 
-    it('should preserve content when marking done (not replace with result)', () => {
+    it('should preserve content when marking done (not replace with result)', async () => {
+      const mockService = {
+        createConversation: jest.fn().mockImplementation((title) =>
+          Promise.resolve({
+            id: '123',
+            title: title || 'New Chat',
+            messages: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+        ),
+      } as unknown as ConversationService;
+
+      const { getConversationService } = await import('@/services/conversationService');
+      (getConversationService as jest.Mock).mockReturnValue(mockService);
+
       const { result } = renderHook(() => useChatStore());
 
       // Setup: Create message with accumulated content
       let conversationId: string;
       let messageId: string;
 
-      act(() => {
-        const conversation = result.current.createConversation('Test Chat');
+      await act(async () => {
+        const conversation = await result.current.createConversation('Test Chat');
         conversationId = conversation.id;
         messageId = 'assistant-msg-id';
 
@@ -218,15 +314,30 @@ describe('Streaming Flow', () => {
   });
 
   describe('Component Re-rendering', () => {
-    it('should trigger re-renders when chunks are added', () => {
+    it('should trigger re-renders when chunks are added', async () => {
+      const mockService = {
+        createConversation: jest.fn().mockImplementation((title) =>
+          Promise.resolve({
+            id: '123',
+            title: title || 'New Chat',
+            messages: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+        ),
+      } as unknown as ConversationService;
+
+      const { getConversationService } = await import('@/services/conversationService');
+      (getConversationService as jest.Mock).mockReturnValue(mockService);
+
       const { result } = renderHook(() => useChatStore());
 
       // Get initial version
       const initialVersion = result.current.version;
 
       // Create conversation and message
-      act(() => {
-        const conversation = result.current.createConversation('Test Chat');
+      await act(async () => {
+        const conversation = await result.current.createConversation('Test Chat');
         result.current.addMessage(conversation.id, {
           role: 'assistant',
           content: '',
@@ -256,11 +367,26 @@ describe('Streaming Flow', () => {
   });
 
   describe('Error Handling', () => {
-    it('should handle updating non-existent message gracefully', () => {
+    it('should handle updating non-existent message gracefully', async () => {
+      const mockService = {
+        createConversation: jest.fn().mockImplementation((title) =>
+          Promise.resolve({
+            id: '123',
+            title: title || 'New Chat',
+            messages: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+        ),
+      } as unknown as ConversationService;
+
+      const { getConversationService } = await import('@/services/conversationService');
+      (getConversationService as jest.Mock).mockReturnValue(mockService);
+
       const { result } = renderHook(() => useChatStore());
 
-      act(() => {
-        result.current.createConversation('Test Chat');
+      await act(async () => {
+        await result.current.createConversation('Test Chat');
       });
 
       const conversation = result.current.conversations[0];
@@ -278,11 +404,26 @@ describe('Streaming Flow', () => {
       expect(result.current.conversations).toHaveLength(1);
     });
 
-    it('should handle appending to non-existent message gracefully', () => {
+    it('should handle appending to non-existent message gracefully', async () => {
+      const mockService = {
+        createConversation: jest.fn().mockImplementation((title) =>
+          Promise.resolve({
+            id: '123',
+            title: title || 'New Chat',
+            messages: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+        ),
+      } as unknown as ConversationService;
+
+      const { getConversationService } = await import('@/services/conversationService');
+      (getConversationService as jest.Mock).mockReturnValue(mockService);
+
       const { result } = renderHook(() => useChatStore());
 
-      act(() => {
-        result.current.createConversation('Test Chat');
+      await act(async () => {
+        await result.current.createConversation('Test Chat');
       });
 
       const conversation = result.current.conversations[0];
