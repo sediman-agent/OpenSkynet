@@ -9,10 +9,21 @@ import { useBrowserState } from '@/hooks/browser/useBrowserState';
 import { browserService } from '@/services/BrowserService';
 
 // Mock browserService
+const mockCallbacks: Record<string, ((data: any) => void)[]> = {};
+
 jest.mock('@/services/BrowserService', () => ({
   browserService: {
-    on: jest.fn(),
-    off: jest.fn(),
+    on: jest.fn((event: string, callback: (data: any) => void) => {
+      if (!mockCallbacks[event]) {
+        mockCallbacks[event] = [];
+      }
+      mockCallbacks[event].push(callback);
+    }),
+    off: jest.fn((event: string, callback: (data: any) => void) => {
+      if (mockCallbacks[event]) {
+        mockCallbacks[event] = mockCallbacks[event].filter(cb => cb !== callback);
+      }
+    }),
     navigate: jest.fn(),
     reload: jest.fn(),
     goBack: jest.fn(),
@@ -23,6 +34,10 @@ jest.mock('@/services/BrowserService', () => ({
 describe('useBrowserState Hook', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Clear all stored callbacks
+    Object.keys(mockCallbacks).forEach(key => {
+      delete mockCallbacks[key];
+    });
   });
 
   afterEach(() => {
@@ -276,18 +291,10 @@ describe('useBrowserState Hook', () => {
     it('should handle browser-navigate event', async () => {
       const { result } = renderHook(() => useBrowserState(true));
 
-      let navigateCallback: ((data: { url: string }) => void) | null = null;
-
-      (browserService.on as any).mockImplementation((event: string, callback: (data: { url: string }) => void) => {
-        if (event === 'browser-navigate') {
-          navigateCallback = callback;
-        }
-      });
-
       act(() => {
-        if (navigateCallback) {
-          navigateCallback({ url: 'https://navigated.com' });
-        }
+        // Trigger the browser-navigate callback
+        const callbacks = mockCallbacks['browser-navigate'] || [];
+        callbacks.forEach(cb => cb({ url: 'https://navigated.com' }));
       });
 
       expect(result.current.browserUrl).toBe('https://navigated.com');
@@ -297,18 +304,10 @@ describe('useBrowserState Hook', () => {
     it('should handle server-navigate event', () => {
       const { result } = renderHook(() => useBrowserState(true));
 
-      let navigateCallback: ((data: { url: string }) => void) | null = null;
-
-      (browserService.on as any).mockImplementation((event: string, callback: (data: { url: string }) => void) => {
-        if (event === 'server-navigate') {
-          navigateCallback = callback;
-        }
-      });
-
       act(() => {
-        if (navigateCallback) {
-          navigateCallback({ url: 'https://server.com' });
-        }
+        // Trigger the server-navigate callback
+        const callbacks = mockCallbacks['server-navigate'] || [];
+        callbacks.forEach(cb => cb({ url: 'https://server.com' }));
       });
 
       expect(result.current.webviewSrc).toBe('https://server.com');

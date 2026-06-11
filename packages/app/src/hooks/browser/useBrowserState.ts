@@ -27,6 +27,7 @@ export function useBrowserState(isOpen: boolean) {
   // Listen to browser service events
   useEffect(() => {
     const handleNavigate = ({ url }: { url: string }) => {
+      setWebviewSrc(url);
       setBrowserUrl(url);
       setInputUrl(url);
     };
@@ -49,7 +50,8 @@ export function useBrowserState(isOpen: boolean) {
   const navigateTo = useCallback(async (url: string) => {
     let target = url.trim();
     if (!target) return;
-    if (!/^https?:\/\//i.test(target)) {
+    // Only add https:// if there's no protocol at all
+    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//i.test(target)) {
       target = 'https://' + target;
     }
 
