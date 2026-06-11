@@ -287,7 +287,11 @@ export class AgentLoop {
         throw new Error('ToolBus not available');
       }
       const definitions = toolBus.getDefinitions();
-      const result = await this.executor.executeIteration(systemPrompt, definitions);
+      const executor = this.executor;
+      if (!executor) {
+        throw new Error('Executor not available');
+      }
+      const result = await executor.executeIteration(systemPrompt, definitions);
 
       if (result.done) {
         return { success: result.success, result: result.result };

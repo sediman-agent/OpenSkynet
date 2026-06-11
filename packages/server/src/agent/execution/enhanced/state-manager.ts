@@ -46,7 +46,8 @@ export async function captureState(options: StateCaptureOptions = {}): Promise<L
         // Capture screenshot if vision is enabled
         if (useVision) {
           try {
-            state.screenshot = await page.screenshot({ type: 'png', encoding: 'base64' });
+            const screenshot = await page.screenshot({ type: 'png' });
+            state.screenshot = screenshot.toString('base64');
           } catch (error) {
             logger.warn(`[StateCapture] Failed to capture screenshot: ${String(error)}`);
           }
