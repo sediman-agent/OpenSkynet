@@ -46,8 +46,8 @@ describe('MessageBubble Component', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Mock najest.ator.clipboard
-    Object.assign(najest.ator, {
+    // Mock navigator.clipboard
+    Object.assign(navigator, {
       clipboard: {
         writeText: jest.fn().mockResolvedValue(undefined),
       },
@@ -131,7 +131,7 @@ describe('MessageBubble Component', () => {
       const copyButton = screen.getByTitle('Copy');
       await userEvent.click(copyButton);
 
-      expect(najest.ator.clipboard.writeText).toHaveBeenCalledWith('Test message');
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Test message');
       expect(onCopy).toHaveBeenCalled();
     });
 
@@ -178,7 +178,7 @@ describe('MessageBubble Component', () => {
       expect(screen.getByText(/thinking/i)).toBeInTheDocument();
     });
 
-    it('should toggle thinking block jest.ibility on click', async () => {
+    it('should toggle thinking block visibility on click', async () => {
       const message = createMockMessage({
         role: 'assistant',
         content: 'Response',
