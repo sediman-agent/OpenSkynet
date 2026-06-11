@@ -5,7 +5,7 @@
 
 import type { AgentHistoryEntry } from '../history-manager.js';
 import { HistoryStorage } from '../storage/history-storage.js';
-import { createLogger } from '../../../../core/logging.js';
+import { createLogger } from '../../../../core/logging';
 
 const logger = createLogger('HistorySearch');
 
