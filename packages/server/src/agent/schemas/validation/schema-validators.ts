@@ -100,7 +100,7 @@ export class SchemaValidators {
     return {
       valid: false,
       errors: result.error.errors.map(e => ({
-        path: e.path,
+        path: e.path.map(String),
         message: e.message,
         code: e.code
       }))

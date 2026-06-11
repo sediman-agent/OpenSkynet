@@ -37,9 +37,10 @@ export async function captureState(options: StateCaptureOptions = {}): Promise<L
 
   try {
     if (browserSession) {
-      const page = browserSession.getCurrentPage();
+      const pages = browserSession.context?.pages();
+      const page = pages && pages.length > 0 ? pages[0] : null;
       if (page) {
-        state.url = page.url();
+        state.url = await page.url();
         state.title = await page.title();
 
         // Capture screenshot if vision is enabled

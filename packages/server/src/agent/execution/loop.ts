@@ -286,7 +286,8 @@ export class AgentLoop {
       if (!toolBus) {
         throw new Error('ToolBus not available');
       }
-      const result = await this.executor.executeIteration(systemPrompt, toolBus.getDefinitions());
+      const definitions = toolBus.getDefinitions();
+      const result = await this.executor.executeIteration(systemPrompt, definitions);
 
       if (result.done) {
         return { success: result.success, result: result.result };

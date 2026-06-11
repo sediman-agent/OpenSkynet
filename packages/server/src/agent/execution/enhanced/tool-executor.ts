@@ -162,7 +162,7 @@ export function buildToolResultMessage(
 } {
   return {
     role: 'tool',
-    tool_call_id: toolCall.id,
+    tool_call_id: toolCall.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     content: result.success ? (result.output || '') : (result.error || 'Tool failed'),
     name: toolCall.name
   };

@@ -13,6 +13,7 @@ export * from './definitions/index.js';
 // Import validation and builder modules
 import { SchemaValidators } from './validation/index.js';
 import { SchemaBuilders } from './builders/index.js';
+import { schemas } from './definitions/index.js';
 
 // ============================================================================
 // Exported Utility Functions (for backward compatibility)
