@@ -23,14 +23,14 @@ export class ExtractionPromptBuilder {
     const {
       url = '',
       text = '',
-      extractionOptions = {}
+      extractionOptions
     } = options;
 
     const {
       maxElements = 100,
       includeHidden = false,
       includeValues = true
-    } = extractionOptions;
+    } = extractionOptions || {};
 
     const lines: string[] = [];
 

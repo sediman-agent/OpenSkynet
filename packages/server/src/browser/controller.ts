@@ -60,6 +60,100 @@ export interface BrowserActionResult {
 }
 
 /**
+ * Accessibility Tree Node
+ * Represents a node from Chrome's Accessibility Tree
+ */
+export interface AXNode {
+  role: string;
+  name?: string;
+  description?: string;
+  value?: string;
+  children?: AXNode[];
+  properties?: Record<string, string | boolean>;
+  attributes?: Record<string, string>;
+  boundingBox?: { x: number; y: number; width: number; height: number };
+  focusable?: boolean;
+  focused?: boolean;
+  hidden?: boolean;
+  offscreen?: boolean;
+  readonly?: boolean;
+  disabled?: boolean;
+  checked?: boolean | 'mixed';
+  selected?: boolean;
+  expanded?: boolean;
+  level?: number;
+  haspopup?: boolean;
+  placeholder?: string;
+  required?: boolean;
+  multiline?: boolean;
+}
+
+/**
+ * Element Metadata
+ * Rich metadata about a DOM element
+ */
+export interface ElementMetadata {
+  id?: number;
+  tag: string;
+  text: string;
+  attributes: Record<string, string>;
+  boundingBox?: { x: number; y: number; width: number; height: number };
+  isVisible: boolean;
+  isInteractable: boolean;
+  xpath: string;
+  hash: string;
+  refId?: number;
+}
+
+/**
+ * Interactive Element
+ * An element that can be interacted with
+ */
+export interface InteractiveElement {
+  refId: number;
+  tag: string;
+  text?: string;
+  role: string;
+  xpath: string;
+  href?: string;
+  placeholder?: string;
+  type?: string;
+  value?: string;
+  ariaLabel?: string;
+  boundingBox?: { x: number; y: number; width: number; height: number };
+  metadata?: ElementMetadata;
+  isNew?: boolean;
+  isHighlighted?: boolean;
+  position?: { index: number; viewportIndex: number };
+}
+
+/**
+ * Page State
+ * Current state of a browser page
+ */
+export interface PageState {
+  url: string;
+  title: string;
+  elements: InteractiveElement[];
+  timestamp: number;
+  scrollPosition?: { x: number; y: number };
+  viewport?: { width: number; height: number };
+  stats?: {
+    links?: number;
+    interactive?: number;
+    interactiveElements?: number;
+    iframes?: number;
+    images?: number;
+    total?: number;
+    textChars?: number;
+    totalElements?: number;
+    newElements?: number;
+    viewportElements?: number;
+  };
+  scrollInfo?: any;
+}
+
+/**
  * BrowserController - Manages browser automation
  */
 export class BrowserController {

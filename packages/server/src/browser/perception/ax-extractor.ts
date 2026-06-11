@@ -8,7 +8,7 @@
  */
 
 import type { Page } from 'playwright';
-import type { AXNode, ElementMetadata, InteractiveElement, PageState } from '../controller.js';
+import type { AXNode, ElementMetadata, InteractiveElement, PageState } from '../controller';
 import { createLogger } from '../../core/logging';
 
 const logger = createLogger('ax-extractor');
@@ -161,7 +161,7 @@ export class AccessibilityTreeExtractor {
           refId,
           tag: getElementType(node.role, node),
           role: node.role,
-          text: text || undefined,
+          text: text || '',
           placeholder: node.placeholder,
           value: node.value,
           ariaLabel: node.name || node.description,
@@ -174,18 +174,21 @@ export class AccessibilityTreeExtractor {
           },
           metadata: {
             id: refId,
+            tag: getElementType(node.role, node),
+            text: text || '',
             xpath,
             boundingBox,
             isVisible: boundingBox ? await isElementVisible(page, xpath) : true,
             isInteractable: isElementInteractable(node),
-            attributes
+            attributes,
+            hash: elementHash
           }
         };
 
         elements.push(element);
 
         // Update viewport index
-        if (boundingBox && element.metadata.isVisible) {
+        if (boundingBox && element.metadata?.isVisible) {
           viewportIndex++;
         }
 
@@ -216,11 +219,11 @@ export class AccessibilityTreeExtractor {
       elements,
       stats: {
         totalElements: elements.length,
-        interactiveElements: elements.filter(el => el.metadata.isInteractable).length,
+        interactiveElements: elements.filter(el => el.metadata?.isInteractable).length,
         newElements: elements.filter(el => el.isNew).length,
-        viewportElements: elements.filter(el => el.position.viewportIndex >= 0).length,
-        scrollInfo
+        viewportElements: elements.filter(el => el.position && el.position.viewportIndex >= 0).length
       },
+      scrollInfo,
       timestamp: Date.now()
     };
   }
@@ -265,10 +268,55 @@ export class AccessibilityTreeExtractor {
     this.nextRefId = Math.max(this.nextRefId, ...elements.map(el => el.refId + 1));
 
     for (const element of elements) {
-      const key = `${element.metadata.xpath}:${element.text}`;
+      const key = `${element.metadata?.xpath || ''}:${element.text || ''}`;
       if (!this.previousRefIds.has(key)) {
         this.previousRefIds.set(key, element.refId);
       }
     }
   }
+
+  /**
+   * Format DOM state for LLM
+   */
+  formatForLLM(domState: PageState): string {
+    const lines: string[] = [];
+
+    for (const element of domState.elements) {
+      const position = element.position
+        ? `[${element.position.index}, viewport: ${element.position.viewportIndex}]`
+        : `[${element.refId}]`;
+
+      const meta = element.metadata
+        ? `(vis: ${element.metadata.isVisible}, int: ${element.metadata.isInteractable})`
+        : '';
+
+      const line = `${position} ${element.tag}${element.role ? ` as ${element.role}` : ''}${element.text ? `: "${element.text}"` : ''}${meta ? ` ${meta}` : ''}`;
+      lines.push(line);
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Convert DOM state to JSON
+   */
+  toJSON(domState: PageState): string {
+    return JSON.stringify({
+      url: domState.url,
+      title: domState.title,
+      timestamp: domState.timestamp,
+      elements: domState.elements.map(el => ({
+        refId: el.refId,
+        tag: el.tag,
+        role: el.role,
+        text: el.text,
+        position: el.position,
+        xpath: el.xpath
+      })),
+      stats: domState.stats
+    }, null, 2);
+  }
 }
+
+// Singleton instance
+export const axExtractor = new AccessibilityTreeExtractor();

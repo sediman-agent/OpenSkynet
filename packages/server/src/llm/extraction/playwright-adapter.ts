@@ -51,7 +51,7 @@ export class PlaywrightAdapter {
   private async extractPageText(page: any): Promise<string> {
     return await page.evaluate(() => {
       // Get all text content
-      const clone = document.body.cloneNode(true);
+      const clone = document.body.cloneNode(true) as HTMLElement;
       clone.querySelectorAll('script, style, noscript, svg').forEach(el => el.remove());
       return clone.innerText || '';
     });

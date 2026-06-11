@@ -62,11 +62,11 @@ export class TabManager {
       }
 
       const pages = ctx.pages();
-      const tabs = pages.map((p, i) => ({
+      const tabs = await Promise.all(pages.map(async (p, i) => ({
         index: i,
         url: p.url(),
-        title: p.title()
-      }));
+        title: await p.title()
+      })));
 
       return {
         success: true,

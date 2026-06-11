@@ -7,7 +7,7 @@ import type { BrowserSession } from "../../browser/session.js";
 import { BrowserController } from "../../browser/controller.js";
 import type { AgentLoop } from "../../agent/loop.js";
 import type { ToolBus } from "../../agent/tools/bus.js";
-import type { ProjectInstance } from "../manager.js";
+import type { ProjectInstance } from "../../manager.js";
 import { createAgentToolRegistry } from "../../agent/tools";
 import { registerBrowserTools } from "../../agent/tools/browser-tools.js";
 import { getConfig } from "../../core/config.js";

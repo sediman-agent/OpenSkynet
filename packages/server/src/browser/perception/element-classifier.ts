@@ -3,7 +3,7 @@
  * Handles element type detection and classification
  */
 
-import type { AXNode } from '../controller.js';
+import type { AXNode } from '../controller';
 import { createLogger } from '../../core/logging';
 
 const logger = createLogger('element-classifier');
@@ -109,7 +109,6 @@ export function inferTagFromRole(role: string): string {
     'submit': 'button',
     'reset': 'button',
     'tab': 'a',
-    'textbox': 'input',
     'search': 'input[type="search"]'
   };
 

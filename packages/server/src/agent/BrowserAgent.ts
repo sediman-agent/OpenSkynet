@@ -337,7 +337,7 @@ export class BrowserAgent {
   /**
    * Get available skills (if skill engine is configured)
    */
-  getAvailableSkills(): string[] {
+  getAvailableSkills(): Array<Record<string, unknown>> {
     if (!this.skillEngine) return [];
     return listSkills({
       skillEngine: this.skillEngine,

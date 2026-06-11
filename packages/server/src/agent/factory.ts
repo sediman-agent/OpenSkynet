@@ -8,8 +8,8 @@
 
 import type { LLMProvider } from '../llm/provider';
 import { EnhancedAgentLoop, EnhancedAgentLoopOpts } from './execution/enhanced-loop';
-import { createStructuredLLMProvider, createStructuredLLMFromEnv } from '../llm/structured';
-import { HierarchicalMemoryTree } from '../memory/hierarchical';
+import { StructuredProvider, createStructuredProvider } from '../llm/structured';
+import { HierarchicalMemory } from '../memory/hierarchical';
 import { createTaskPlanner } from './planning';
 import type { BrowserSession } from '../browser';
 import { ToolBus } from './tools';
@@ -54,27 +54,16 @@ export function createEnhancedAgent(opts: EnhancedAgentFactoryOpts): {
   } = opts;
 
   // Create structured LLM provider if enabled
-  let structuredLLMProvider: import('../llm/structured/structured-provider.js').StructuredLLMProvider | undefined;
-  if (useStructuredOutput) {
-    if (apiKey) {
-      const provider = process.env.SEDIMAN_PROVIDER || 'openai';
-      structuredLLMProvider = createStructuredLLMProvider(
-        provider as 'openai' | 'anthropic',
-        apiKey
-      );
-      logger.info('[AgentFactory] Structured LLM provider created');
-    } else {
-      structuredLLMProvider = createStructuredLLMFromEnv() ?? undefined;
-      if (structuredLLMProvider) {
-        logger.info('[AgentFactory] Structured LLM provider created from env');
-      }
-    }
+  let structuredLLMProvider: StructuredProvider | undefined;
+  if (useStructuredOutput && llmProvider) {
+    structuredLLMProvider = createStructuredProvider(llmProvider);
+    logger.info('[AgentFactory] Structured LLM provider created');
   }
 
   // Create hierarchical memory if enabled
   let memory: BaseMemoryStrategy | undefined;
   if (useHierarchicalMemory) {
-    memory = new HierarchicalMemoryTree() as unknown as BaseMemoryStrategy;
+    memory = new HierarchicalMemory() as unknown as BaseMemoryStrategy;
     logger.info('[AgentFactory] Hierarchical memory enabled');
   }
 

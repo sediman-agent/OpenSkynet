@@ -60,7 +60,7 @@ export class ExecutionOrderCalculator {
 
     // Find all root nodes (no dependencies)
     const roots = subtasks.filter(st => st.dependencies.length === 0);
-    const paths: string[][] = roots.map(root => this.findLongestPath(root, dependencyMap, subtasks));
+    const paths: string[][] = roots.map(root => this.findLongestPath(root.id, dependencyMap, subtasks));
 
     // Return longest path
     return paths.reduce((longest, path) =>
@@ -74,7 +74,7 @@ export class ExecutionOrderCalculator {
   private findLongestPath(
     startId: string,
     dependencyMap: Map<string, string[]>,
-    subtasks: { id: string }[]
+    subtasks: SubTask[]
   ): string[] {
     const visited = new Set<string>();
     const path: string[] = [];

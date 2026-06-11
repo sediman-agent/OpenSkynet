@@ -39,9 +39,11 @@ export function listProviders(): ProviderInfo[] {
   const providers = getProviders();
   return Object.entries(providers).map(([name, preset]) => ({
     name,
-    label: preset.label || name,
-    models: preset.models || [],
-    defaultModel: preset.defaultModel
+    default_model: preset.model,
+    category: preset.category,
+    needs_api_key: !!preset.api_key_env,
+    has_key: !!getKey(name),
+    auto_detect: preset.auto_detect
   }));
 }
 
@@ -60,8 +62,8 @@ export function createProvider(
     throw new Error(`Unknown provider: ${providerName}`);
   }
 
-  const model = modelName || preset.model || preset.defaultModel;
-  const key = apiKey ?? (preset.api_key_env ? getKey(providerName) : undefined);
+  const model = modelName || preset.model || preset.model_name;
+  const key = apiKey ?? (preset.api_key_env ? await getKey(providerName) : undefined);
 
   // Create provider based on type (default to openai-compatible for now)
   const providerType = (preset as any).type || 'openai-compatible';
@@ -71,9 +73,9 @@ export function createProvider(
     case 'openai':
     case 'openai-compatible':
       return new OpenAICompatibleProvider(
-        model,
-        key,
-        baseUrl
+        model || preset.model,
+        key || '',
+        baseUrl || ''
       );
 
     // Add more provider types as needed
@@ -83,9 +85,9 @@ export function createProvider(
     default:
       // Default to openai-compatible for unknown types
       return new OpenAICompatibleProvider(
-        model,
-        key,
-        baseUrl
+        model || preset.model,
+        key || '',
+        baseUrl || ''
       );
   }
 }
@@ -93,7 +95,7 @@ export function createProvider(
 /**
  * Check if provider has API key configured
  */
-export function hasProviderKey(providerName: string): boolean {
+export async function hasProviderKey(providerName: string): Promise<boolean> {
   const providers = getProviders();
   const preset = providers[providerName];
 
@@ -101,11 +103,11 @@ export function hasProviderKey(providerName: string): boolean {
     return false;
   }
 
-  if (preset.authType === 'key') {
-    return hasKey(providerName);
+  if (preset.api_key_env) {
+    return await hasKey(providerName);
   }
 
-  if (preset.authType === 'none') {
+  if (!preset.api_key_env) {
     return true;
   }
 
@@ -125,19 +127,21 @@ export function getProviderInfo(providerName: string): ProviderInfo | null {
 
   return {
     name: providerName,
-    label: preset.label || providerName,
-    models: preset.models || [],
-    defaultModel: preset.defaultModel
+    default_model: preset.model,
+    category: preset.category,
+    needs_api_key: !!preset.api_key_env,
+    has_key: !!getKey(providerName),
+    auto_detect: preset.auto_detect
   };
 }
 
 /**
  * Validate provider configuration
  */
-export function validateProviderConfig(providerName: string, modelName?: string): {
+export async function validateProviderConfig(providerName: string, modelName?: string): Promise<{
   valid: boolean;
   error?: string;
-} {
+}> {
   const providers = getProviders();
   const preset = providers[providerName];
 
@@ -149,7 +153,7 @@ export function validateProviderConfig(providerName: string, modelName?: string)
   }
 
   // Check if provider has API key
-  if (preset.authType === 'key' && !hasKey(providerName)) {
+  if (preset.api_key_env && !(await hasKey(providerName))) {
     return {
       valid: false,
       error: `No API key configured for ${providerName}`
@@ -158,7 +162,7 @@ export function validateProviderConfig(providerName: string, modelName?: string)
 
   // Validate model name
   if (modelName) {
-    const models = preset.models || [];
+    const models = preset.extra_models?.map(m => m.id) || [];
     if (models.length > 0 && !models.includes(modelName)) {
       return {
         valid: false,

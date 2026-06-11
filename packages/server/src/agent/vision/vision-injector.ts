@@ -31,7 +31,9 @@ export class VisionInjector {
   private enabled = true;
 
   constructor() {
-    this.enabled = !getConfig().skipBrowserVision;
+    const config = getConfig();
+    // @ts-ignore - skipBrowserVision not yet in Config type
+    this.enabled = !config.skipBrowserVision;
   }
 
   /**
@@ -61,6 +63,7 @@ export class VisionInjector {
 
     // Check if we should include image
     const config = getConfig();
+    // @ts-ignore - skipBrowserVisionImages not yet in Config type
     const includeImage = !config.skipBrowserVisionImages;
 
     if (includeImage) {

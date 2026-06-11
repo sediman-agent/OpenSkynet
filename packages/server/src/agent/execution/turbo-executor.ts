@@ -82,16 +82,19 @@ export async function executeTurboPath(
       for (const toolCall of response.tool_calls) {
         interrupt.check();
 
-        streamEmitter.emitStepStart('executing', toolCall.name, JSON.stringify(toolCall.arguments));
+        const toolName = toolCall.name || (typeof toolCall.function?.name === 'string' ? toolCall.function.name : '');
+        const toolArgs = toolCall.arguments || (typeof toolCall.function?.arguments === 'string' ? JSON.parse(toolCall.function.arguments) : {});
+
+        streamEmitter.emitStepStart('executing', toolName, JSON.stringify(toolArgs));
         progress.update(1, 5);
 
-        const result = await toolBus.execute(toolCall.name, toolCall.arguments);
+        const result = await toolBus.execute(toolName, toolArgs);
         toolResults.push(result);
 
-        streamEmitter.emitStepComplete('executing', toolCall.name, result.output, result.success);
+        streamEmitter.emitStepComplete('executing', toolName, result.output, result.success);
 
         if (!result.success) {
-          logger.warn(`[TurboExecutor] Tool ${toolCall.name} failed: ${result.error}`);
+          logger.warn(`[TurboExecutor] Tool ${toolName} failed: ${result.error}`);
         }
       }
 
@@ -118,7 +121,7 @@ export async function executeTurboPath(
 
       const steps: StepEvent[] = toolResults.map((r, idx) => ({
         phase: 'executing',
-        action: response.tool_calls![idx].name,
+        action: response.tool_calls![idx].name || '',
         detail: r.output,
         observation: r.success ? 'success' : 'failure'
       }));
@@ -128,7 +131,7 @@ export async function executeTurboPath(
         result: allSuccessful ? finalOutput : 'Task completed with some errors',
         success: allSuccessful,
         steps,
-        actions_taken: response.tool_calls!.map(tc => tc.name),
+        actions_taken: response.tool_calls!.map(tc => tc.name || ''),
         iterations: 1,
         strategy_used: 'turbo',
         elapsed_secs: 0

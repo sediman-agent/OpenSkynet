@@ -41,8 +41,14 @@ export interface AgentResult {
 
 export interface ToolCall {
   id: string;
-  name: string;
-  arguments: Record<string, unknown>;
+  name?: string;
+  arguments?: Record<string, unknown>;
+  // OpenAI-compatible format
+  type?: string;
+  function?: {
+    name: string;
+    arguments: string;
+  };
 }
 
 export interface LLMResponse {
@@ -51,6 +57,14 @@ export interface LLMResponse {
   done: boolean;
   // Raw message from LLM provider to preserve all fields (e.g., reasoning_details for MiniMax)
   raw?: Record<string, any>;
+}
+
+export interface Message {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | Array<{ type: string; [key: string]: any }>;
+  tool_call_id?: string;
+  tool_calls?: ToolCall[];
+  name?: string; // For tool result messages
 }
 
 export interface ToolDefinition {

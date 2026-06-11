@@ -3,7 +3,7 @@
  * Handles browser tab and window management
  */
 
-import type { BrowserContext } from "playwright";
+import type { BrowserContext, Page } from "playwright";
 import { createLogger } from "../../core/logging.js";
 
 const logger = createLogger('TabHandler');

@@ -3,7 +3,7 @@
  * Parses Markdown tables from LLM responses
  */
 
-import { createLogger } from '../../core/logging';
+import { createLogger } from '../../core/logging.js';
 
 const logger = createLogger('MarkdownParser');
 

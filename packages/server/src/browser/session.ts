@@ -147,7 +147,6 @@ export class BrowserSession {
       // Connect to the external browser via CDP
       const browser = await chromium.connectOverCDP(wsUrl, {
         timeout: 20000, // 20 second timeout
-        ignoreHTTPSErrors: true,
       });
 
       const elapsed = Date.now() - startTime;

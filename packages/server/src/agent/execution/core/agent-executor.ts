@@ -290,25 +290,25 @@ export class AgentExecutor {
       const result = batchResult.results[i];
 
       // Emit step start event
-      this.context.streamEmitter.emitStepStart('executing', action.name, JSON.stringify(action.arguments));
+      this.context.streamEmitter.emitStepStart('executing', action.name || '', JSON.stringify(action.arguments || {}));
 
-      this.context.recordAction(action.name);
+      this.context.recordAction(action.name || '');
       this.context.steps.push({
         phase: 'executing',
-        action: action.name,
-        detail: JSON.stringify(action.arguments),
+        action: action.name || '',
+        detail: JSON.stringify(action.arguments || {}),
         observation: result.success ? result.output : result.error,
       });
 
       const resultToolCallId = formattedCalls[i]?.id;
       this.messageHandler.addToolResult(
-        resultToolCallId || action.id || action.name,
-        action.name,
+        resultToolCallId || action.id || action.name || '',
+        action.name || '',
         result.success ? (result.output ?? '') : (result.error ?? 'Tool failed')
       );
 
       // Emit step complete event
-      this.context.streamEmitter.emitStepComplete('executing', action.name, result.success ? result.output : result.error, result.success);
+      this.context.streamEmitter.emitStepComplete('executing', action.name || '', result.success ? result.output : result.error, result.success);
 
       // Check for browser_end
       if (action.name === 'browser_end') {

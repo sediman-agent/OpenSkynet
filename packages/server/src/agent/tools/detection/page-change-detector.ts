@@ -13,7 +13,7 @@ export interface PageChangeResult {
 }
 
 export interface PageChangeOptions {
-  detectionMode?: 'strict' | 'basic';
+  detectionMode?: 'strict' | 'basic' | 'loose';
 }
 
 /**
@@ -21,7 +21,7 @@ export interface PageChangeOptions {
  * This is extracted from browser-tools.ts
  */
 export class PageChangeDetector {
-  private detectionMode: 'strict' | 'basic';
+  private detectionMode: 'strict' | 'basic' | 'loose';
 
   constructor(options: PageChangeOptions = {}) {
     const config = getConfig();
@@ -154,7 +154,7 @@ export class PageChangeDetector {
   /**
    * Get current detection mode
    */
-  getDetectionMode(): 'strict' | 'basic' {
+  getDetectionMode(): 'strict' | 'basic' | 'loose' {
     return this.detectionMode;
   }
 }

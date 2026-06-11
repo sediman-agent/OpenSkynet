@@ -44,12 +44,12 @@ export function validationMiddleware<TInput>(
  */
 export function loggingMiddleware<TInput>(): ActionMiddleware<TInput> {
   return {
-    before: (input) => {
-      logger.debug('[ActionMiddleware] Before:', input);
+    before: (input, _ctx) => {
+      logger.debug(`[ActionMiddleware] Before: ${JSON.stringify(input)}`);
       return { success: true, value: input };
     },
-    after: (result, input) => {
-      logger.debug('[ActionMiddleware] After:', input, '->', result.isError ? 'failed' : 'success');
+    after: (result, input, _ctx) => {
+      logger.debug(`[ActionMiddleware] After: ${JSON.stringify(input)} -> ${result.isError ? 'failed' : 'success'}`);
       return result;
     }
   };
@@ -60,11 +60,11 @@ export function loggingMiddleware<TInput>(): ActionMiddleware<TInput> {
  */
 export function timingMiddleware<TInput>(): ActionMiddleware<TInput> {
   return {
-    before: async (input) => {
+    before: async (input, _ctx) => {
       return { success: true, value: input };
     },
-    after: (result, input) => {
-      logger.info('[ActionMiddleware] Timing:', input, '=', result.isError ? 'failed' : 'success');
+    after: (result, input, _ctx) => {
+      logger.info(`[ActionMiddleware] Timing: ${JSON.stringify(input)} = ${result.isError ? 'failed' : 'success'}`);
       return result;
     }
   };
@@ -83,7 +83,7 @@ export function retryMiddleware<TInput>(
     after: async (result, input, ctx) => {
       if (result.isError && retries < maxRetries && retryCondition?.(result) !== false) {
         retries++;
-        logger.info('[ActionMiddleware] Retrying:', input, `(${retries}/${maxRetries})`);
+        logger.info(`[ActionMiddleware] Retrying: ${JSON.stringify(input)} (${retries}/${maxRetries})`);
         // Would trigger re-execution here if supported
       }
       return result;

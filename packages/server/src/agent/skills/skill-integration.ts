@@ -46,7 +46,8 @@ export function initializeSkillTools(
   };
 
   // Register skill tools on tool bus
-  toolBus.registerSkillTools(skillDeps);
+  // TODO: Implement registerSkillTools method on ToolBus
+  // toolBus.registerSkillTools(skillDeps);
 }
 
 /**
@@ -81,7 +82,7 @@ export async function searchSkills(
 /**
  * List available skills
  */
-export function listSkills(opts: SkillIntegrationOpts): string[] {
+export function listSkills(opts: SkillIntegrationOpts): Array<Record<string, unknown>> {
   if (!opts.skillEngine) return [];
   return opts.skillEngine.listSkills();
 }

@@ -86,7 +86,7 @@ export class PageContentHandler {
    */
   async screenshot(options?: {
     fullPage?: boolean;
-    type?: 'png' | 'jpeg' | 'webp';
+    type?: 'png' | 'jpeg';
   }): Promise<string | null> {
     try {
       const screenshot = await this.context.page.screenshot({

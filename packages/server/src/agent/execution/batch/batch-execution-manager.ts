@@ -55,7 +55,7 @@ export class BatchExecutionManager {
       logger.debug(`[BatchExecution] Executing action ${i + 1}/${actions.length}: ${action.name}`);
 
       try {
-        const result = await this.toolBus.execute(action.name, action.arguments);
+        const result = await this.toolBus.execute(action.name || '', action.arguments || {});
 
         executed.push(action);
         results.push({
@@ -141,7 +141,7 @@ export class BatchExecutionManager {
 
     for (const action of actions) {
       try {
-        const result = await this.toolBus.execute(action.name, action.arguments);
+        const result = await this.toolBus.execute(action.name || '', action.arguments || {});
 
         executed.push(action);
         results.push({
@@ -198,7 +198,7 @@ export class BatchExecutionManager {
 
     for (const action of actions) {
       try {
-        const result = await this.toolBus.execute(action.name, action.arguments);
+        const result = await this.toolBus.execute(action.name || '', action.arguments || {});
 
         executed.push(action);
         results.push({

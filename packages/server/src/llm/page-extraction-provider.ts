@@ -125,7 +125,12 @@ export class PageExtractionProvider {
     options?: PageExtractionProviderOptions
   ): Promise<PageExtraction> {
     try {
-      const pageData = await this.playwrightAdapter.extractFromPage(page, options);
+      const extractionOptions: ExtractionOptions = {
+        maxElements: options?.maxElements ?? DEFAULT_EXTRACTION_OPTIONS.maxElements,
+        includeHidden: options?.includeHidden ?? DEFAULT_EXTRACTION_OPTIONS.includeHidden,
+        includeValues: options?.includeValues ?? DEFAULT_EXTRACTION_OPTIONS.includeValues,
+      };
+      const pageData = await this.playwrightAdapter.extractFromPage(page, extractionOptions);
       return await this.extractPage(pageData, options);
     } catch (error) {
       console.error('[PageExtractionProvider] Playwright extraction failed:', error);

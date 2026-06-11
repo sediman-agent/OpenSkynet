@@ -111,7 +111,7 @@ export class TurboPathExecutor {
       if (!response.tool_calls || response.tool_calls.length === 0) {
         if (toolRound === 0 && response.text) {
           const parsed = this.thinkParser.parse(response.text);
-          const result = this.createResult(task, parsed.visible || response.text, [], allSteps);
+          const result = this.createResult(task, parsed.visible || response.text, allSteps, []);
           await this.context.saveSessionToDb?.(task, [] as string[], result.result, result.success);
           return result;
         } else if (response.text) {
@@ -128,8 +128,8 @@ export class TurboPathExecutor {
         id: tc.id,
         type: 'function',
         function: {
-          name: tc.name,
-          arguments: JSON.stringify(tc.arguments)
+          name: tc.name || '',
+          arguments: JSON.stringify(tc.arguments || {})
         }
       }));
 

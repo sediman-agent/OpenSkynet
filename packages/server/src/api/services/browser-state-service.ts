@@ -15,8 +15,8 @@ export interface ScreenshotState {
 
 export interface CdpConnectionState {
   connected: boolean;
-  resolver?: (value: boolean) => void;
-  rejecter?: (reason: string) => void;
+  resolver?: ((value: boolean) => void) | null;
+  rejecter?: ((reason: string) => void) | null;
   timeoutId?: NodeJS.Timeout;
 }
 
@@ -40,8 +40,8 @@ export class BrowserStateService {
   private screenshot: ScreenshotState | null = null;
   private cdp: CdpConnectionState = {
     connected: false,
-    resolver: null,
-    rejecter: null,
+    resolver: undefined,
+    rejecter: undefined,
     timeoutId: undefined
   };
   private intervention: InterventionState = {

@@ -19,7 +19,7 @@ export { registerBrowserTools, createAgentToolRegistry } from "./tools";
 
 // Streaming
 export { StreamEmitter } from "./streaming";
-export type { StreamEvent, AgentStreamEvent } from "./streaming";
+export type { AgentStreamEvent } from "./streaming";
 
 // Memory
 export { CheckpointManager } from "./memory/checkpoint";

@@ -12,11 +12,24 @@ import logger from "../core/logging.js";
 import type { LLMProvider } from "../llm/provider.js";
 import type { BaseMemoryStrategy } from "../memory/strategy.js";
 import type { SkillEngine } from "../skills/engine.js";
-import type { Project, ProjectConversation, ProjectConfig, ProjectInstance } from "../core/types.js";
+import type { Project, ProjectConversation, ProjectConfig } from "../core/types.js";
 
 // Extracted modules
 import { ProjectRepository } from "./repository/project-repository.js";
 import { ProjectInstanceManager } from "./instances/project-instance-manager.js";
+
+/**
+ * Project Instance
+ * Represents a running project with all its components
+ */
+export interface ProjectInstance {
+  projectId: string;
+  project: { headless: boolean; userDataDir: string };
+  browserSession?: any;
+  browserController?: any;
+  agentLoop?: any;
+  toolBus?: any;
+}
 
 /**
  * Project Manager coordinates project and instance management
@@ -121,6 +134,13 @@ export class ProjectManager {
    * Get browser controller
    */
   getBrowserController(projectId: string): any | null {
+    return this.instances.getBrowserController(projectId);
+  }
+
+  /**
+   * Get browser session (alias for getBrowserController)
+   */
+  getBrowserSession(projectId: string): any | null {
     return this.instances.getBrowserController(projectId);
   }
 

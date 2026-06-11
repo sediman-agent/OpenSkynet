@@ -93,12 +93,13 @@ export async function retryWithBackoff<T>(
       // Check if error is retryable
       if (!isRetryable(error)) {
         // Don't retry authentication errors
-        if (error?.status === 401 || error?.status === 403) {
-          throw new AuthError(error?.message ?? 'Authentication failed');
+        const err = error as any;
+        if (err?.status === 401 || err?.status === 403) {
+          throw new AuthError(err?.message ?? 'Authentication failed');
         }
 
         // Don't retry validation errors
-        if (error?.code === 'validation_error') {
+        if (err?.code === 'validation_error') {
           throw error; // Re-throw as-is
         }
 
@@ -122,7 +123,7 @@ export async function retryWithBackoff<T>(
         attempt: attempt + 1,
         maxRetries: maxRetries + 1,
         delay,
-        error: error?.message || String(error)
+        error: (error as any)?.message || String(error)
       }, 'retry_attempt');
 
       // Call retry callback

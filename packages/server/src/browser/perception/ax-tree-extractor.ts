@@ -4,7 +4,7 @@
  */
 
 import type { Page } from 'playwright';
-import type { AXNode } from '../controller.js';
+import type { AXNode } from '../controller';
 import { createLogger } from '../../core/logging';
 
 const logger = createLogger('ax-tree-extractor');
@@ -14,7 +14,7 @@ const logger = createLogger('ax-tree-extractor');
  */
 export async function extractAccessibilityTree(page: Page): Promise<AXNode | null> {
   try {
-    const tree = await page.accessibility.snapshot({
+    const tree = await (page as any).accessibility.snapshot({
       interesting: true, // Only accessible nodes
     });
 

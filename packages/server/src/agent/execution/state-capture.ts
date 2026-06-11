@@ -4,7 +4,7 @@
  */
 
 import type { BrowserSession, PageState } from '../../browser/index.js';
-import { VisionDOMFusion } from '../../browser/perception/index.js';
+import { VisionDOMFusion, type FusionStrategy } from '../../browser/perception/index.js';
 import { createLogger } from '../../core/logging.js';
 
 const logger = createLogger('state-capture');
@@ -16,7 +16,7 @@ export interface StateCaptureOptions {
   useVision?: boolean;
   useSmartPerception?: boolean;
   screenshotQuality?: 'low' | 'auto' | 'high';
-  fusionStrategy?: 'fast' | 'balanced' | 'accurate';
+  fusionStrategy?: FusionStrategy;
 }
 
 /**
@@ -39,7 +39,7 @@ export class StateCaptureManager {
   private useVision: boolean;
   private useSmartPerception: boolean;
   private screenshotQuality: 'low' | 'auto' | 'high';
-  private fusionStrategy: 'fast' | 'balanced' | 'accurate';
+  private fusionStrategy: FusionStrategy;
 
   constructor(options: StateCaptureOptions = {}) {
     this.useVision = options.useVision ?? true;

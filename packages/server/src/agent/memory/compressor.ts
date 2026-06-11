@@ -1,14 +1,4 @@
-export type Message = {
-  role: string;
-  content?: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
-  tool_calls?: Array<{
-    id: string;
-    type: string;
-    function: { name: string; arguments: string };
-  }>;
-  tool_call_id?: string;
-  name?: string;
-};
+import type { Message } from '../../core/types';
 
 export class ContextCompressor {
   compress(messages: Message[], maxTokens: number): Message[] {
