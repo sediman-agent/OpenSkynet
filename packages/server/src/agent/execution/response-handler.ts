@@ -3,11 +3,11 @@
  * Handles structured responses from LLM providers
  */
 
-import type { LLMProvider } from '../../llm/provider/index.js';
-import type { StructuredLLMProvider } from '../../llm/structured/index.js';
-import type { AgentResponse, AgentResponseSchema } from '../../schemas/index.js';
-import { coerceAgentResponse } from '../../schemas/index.js';
-import { createLogger } from '../../core/logging.js';
+import type { LLMProvider } from '../../llm/provider';
+import type { StructuredProvider } from '../../llm/structured/index';
+import type { AgentResponse, AgentResponseSchema } from '../../schemas';
+import { coerceAgentResponse } from '../../schemas';
+import { createLogger } from '../../../core/logging';
 
 const logger = createLogger('response-handler');
 
@@ -26,7 +26,7 @@ export interface ResponseHandlerOptions {
 export class ResponseHandler {
   constructor(
     private llmProvider: LLMProvider,
-    private structuredLLMProvider?: StructuredLLMProvider
+    private structuredLLMProvider?: StructuredProvider
   ) {}
 
   /**
@@ -131,7 +131,7 @@ export class ResponseHandler {
   /**
    * Set structured LLM provider
    */
-  setStructuredLLMProvider(provider: StructuredLLMProvider): void {
+  setStructuredProvider(provider: StructuredProvider): void {
     this.structuredLLMProvider = provider;
     logger.info('[ResponseHandler] Structured LLM provider set');
   }

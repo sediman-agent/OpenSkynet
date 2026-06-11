@@ -3,7 +3,7 @@
  * Builds system prompts and state messages for the agent
  */
 
-import type { CapturedState } from './state-capture-new.js';
+import type { CapturedState } from './state-capture';
 
 /**
  * Prompt Builder options
