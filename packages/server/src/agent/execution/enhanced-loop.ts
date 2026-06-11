@@ -8,21 +8,21 @@
  * Response handling extracted to execution/response-handler-new.ts
  */
 
-import type { LLMProvider } from '../../llm/provider/index.js';
-import type { StructuredLLMProvider } from '../../llm/structured/index.js';
-import type { BaseMemoryStrategy } from '../../memory/strategy/index.js';
-import type { SkillEngine } from '../../skills/engine/index.js';
-import type { BrowserSession } from '../../browser/index.js';
-import { ToolBus } from '../tools/bus.js';
-import { StreamEmitter } from '../streaming/index.js';
-import { getConfig } from '../../core/config.js';
-import { createLogger } from '../../core/logging.js';
-import type { AgentResponse, ToolCall } from '../schemas/index.js';
+import type { LLMProvider } from '../../llm/provider';
+import type { StructuredProvider } from '../../llm/structured/index';
+import type { BaseMemoryStrategy } from '../../memory/strategy';
+import type { SkillEngine } from '../../skills/engine';
+import type { BrowserSession } from '../../browser';
+import { ToolBus } from '../tools/bus';
+import { StreamEmitter } from '../streaming';
+import { getConfig } from '../../core/config';
+import { createLogger } from '../../core/logging';
+import type { AgentResponse, ToolCall } from '../schemas';
 
-import { StateCaptureManager, type CapturedState, type StateCaptureOptions } from './state-capture.js';
-import { PromptBuilder, type PromptBuilderOptions } from './prompt-builder.js';
-import { ActionExecutor, type BatchExecutionResult } from './action-executor.js';
-import { ResponseHandler, type ResponseHandlerOptions } from './response-handler.js';
+import { StateCaptureManager, type CapturedState, type StateCaptureOptions } from './state-capture';
+import { PromptBuilder, type PromptBuilderOptions } from './prompt-builder';
+import { ActionExecutor, type BatchExecutionResult } from './action-executor';
+import { ResponseHandler, type ResponseHandlerOptions } from './response-handler';
 
 const logger = createLogger('enhanced-agent-loop');
 
@@ -32,7 +32,7 @@ const logger = createLogger('enhanced-agent-loop');
 
 export interface EnhancedAgentLoopOpts {
   llmProvider: LLMProvider;
-  structuredLLMProvider?: StructuredLLMProvider;
+  structuredLLMProvider?: StructuredProvider;
   browserSession?: BrowserSession;
   memory?: BaseMemoryStrategy;
   skillEngine?: SkillEngine;
@@ -118,8 +118,8 @@ export class EnhancedAgentLoop {
   /**
    * Set structured LLM provider
    */
-  setStructuredLLMProvider(provider: StructuredLLMProvider): void {
-    this.responseHandler.setStructuredLLMProvider(provider);
+  setStructuredProvider(provider: StructuredProvider): void {
+    this.responseHandler.setStructuredProvider(provider);
     logger.info('[EnhancedAgentLoop] Structured LLM provider set');
   }
 
