@@ -6,8 +6,8 @@
 import type { LLMProvider } from '../../llm/provider';
 import type { StructuredProvider } from '../../llm/structured/index';
 import type { AgentResponse } from '../../core/types';
-import { coerceAgentResponse } from '../../schemas/agent-schemas';
-import { createLogger } from '../../../core/logging';
+import { coerceAgentResponse } from '../schemas/agent-schemas';
+import { createLogger } from '../../core/logging';
 
 const logger = createLogger('response-handler');
 

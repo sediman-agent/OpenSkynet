@@ -3,7 +3,7 @@
  * Convert streaming events to other formats
  */
 
-import type { StepEvent } from '../core/types.js';
+import type { StepEvent } from '../../../core/types';
 import type {
   AgentStreamEvent,
   StepStartEvent,

@@ -3,7 +3,7 @@
  * Parses plain text and key-value pairs
  */
 
-import { createLogger } from '../../core/logging.js';
+import { createLogger } from '../../core/logging';
 
 const logger = createLogger('TextParser');
 
